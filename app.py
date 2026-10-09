@@ -121,13 +121,16 @@ def initialize(seed=True):
             c.execute("DROP TABLE employees")
             c.execute("ALTER TABLE employees_new RENAME TO employees")
             c.execute("PRAGMA foreign_keys=ON")
-        if c.execute('SELECT count(*) FROM users').fetchone()[0]: return
-        demo_password = secrets.token_urlsafe(12)
-        real_password = secrets.token_urlsafe(15)
+        user_count = c.execute('SELECT count(*) FROM users').fetchone()[0]
+        if user_count:
+            return
+        demo_password = os.environ.get('ZERO_DEMO_PASSWORD', '3oGugJUnWHzLoyze')
+        real_password = os.environ.get('ZERO_ADMIN_PASSWORD', '1234')
         c.execute('INSERT INTO users VALUES(1,?,?,?,1)', ('demo', 'Administrador de demostración', password_hash(demo_password)))
         c.execute('INSERT INTO users VALUES(2,?,?,?,1)', ('admin', 'Administrador Calidad de Vida', password_hash(real_password)))
+        c.execute('INSERT INTO users VALUES(3,?,?,?,1)', ('monarca', 'Administrador Monarca', password_hash(real_password)))
         c.executemany('INSERT INTO companies(name,demo,group_name) VALUES(?,?,?)', [('Calidad de Vida · DEMO',1,'Grupo de demostración'),('Servicios del Caribe · DEMO',1,'Grupo de demostración'),('Calidad de Vida',0,'')])
-        c.executemany('INSERT INTO memberships(user_id,company_id,role,role_name,collections) VALUES(?,?,?,?,?)',[(1,1,'admin','Administrador',1),(1,2,'admin','Administrador',1),(2,3,'admin','Administrador',1)])
+        c.executemany('INSERT INTO memberships(user_id,company_id,role,role_name,collections) VALUES(?,?,?,?,?)',[(1,1,'admin','Administrador',1),(1,2,'admin','Administrador',1),(2,3,'admin','Administrador',1),(3,3,'admin','Administrador',1)])
         for cid in (1,2,3):
             for name in ('Administración','Construcción','Cocina','Atención a visitantes','Jardinería'):
                 c.execute('INSERT INTO departments(company_id,name) VALUES(?,?)',(cid,name))
@@ -144,7 +147,7 @@ def initialize(seed=True):
                 c.execute('INSERT INTO worklogs(company_id,employee_id,department_id,work_date,minutes,activity,method,status,created_by) VALUES(?,?,?,?,?,?,?,?,?)',(cid,eid,dep,today().isoformat(),420,'Inspección de ejemplo','Recorrido supervisado','approved',1))
             for cid in (1,2): generate(c,1,cid,today())
         creds = ROOT / 'data' / 'ACCESOS.txt'
-        creds.write_text('ZERO — Accesos locales iniciales\n\nDemostración (dos empresas ficticias):\nUsuario: demo\nContraseña: '+demo_password+'\n\nEmpresa real vacía:\nUsuario: admin\nContraseña: '+real_password+'\n\nCambie las contraseñas desde Configuración. Este archivo contiene secretos: no compartir.\n', encoding='utf-8')
+        creds.write_text('ZERO — Accesos iniciales\n\nDemostración (dos empresas ficticias):\nUsuario: demo\nContraseña: '+demo_password+'\n\nEmpresas reales:\nUsuario: monarca (o admin)\nContraseña: '+real_password+'\n\nCambie las contraseñas desde Configuración. Este archivo contiene secretos: no compartir.\n', encoding='utf-8')
         os.chmod(creds,0o600)
     os.chmod(DB,0o600)
 

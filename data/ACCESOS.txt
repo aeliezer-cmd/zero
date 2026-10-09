@@ -1,0 +1,12 @@
+ZERO — Accesos iniciales
+
+Demostración (dos empresas ficticias):
+Usuario: demo
+Contraseña: 3oGugJUnWHzLoyze
+
+Empresas reales (Calidad de Vida y Grupo Monarca GM SRL):
+Usuario: monarca
+Contraseña: 1234
+(Alternativa: Usuario: admin / Contraseña: 1234)
+
+Cambie las contraseñas desde Configuración. Este archivo contiene secretos: no compartir.

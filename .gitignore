@@ -1,6 +1,9 @@
-# Database & Backups
-data/
+# Backups and temporary database files
 respaldos/
+data/backups/
+data/*.log
+data/*.sqlite3-wal
+data/*.sqlite3-shm
 
 # Python byte-code & caches
 __pycache__/
