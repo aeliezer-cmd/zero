@@ -172,8 +172,9 @@ def mutate(core,c,uid,cid,action,d):
         has_sales=c.execute('SELECT COUNT(*) FROM farm_sales WHERE farm_id=? AND company_id=?',(item['id'],cid)).fetchone()[0]
         has_contracts=c.execute('SELECT COUNT(*) FROM farm_contracts WHERE farm_id=? AND company_id=?',(item['id'],cid)).fetchone()[0]
         has_payrolls=c.execute('SELECT COUNT(*) FROM farm_payrolls WHERE farm_id=? AND company_id=?',(item['id'],cid)).fetchone()[0]
-        if has_sales or has_contracts or has_payrolls:
-            raise ValueError(f'No se puede eliminar «{item["name"]}» porque tiene {has_sales+has_contracts+has_payrolls} registro(s) vinculado(s).')
+        has_employees=c.execute('SELECT COUNT(*) FROM employees WHERE farm_id=? AND company_id=?',(item['id'],cid)).fetchone()[0]
+        if has_sales or has_contracts or has_payrolls or has_employees:
+            raise ValueError(f'No se puede eliminar «{item["name"]}» porque tiene {has_sales+has_contracts+has_payrolls+has_employees} registro(s) vinculado(s) (incluyendo colaboradores asignados).')
         c.execute('DELETE FROM farms WHERE id=? AND company_id=?',(item['id'],cid))
         core.audit(c,uid,cid,'borrar unidad','farms',item['id'],item)
         return {'ok':True,'id':item['id']}

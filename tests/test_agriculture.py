@@ -228,6 +228,27 @@ class AgricultureTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.save('approve_queue_job', id=job2_id)
 
+    def test_employee_farm_assignment_and_protection(self):
+        # 1. Create farm and employee assigned to that farm
+        f2 = self.save('farm', name='Sucursal Este')['id']
+        emp = self.save('employee', name='Ana Encargada', position='Gerente de sucursal', basis='monthly', rate='45000', farm_id=f2)['id']
+        row = self.c.execute('SELECT * FROM employees WHERE id=?', (emp,)).fetchone()
+        self.assertEqual(row['farm_id'], f2)
+
+        # 2. Deleting farm is blocked because employee is assigned
+        with self.assertRaises(ValueError) as ctx:
+            self.save('delete_farm', id=f2)
+        self.assertIn('colaboradores asignados', str(ctx.exception))
+
+        # 3. Edit employee to unassign from farm
+        self.save('edit_employee', id=emp, name='Ana Encargada', position='Gerente general', basis='monthly', rate='45000', farm_id=None)
+        row_updated = self.c.execute('SELECT * FROM employees WHERE id=?', (emp,)).fetchone()
+        self.assertIsNone(row_updated['farm_id'])
+
+        # 4. Now farm can be safely deleted
+        res = self.save('delete_farm', id=f2)
+        self.assertTrue(res.get('ok'))
+
 if __name__=='__main__': unittest.main()
 
 

@@ -67,6 +67,7 @@ def validate(core,c,bundle):
             row.setdefault('termination_date',None)
             row.setdefault('termination_reason',None)
             row.setdefault('termination_notes','')
+            row.setdefault('farm_id',None)
         for row in data.get('farm_jobs',[]):
             row.setdefault('employee_id',None)
             row.setdefault('farm_id',None)

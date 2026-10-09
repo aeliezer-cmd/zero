@@ -224,7 +224,7 @@ function render(){
         <button type="button" class="glass-pill-btn ${currentCategory === 'rrhh' ? 'active' : ''}" data-master-cat="rrhh" title="Recursos Humanos: Personal, nóminas y tareas">
           <span class="glass-pill-icon">👥</span>
           <div class="glass-pill-text">
-            <span class="glass-pill-title">RRHH</span>
+            <span class="glass-pill-title"><span class="title-full">Recursos Humanos</span><span class="title-short">RRHH</span></span>
             <span class="glass-pill-desc">Personal y Nómina</span>
           </div>
           ${rrhhPending > 0 ? `<span class="glass-pill-badge" title="${rrhhPending} horas o labores por aprobar">${rrhhPending}</span>` : ''}
@@ -232,7 +232,7 @@ function render(){
         <button type="button" class="glass-pill-btn ${currentCategory === 'contabilidad' ? 'active' : ''}" data-master-cat="contabilidad" title="Contabilidad: Finanzas, cobros, gastos y bancos">
           <span class="glass-pill-icon">📊</span>
           <div class="glass-pill-text">
-            <span class="glass-pill-title">Contabilidad</span>
+            <span class="glass-pill-title"><span class="title-full">Contabilidad</span><span class="title-short">Finanzas</span></span>
             <span class="glass-pill-desc">Finanzas y Bancos</span>
           </div>
           ${contabPending > 0 ? `<span class="glass-pill-badge orange" title="${contabPending} gastos por aprobar">${contabPending}</span>` : ''}
@@ -240,7 +240,7 @@ function render(){
         <button type="button" class="glass-pill-btn ${currentCategory === 'administracion' ? 'active' : ''}" data-master-cat="administracion" title="Administración: Empresas, usuarios, red y sistema">
           <span class="glass-pill-icon">⚙️</span>
           <div class="glass-pill-text">
-            <span class="glass-pill-title">Administración</span>
+            <span class="glass-pill-title"><span class="title-full">Administración</span><span class="title-short">Admin</span></span>
             <span class="glass-pill-desc">Empresa y Sistema</span>
           </div>
         </button>
@@ -257,6 +257,8 @@ function render(){
       <span class="nav-text">${t}</span>
     </button>`;
   }).join('');
+
+  const mobileSubnav = `<nav class="mobile-subnav" aria-label="Espacio de trabajo">${sidebarButtons}</nav>`;
 
   $('#app').innerHTML = `<div class="shell">
     <aside class="sidebar">
@@ -275,26 +277,28 @@ function render(){
         Paquete piloto · sin facturación de licencias
       </div>
     </aside>
-    <div>
+    <div class="main-wrapper">
       <header class="topbar">
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <div class="topbar-left">
+          <div class="mobile-brand"><span class="brand-mark"></span>zero</div>
           <select id="company-select" aria-label="Empresa activa">
             ${me.companies.map(c=>`<option value="${c.id}" ${c.id==cid?'selected':''}>${esc(c.name)}</option>`).join('')}
             ${canAdmin()?'<option value="__add_company__">＋ Agregar empresa…</option>':''}
           </select>
-          <button type="button" id="btn-help-modal" class="small" style="font-weight:700;display:inline-flex;align-items:center;gap:5px;border-color:color-mix(in srgb, var(--brand-accent) 30%, var(--border));background:color-mix(in srgb, var(--brand-accent) 8%, var(--card));color:var(--ink)">
-            <span style="font-size:14px">💡</span> Ayuda y Guía
+          <button type="button" id="btn-help-modal" class="small topbar-help-btn" title="Ayuda y Guía">
+            <span style="font-size:14px">💡</span> <span class="help-btn-text">Ayuda</span>
           </button>
         </div>
         <div class="identity">
           ${themeButton()}
-          <span class="badge ${company().demo?'orange':'green'}">${company().demo?'DEMO':'EMPRESA REAL'}</span>
-          <div class="avatar">${esc(me.user.name[0])}</div>
-          <span class="user-name">${esc(me.user.name)}<br><span class="muted">${esc(S.membership.role_name)}</span></span>
-          <button id="logout" class="small">Salir</button>
+          <span class="badge ${company().demo?'orange':'green'} identity-demo-badge">${company().demo?'DEMO':'REAL'}</span>
+          <div class="avatar identity-avatar">${esc(me.user.name[0])}</div>
+          <span class="user-name identity-user-name">${esc(me.user.name)}<br><span class="muted">${esc(S.membership.role_name)}</span></span>
+          <button id="logout" class="small logout-btn" title="Cerrar sesión">Salir</button>
         </div>
       </header>
       ${floatingMasterBar}
+      ${mobileSubnav}
       <main class="content">
         ${company().demo?'<div class="notice">Está en demostración: todas las personas, clientes y movimientos son ficticios. Use su usuario empresarial para trabajar con datos reales.</div>':'<div class="notice">Empresa real · Piloto local. Registre datos autorizados y cree un respaldo al finalizar la jornada.</div>'}
         ${({payroll:payrollView,treasury:treasuryView,dashboard:dashboardView,collections:collectionsView,expenses:expensesView,team:teamView,tasks:tasksView,settings:settingsView,agriculture:agricultureView,reports:reportsView,departments:departmentsView}[view])()}
@@ -425,7 +429,7 @@ function dashboardPayrollSection(){
 function alertList(){if(!canCollect())return '<div class="empty">Su rol no tiene permiso de cobros.</div>';const alerts=(S.charges||[]).filter(c=>c.alert);return alerts.length?alerts.map(c=>`<div class="alert-row"><span class="dot"></span><div><strong>${esc(c.customer)}</strong><br><span class="muted">${esc(c.alert)} · ${displayDate(c.due_date)}</span></div><span class="amount">${money(c.balance)}</span></div>`).join(''):'<div class="empty">Sin cobros vencidos o próximos en esta empresa.</div>'}
 function collectionsView(){const tabs=[['invoices','Facturas'],['charges','Cuentas por cobrar'],['subscriptions','Servicios contratados'],['customers','Clientes'],['products','Catálogo'],['payments','Recibos y pagos'],['fiscal','Facturación fiscal']];let body='';if(tab==='invoices')body=invoicesView();if(tab==='fiscal')body=fiscalView();if(tab==='charges')body=panel('Cargos y saldos',table(['Cliente / servicio','Período','Vencimiento','Importe','Pagado','Saldo','Estado',''],S.charges.map(c=>`<tr><td><strong>${esc(c.customer)}</strong><div class="muted">${esc(c.product)} · Cargo #${c.id}</div></td><td>${displayDate(c.period_date)}</td><td>${displayDate(c.due_date)}${c.alert?`<div class="muted">${esc(c.alert)}</div>`:''}</td><td>${money(c.amount)}</td><td>${money(c.paid)}</td><td><strong>${money(c.balance)}</strong></td><td>${badge(c.status)}</td><td>${c.balance&&canPay()?action('Registrar pago','payment',c.id):''} ${invoiceLink(c.id)} ${filesButton('charges',c.id)}</td></tr>`)),`<button class="small" data-action="generate">Generar períodos hasta hoy</button>`)+panel('Alertas internas · empresa activa',alertList());if(tab==='customers')body=panel('Clientes',table(['Nombre','Contacto','Acciones'],S.customers.map(c=>`<tr><td><strong>${esc(c.name)}</strong></td><td>${esc(c.contact)}</td><td>${action('Editar','edit_customer',c.id)} ${action('Borrar','delete_customer',c.id)}</td></tr>`)),openButton('+ Cliente','customer'));if(tab==='products')body=catalogView();if(tab==='subscriptions')body=panel('Servicios contratados',table(['Cliente / servicio','Frecuencia','Inicio / fin del servicio','Vencimiento','Importe','Estado',''],S.subscriptions.map(s=>`<tr><td><strong>${esc(lookup('customers',s.customer_id))}</strong><div class="muted">${esc(lookup('products',s.product_id))}</div></td><td>${s.frequency==='once'?'Cargo único':`Cada ${s.interval} ${s.frequency==='days'?'día(s)':'mes(es)'}`}</td><td>${displayDate(s.start_date)}<br><span class="muted">${displayDate(s.end_date)}</span></td><td>${s.due_days} días después de cada período</td><td>${money(s.amount)}</td><td>${badge(s.canceled_at?'Cancelado':s.end_date&&s.end_date<S.today?'Finalizado':'Activo')}</td><td>${!s.canceled_at&&canReview()?action('Cancelar','cancel_subscription',s.id):''}</td></tr>`)),openButton('+ Contratar servicio','subscription'));if(tab==='payments')body=panel('Pagos recibidos',table(['Fecha','Cargo','Cliente','Importe','Referencia','Comprobantes'],S.payments.map(p=>`<tr><td>${displayDate(p.paid_date)}</td><td>#${p.charge_id}</td><td>${esc(S.charges.find(c=>c.id===p.charge_id)?.customer)}</td><td>${money(p.amount)}</td><td>${esc(p.reference)}</td><td>${documentLink('receipt',p.id,'Recibo / PDF')} ${filesButton('payments',p.id)}</td></tr>`)));return heading('Facturación y cobros','Emita facturas, consulte saldos y registre pagos.',`<button class="primary" data-tab="products">+ Nueva factura</button>`)+`<div class="tabs">${tabs.map(([id,name])=>`<button data-tab="${id}" class="${tab===id?'active':''}">${name}</button>`).join('')}</div><div class="notice">Los cargos se generan al contratar y con “Generar períodos hasta hoy”. No hay cobros bancarios automáticos ni mensajes externos. Alertas compartidas según permiso: próximos 5 días, 24 horas, día de vencimiento y vencidos.</div>`+body}
 function expensesView(){return heading('Gastos y pagos','Registre, revise y pague sin perder el historial.',openButton('+ Registrar gasto','expense'))+panel('Registro de gastos',table(['Concepto','Fecha','Departamento / proyecto','Importe','Estado','Saldo',''],S.expenses.map(e=>`<tr><td><strong>${esc(e.description)}</strong><div class="muted">${esc(e.receipt||'Sin referencia de comprobante')}</div></td><td>${displayDate(e.expense_date)}</td><td>${esc(lookup('departments',e.department_id))}<div class="muted">${esc(lookup('projects',e.project_id))}</div></td><td>${money(e.amount)}</td><td>${badge(e.status)}${e.balance===0?' '+badge('paid'):''}</td><td>${money(e.balance)}</td><td>${canReview()?(e.status==='proposed'?action('Aprobar','approve_expense',e.id):e.balance&&canPay()?action('Registrar pago','expense_payment',e.id):''):''} ${canReview()?action('Editar factura','edit_expense',e.id):''} ${filesButton('expenses',e.id)}</td></tr>`)))+panel('Pagos de gastos',table(['Fecha','Gasto','Importe','Referencia','Comprobantes'],(S.expense_payments||[]).map(p=>`<tr><td>${displayDate(p.paid_date)}</td><td>${esc(S.expenses.find(e=>e.id===p.expense_id)?.description||('#'+p.expense_id))}</td><td>${money(p.amount)}</td><td>${esc(p.reference)}</td><td>${filesButton('expense_payments',p.id)}</td></tr>`)))+`<div class="notice">Comprobantes: use Adjuntos para subir fotos o documentos a cada gasto o pago. Los pagos están condicionados al saldo disponible en las cuentas de tesorería y son manejados por los niveles jerárquicos 1 y 2.</div>`}
-let teamFilter = 'active', queueFilter = 'all', deptSearch = '', deptFilter = 'all', deptOrgTab = 'departments';
+let teamFilter = 'active', teamFarmFilter = '', queueFilter = 'all', deptSearch = '', deptFilter = 'all', deptOrgTab = 'departments';
 function teamView(){
   const allEmployees = S.employees || [];
   const activeEmployees = allEmployees.filter(e => (e.status || 'active') === 'active');
@@ -439,6 +443,11 @@ function teamView(){
   else if(teamFilter === 'fixed') filteredEmployees = fixedActive;
   else if(teamFilter === 'temporary') filteredEmployees = tempActive;
   else if(teamFilter === 'terminated') filteredEmployees = termEmployees;
+
+  if(teamFarmFilter){
+    if(teamFarmFilter === 'unassigned') filteredEmployees = filteredEmployees.filter(e => !e.farm_id);
+    else filteredEmployees = filteredEmployees.filter(e => String(e.farm_id) === String(teamFarmFilter));
+  }
 
   const teamCards = `
     <div class="cards" style="margin-bottom:20px">
@@ -461,13 +470,24 @@ function teamView(){
   `;
 
   const filterBar = `
-    <div class="panel-filters">
-      <span class="filter-label">Filtrar lista:</span>
-      <button class="small ${teamFilter === 'active' ? 'primary' : ''}" data-team-filter="active">🟢 Activos (${activeEmployees.length})</button>
-      <button class="small ${teamFilter === 'fixed' ? 'primary' : ''}" data-team-filter="fixed">🏢 Fijos activos (${fixedActive.length})</button>
-      <button class="small ${teamFilter === 'temporary' ? 'primary' : ''}" data-team-filter="temporary">🚜 Temporeros activos (${tempActive.length})</button>
-      <button class="small ${teamFilter === 'terminated' ? 'primary' : ''}" data-team-filter="terminated">🔴 De baja / Despedidos (${termEmployees.length})</button>
-      <button class="small ${teamFilter === 'all' ? 'primary' : ''}" data-team-filter="all">👥 Todo (${allEmployees.length})</button>
+    <div class="panel-filters" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        <span class="filter-label">Filtrar lista:</span>
+        <button class="small ${teamFilter === 'active' ? 'primary' : ''}" data-team-filter="active">🟢 Activos (${activeEmployees.length})</button>
+        <button class="small ${teamFilter === 'fixed' ? 'primary' : ''}" data-team-filter="fixed">🏢 Fijos (${fixedActive.length})</button>
+        <button class="small ${teamFilter === 'temporary' ? 'primary' : ''}" data-team-filter="temporary">🚜 Temporeros (${tempActive.length})</button>
+        <button class="small ${teamFilter === 'terminated' ? 'primary' : ''}" data-team-filter="terminated">🔴 De baja (${termEmployees.length})</button>
+        <button class="small ${teamFilter === 'all' ? 'primary' : ''}" data-team-filter="all">👥 Todo (${allEmployees.length})</button>
+      </div>
+      ${(S.farms?.length) ? `
+      <div style="display:inline-flex;align-items:center;gap:6px">
+        <label for="f-team-farm-filter" style="font-size:12px;font-weight:600;color:var(--muted)">🏢 ${esc(unitLabel(false,true))}:</label>
+        <select id="f-team-farm-filter" style="font-size:12px;padding:3px 8px;border-radius:6px;height:30px">
+          <option value="">Todas las sedes / sucursales</option>
+          ${S.farms.map(f=>`<option value="${f.id}" ${String(f.id)===String(teamFarmFilter)?'selected':''}>${esc(f.name)} (${allEmployees.filter(e=>e.farm_id===f.id).length})</option>`).join('')}
+          <option value="unassigned" ${teamFarmFilter==='unassigned'?'selected':''}>Sin sucursal asignada (${allEmployees.filter(e=>!e.farm_id).length})</option>
+        </select>
+      </div>` : ''}
     </div>
   `;
 
@@ -485,6 +505,7 @@ function teamView(){
     const isTerm = e.status === 'terminated';
     const typeBadge = isTemp ? '<span class="badge orange">🚜 TEMPORERO</span>' : '<span class="badge blue">🏢 FIJO</span>';
     const statusBadge = isTerm ? '<span class="badge red">🔴 DE BAJA</span>' : '<span class="badge green">🟢 ACTIVO</span>';
+    const farmBadge = e.farm_id ? `<div class="muted" style="color:var(--brand-accent,#185b4d);font-weight:600;font-size:11.5px;margin-top:3px" title="${esc(unitLabel(false,true))} asignada">🏢 ${esc(lookup('farms', e.farm_id))}</div>` : '';
 
     const stackedActions = `
       <div style="display:flex;flex-direction:column;gap:5px;min-width:145px;align-items:stretch">
@@ -511,7 +532,7 @@ function teamView(){
       </td>
       <td>${typeBadge}</td>
       <td>${statusBadge}</td>
-      <td>${esc(lookup('departments', e.department_id))}<div class="muted">${esc(lookup('projects', e.project_id))}</div></td>
+      <td>${esc(lookup('departments', e.department_id))}<div class="muted">${esc(lookup('projects', e.project_id))}</div>${farmBadge}</td>
       <td>${payDescription(e)}</td>
       <td class="compact-text">${isTerm && e.termination_notes ? `<strong>Nota de baja:</strong> ${esc(e.termination_notes)}<br>` : ''}${esc(e.conditions)}</td>
       <td style="vertical-align:top">${stackedActions}</td>
@@ -1879,6 +1900,7 @@ function bind(){
   document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{setActiveView(b.dataset.view);render()});
   document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{tab=b.dataset.tab;render()});
   document.querySelectorAll('[data-team-filter]').forEach(b=>b.onclick=()=>{teamFilter=b.dataset.teamFilter;render()});
+  if($('#f-team-farm-filter')) $('#f-team-farm-filter').onchange = e => { teamFarmFilter = e.target.value; render(); };
   document.querySelectorAll('[data-queue-filter]').forEach(b=>b.onclick=()=>{queueFilter=b.dataset.queueFilter;render()});
   document.querySelectorAll('[data-ptab]').forEach(b=>b.onclick=()=>{currentPayrollTab=b.dataset.ptab;render()});
   document.querySelectorAll('[data-pcad]').forEach(b=>b.onclick=()=>{currentPayrollCadence=b.dataset.pcad;render()});
@@ -2303,7 +2325,7 @@ function openHelpModal(){
   renderHelpModal();
 }
 async function save(actionName,data){const result=await api('action',{company_id:Number(cid),action:actionName,...data});await refresh();return result}
-async function handleAction(b){const a=b.dataset.action,id=Number(b.dataset.id);if(a==='view_employee_account'){showEmployeeAccountModal(id);return}if(a==='assign_queue_job'){showAssignQueueJobModal(id||null);return}if(a==='add_labor_to_farm'){showAddLaborToFarmModal(id||null);return}if(a==='report_queue_job'){showReportQueueJobModal(id);return}if(a==='approve_queue_job'){b.disabled=true;try{const res=await save('approve_queue_job',{id});toast(`Trabajo aprobado. Se acreditaron ${money(res.job?.earned_amount||0)} a la cuenta del colaborador.`);}catch(err){toast(err.message);b.disabled=false;}return;}if(payrollKinds.includes(a)){payrollDialog(a,id);return}if(a==='payroll_single'){payrollDialog('payroll',{employee_id:id,cadence:b.dataset.cadence});return}if(a==='payroll_deduction'){payrollDialog('payroll_adjustment',{employee_id:id||'',kind:'deduction'});return}if(a==='assign_custom_days'){openForm('farm_job',id);return}if(a==='reset-branding'){await save('branding',{accent_color:'#185b4d',surface_color:'#f4f6f3',card_color:'#ffffff',text_color:'#172f2d',font_scale:'100'});return}if(a==='files'){await openFiles(b.dataset.entity,id);return}if(a==='approve_all_worklogs'){b.disabled=true;try{const work_date=b.dataset.date||null;const res=await save('approve_all_worklogs',{work_date});toast(`${res.approved_count||'Todas las'} hora(s) aprobada(s) correctamente.`);}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='approve_all_farm_jobs'){b.disabled=true;try{const work_date=b.dataset.date||null;const res=await save('approve_all_farm_jobs',{work_date});toast(`${res.approved_count||'Todas las'} labore(s) aprobada(s) correctamente.`);}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='create_default_cash_account'){b.disabled=true;try{await save('create_default_cash_account',{});toast('Caja General (DOP) creada y lista para operar.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='export'){b.disabled=true;try{const archive=await api('export?company_id='+cid);const link=document.createElement('a');link.href='/api/export?company_id='+cid;link.download=company().name.replace(/[^a-zA-Z0-9_-]/g,'_')+'-'+S.today+'.zero.json';document.body.appendChild(link);link.click();link.remove();toast('Archivo de empresa preparado para descargar.')}catch(err){toast(err.message)}finally{b.disabled=false}return;}if(a==='extend_contract'){const co=S.farm_contracts?.find(c=>c.id===id);if(co){const d=new Date(co.end_date+'T12:00:00');d.setDate(d.getDate()+7);const newEnd=d.toISOString().slice(0,10);b.disabled=true;try{await save('edit_farm_contract',{id:co.id,farm_id:co.farm_id,employee_id:co.employee_id,kind:co.kind,basis:co.basis,rate:co.rate/100,description:co.description,start_date:co.start_date,end_date:newEnd,status:'active'});toast(`Continuidad extendida hasta el ${displayDate(newEnd)}.`);}catch(err){toast(err.message);b.disabled=false;}return;}}if(a==='approve_job_direct'){b.disabled=true;try{await save('job_status',{id,status:'approved'});toast('Labor / horas aprobadas para nómina.');}catch(err){toast(err.message);b.disabled=false;}return;}if(['payment','expense_payment','edit_member','edit_expense','edit_employee','terminate_employee','view_termination','contract_status','pay_payroll','edit_department','edit_project','edit_task','edit_farm','edit_farm_contract','edit_farm_job','edit_company','edit_product','edit_customer'].includes(a)){openForm(a,id);return}if(a==='reactivate_employee'){const emp=S.employees?.find(e=>e.id===id);if(!confirm(`¿Desea reactivar a «${emp?.name||'este colaborador'}» como personal activo? Volverá a estar disponible para asignaciones y nómina.`))return;b.disabled=true;try{await save('reactivate_employee',{id});toast('Colaborador reactivado con éxito.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='delete_employee'){const emp=S.employees?.find(e=>e.id===id);if(!confirm(`¿Está seguro de que desea eliminar la ficha de «${emp?.name||'este colaborador'}»? Solo es posible si no posee historial contable ni tareas asociadas.`))return;b.disabled=true;try{await save('delete_employee',{id});toast('Ficha de personal eliminada.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='cancel_subscription'){openForm('cancel_subscription',id);return}if(a.startsWith('delete_')){if(!confirm('¿Está seguro de que desea eliminar este registro permanentemente?'))return}b.disabled=true;try{if(a==='refresh')await refresh();else{const result=await save(a,{id});toast(a==='generate'?`${result.generated} cargo(s) nuevo(s). Los existentes se conservaron.`:'Operación guardada.')}}catch(err){toast(err.message);b.disabled=false}}
+async function handleAction(b){const a=b.dataset.action,id=Number(b.dataset.id);if(a==='view_employee_account'){showEmployeeAccountModal(id);return}if(a==='assign_queue_job'){showAssignQueueJobModal(id||null);return}if(a==='add_labor_to_farm'){showAddLaborToFarmModal(id||null);return}if(a==='add_employee_to_farm'){openForm('employee',null,{farm_id:id});return}if(a==='report_queue_job'){showReportQueueJobModal(id);return}if(a==='approve_queue_job'){b.disabled=true;try{const res=await save('approve_queue_job',{id});toast(`Trabajo aprobado. Se acreditaron ${money(res.job?.earned_amount||0)} a la cuenta del colaborador.`);}catch(err){toast(err.message);b.disabled=false;}return;}if(payrollKinds.includes(a)){payrollDialog(a,id);return}if(a==='payroll_single'){payrollDialog('payroll',{employee_id:id,cadence:b.dataset.cadence});return}if(a==='payroll_deduction'){payrollDialog('payroll_adjustment',{employee_id:id||'',kind:'deduction'});return}if(a==='assign_custom_days'){openForm('farm_job',id);return}if(a==='reset-branding'){await save('branding',{accent_color:'#185b4d',surface_color:'#f4f6f3',card_color:'#ffffff',text_color:'#172f2d',font_scale:'100'});return}if(a==='files'){await openFiles(b.dataset.entity,id);return}if(a==='approve_all_worklogs'){b.disabled=true;try{const work_date=b.dataset.date||null;const res=await save('approve_all_worklogs',{work_date});toast(`${res.approved_count||'Todas las'} hora(s) aprobada(s) correctamente.`);}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='approve_all_farm_jobs'){b.disabled=true;try{const work_date=b.dataset.date||null;const res=await save('approve_all_farm_jobs',{work_date});toast(`${res.approved_count||'Todas las'} labore(s) aprobada(s) correctamente.`);}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='create_default_cash_account'){b.disabled=true;try{await save('create_default_cash_account',{});toast('Caja General (DOP) creada y lista para operar.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='export'){b.disabled=true;try{const archive=await api('export?company_id='+cid);const link=document.createElement('a');link.href='/api/export?company_id='+cid;link.download=company().name.replace(/[^a-zA-Z0-9_-]/g,'_')+'-'+S.today+'.zero.json';document.body.appendChild(link);link.click();link.remove();toast('Archivo de empresa preparado para descargar.')}catch(err){toast(err.message)}finally{b.disabled=false}return;}if(a==='extend_contract'){const co=S.farm_contracts?.find(c=>c.id===id);if(co){const d=new Date(co.end_date+'T12:00:00');d.setDate(d.getDate()+7);const newEnd=d.toISOString().slice(0,10);b.disabled=true;try{await save('edit_farm_contract',{id:co.id,farm_id:co.farm_id,employee_id:co.employee_id,kind:co.kind,basis:co.basis,rate:co.rate/100,description:co.description,start_date:co.start_date,end_date:newEnd,status:'active'});toast(`Continuidad extendida hasta el ${displayDate(newEnd)}.`);}catch(err){toast(err.message);b.disabled=false;}return;}}if(a==='approve_job_direct'){b.disabled=true;try{await save('job_status',{id,status:'approved'});toast('Labor / horas aprobadas para nómina.');}catch(err){toast(err.message);b.disabled=false;}return;}if(['payment','expense_payment','edit_member','edit_expense','edit_employee','terminate_employee','view_termination','contract_status','pay_payroll','edit_department','edit_project','edit_task','edit_farm','edit_farm_contract','edit_farm_job','edit_company','edit_product','edit_customer'].includes(a)){openForm(a,id);return}if(a==='reactivate_employee'){const emp=S.employees?.find(e=>e.id===id);if(!confirm(`¿Desea reactivar a «${emp?.name||'este colaborador'}» como personal activo? Volverá a estar disponible para asignaciones y nómina.`))return;b.disabled=true;try{await save('reactivate_employee',{id});toast('Colaborador reactivado con éxito.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='delete_employee'){const emp=S.employees?.find(e=>e.id===id);if(!confirm(`¿Está seguro de que desea eliminar la ficha de «${emp?.name||'este colaborador'}»? Solo es posible si no posee historial contable ni tareas asociadas.`))return;b.disabled=true;try{await save('delete_employee',{id});toast('Ficha de personal eliminada.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='cancel_subscription'){openForm('cancel_subscription',id);return}if(a.startsWith('delete_')){if(!confirm('¿Está seguro de que desea eliminar este registro permanentemente?'))return}b.disabled=true;try{if(a==='refresh')await refresh();else{const result=await save(a,{id});toast(a==='generate'?`${result.generated} cargo(s) nuevo(s). Los existentes se conservaron.`:'Operación guardada.')}}catch(err){toast(err.message);b.disabled=false}}
 function input(name,label,type='text',value='',extra=''){return `<div><label for="f-${name}">${label}</label><input id="f-${name}" name="${name}" type="${type}" value="${esc(value)}" ${extra}></div>`}
 function select(name,label,options,value='',extra=''){return `<div><label for="f-${name}">${label}</label><select id="f-${name}" name="${name}" ${extra}>${options.map(([v,t])=>`<option value="${esc(v)}" ${String(v)===String(value)?'selected':''}>${esc(t)}</option>`).join('')}</select></div>`}
 function area(name,label,value=''){return `<div class="wide"><label for="f-${name}">${label}</label><textarea id="f-${name}" name="${name}">${esc(value)}</textarea></div>`}
@@ -2317,7 +2339,7 @@ if(kind==='edit_product'){const p=S.products?.find(x=>x.id===id);title='Editar p
 if(kind==='subscription'){if(!S.customers.length||!S.products.length){toast('Primero cree al menos un cliente y un producto o servicio.');tab=!S.customers.length?'customers':'products';render();return}title='Contratar un servicio recurrente / suscripción';fields=select('customer_id','Cliente',options('customers',false),'','required')+select('product_id','Producto / servicio',options('products',false),'','required')+input('amount','Importe por cargo (RD$)','number',S.products[0].amount/100,'required min="0.01" step="0.01"')+select('frequency','Frecuencia',[['months','Cada N meses'],['days','Cada N días'],['once','Cargo único']])+input('interval','Cada cuántos días / meses','number',1,'required min="1" max="365"')+input('start_date','Inicio del servicio','date',S.today,'required')+input('end_date','Fin del servicio (opcional)','date')+input('due_days','Días hasta vencer cada cargo','number',5,'required min="0" max="365"')+`<div class="wide" style="background:var(--surface,#f8fafc);border-left:4px solid var(--accent,#0f766e);border-radius:4px;padding:12px;margin:8px 0;font-size:13px;color:var(--text,#1e293b)"><strong>Términos de Renovación Automática (California ARL / Cumplimiento):</strong><p style="margin:4px 0 6px">Este servicio se renovará automáticamente de forma continua según la frecuencia acordada hasta su cancelación formal. Puede cancelar en cualquier momento sin penalidad desde «Servicios contratados» con la opción «Cancelar».</p><label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600"><input type="checkbox" name="auto_renewal_consent" value="1" required checked><span>Acepto los términos de renovación automática continua y facturación periódica.</span></label></div>`;help='Se generarán los períodos iniciados hasta hoy. El vencimiento de cobro es independiente del fin del servicio. En meses cortos se usa el último día y luego se recupera el día original.'}
 if(kind==='dmca_notice'){title='Notificación de infracción de derechos de autor (DMCA Safe Harbor)';fields=input('claimant_name','Nombre completo del titular / reclamante','text','','required maxlength="200"')+input('claimant_email','Correo de contacto','email','','required maxlength="200"')+area('copyrighted_work','Identificación de la obra protegida','')+area('infringing_content','Ubicación o detalle del contenido infractor en esta empresa','')+input('signature','Firma digital (nombre completo)','text','','required maxlength="200"')+`<div class="wide" style="font-size:12px;color:var(--muted,#64748b);margin-top:6px"><label style="display:block;margin-bottom:6px"><input type="checkbox" name="good_faith" value="1" required> Declaro de buena fe que el uso del material no está autorizado.</label><label style="display:block"><input type="checkbox" name="accuracy" value="1" required> Declaro bajo pena de perjurio que la información es veraz y soy el titular o agente autorizado.</label></div>`;help='Conforme a 17 U.S.C. § 512(c)(3). Inicia el procedimiento de retirada expedita y notificación al usuario.';submit='Enviar notificación DMCA'}
 if(kind==='expense'){title='Registrar gasto';fields=input('description','Concepto','text','','required')+input('amount','Importe (RD$)','number','','required min="0.01" step="0.01"')+dims()+input('expense_date','Fecha','date',S.today,'required max="'+S.today+'"')+input('receipt','Número, ruta o enlace de comprobante');help='Se guarda como propuesto. Un revisor o administrador debe aprobarlo antes del pago.'}
-if(kind==='employee'){title='Ficha de personal';fields=input('name','Nombre completo','text','','required')+input('position','Puesto / función','text','','required')+select('employment_type','Tipo de vinculación laboral',[['fixed','🏢 Empleado Fijo (Nómina regular / Planta / Recurrente)'],['temporary','🚜 Empleado Temporero (Jornalero / Contratado por labor / Finca / Obra)']])+dims()+select('basis','Base de remuneración',[['monthly','Mensual'],['weekly','Semanal'],['daily','Diaria'],['hourly','Por hora']])+input('rate','Tarifa propuesta (RD$)','number','','required min="0" step="0.01"')+area('conditions','Condiciones propuestas, horario y observaciones');help='Distinga claramente entre personal fijo (nómina regular) y personal temporero (jornales/labores) para organizar la planificación y pagos.'}
+if(kind==='employee'){title='Ficha de personal';fields=input('name','Nombre completo','text','','required')+input('position','Puesto / función','text','','required')+select('employment_type','Tipo de vinculación laboral',[['fixed','🏢 Empleado Fijo (Nómina regular / Planta / Recurrente)'],['temporary','🚜 Empleado Temporero (Jornalero / Contratado por labor / Finca / Obra)']])+select('farm_id',unitLabel(false,true)+' / Sucursal asignada (opcional)',options('farms',true),extraData?.farm_id||'')+dims()+select('basis','Base de remuneración',[['monthly','Mensual'],['weekly','Semanal'],['daily','Diaria'],['hourly','Por hora']])+input('rate','Tarifa propuesta (RD$)','number','','required min="0" step="0.01"')+area('conditions','Condiciones propuestas, horario y observaciones');help='Distinga claramente entre personal fijo y temporero y asigne su '+unitLabel(false,true).toLowerCase()+' o sucursal correspondiente.'}
 if(kind==='worklog'){if(!S.employees.length){toast('Primero cree una ficha de personal.');return}title='Reporte de supervisión';fields=select('employee_id','Persona',options('employees',false,true),'','required')+input('work_date','Fecha','date',extraData?.date||calSelectedDate||S.today,'required max="'+S.today+'"')+input('minutes','Tiempo trabajado (minutos)','number',420,'required min="1" max="1440"')+area('activity','Qué hizo')+area('method','Cómo lo hizo')+area('notes','Observaciones / referencia de evidencia');help='Hereda el departamento y proyecto de la ficha. Se guarda como propuesto hasta aprobación.'}
 if(kind==='payroll'){title='Generar nómina';fields=input('start_date','Desde','date',start,'required')+input('end_date','Hasta','date',end,'required');help='Calcula horas, días o mensualidad usando únicamente reportes aprobados. Revise el resultado antes de pagar.'}
 if(kind==='payroll_payment'){title='Registrar pago de nómina';fields=input('reference','Referencia del pago','text','','required maxlength="200"');help='Confirme únicamente un pago ya realizado. Esta acción no realiza transferencias bancarias.'}
@@ -2362,8 +2384,8 @@ function bindReports(){if(!$('#report-form'))return;
  $('#report-csv').onclick=()=>{if(!readReportForm())return;render();const link=document.createElement('a');link.href='/api/report-csv?'+new URLSearchParams({company_id:cid,...reportFilters});link.download=`reporte-${cid}-${reportFilters.type}-${reportFilters.start}-${reportFilters.end}.csv`;document.body.appendChild(link);link.click();link.remove()};
 }
 let theme='light';try{theme=localStorage.getItem('zero-theme')==='dark'?'dark':'light'}catch{}
-function applyTheme(){document.documentElement.dataset.theme=theme;applyBranding();document.querySelectorAll('[data-theme-toggle]').forEach(b=>{b.textContent=theme==='dark'?'☀ Tema claro':'☾ Tema oscuro';b.setAttribute('aria-label','Cambiar a tema '+(theme==='dark'?'claro':'oscuro'));b.setAttribute('aria-pressed',String(theme==='dark'))})}
-function themeButton(){return `<button type="button" class="small theme-toggle" data-theme-toggle aria-pressed="${theme==='dark'}" aria-label="Cambiar a tema ${theme==='dark'?'claro':'oscuro'}">${theme==='dark'?'☀ Tema claro':'☾ Tema oscuro'}</button>`}
+function applyTheme(){document.documentElement.dataset.theme=theme;applyBranding();document.querySelectorAll('[data-theme-toggle]').forEach(b=>{b.innerHTML=theme==='dark'?'<span class="theme-icon">☀</span><span class="theme-text"> Tema claro</span>':'<span class="theme-icon">☾</span><span class="theme-text"> Tema oscuro</span>';b.setAttribute('aria-label','Cambiar a tema '+(theme==='dark'?'claro':'oscuro'));b.setAttribute('aria-pressed',String(theme==='dark'))})}
+function themeButton(){return `<button type="button" class="small theme-toggle" data-theme-toggle aria-pressed="${theme==='dark'}" aria-label="Cambiar a tema ${theme==='dark'?'claro':'oscuro'}"><span class="theme-icon">${theme==='dark'?'☀':'☾'}</span><span class="theme-text"> ${theme==='dark'?'Tema claro':'Tema oscuro'}</span></button>`}
 document.addEventListener('click',e=>{if(e.target.closest('[data-theme-toggle]')){theme=theme==='dark'?'light':'dark';try{localStorage.setItem('zero-theme',theme)}catch{}applyTheme()}});
 document.addEventListener('click',e=>{const b=e.target.closest('[data-theme-preset]');if(!b)return;const [,font,accent,surface,card,text]=b.dataset.themePreset.split('|');applyBranding({accent_color:accent,surface_color:surface,card_color:card,text_color:text,font_scale:font});if($('#branding-form')){['accent_color','surface_color','card_color','text_color'].forEach((k,i)=>$('#branding-form [name='+k+']').value=[accent,surface,card,text][i]);$('#branding-form [name=font_scale]').value=font}});
 document.addEventListener('input',e=>{if(!e.target.closest('#branding-form'))return;const f=new FormData(document.querySelector('#branding-form'));applyBranding({accent_color:f.get('accent_color'),surface_color:f.get('surface_color'),card_color:f.get('card_color'),text_color:f.get('text_color'),font_scale:f.get('font_scale')})});
@@ -2519,7 +2541,7 @@ const agForms={
   };
  },
  edit_expense:id=>{const e=S.expenses.find(x=>x.id===id);return {title:'Editar factura de gasto',initial:{id},fields:input('description','Concepto','text',e.description,'required')+agDate('expense_date','Fecha',e.expense_date)+input('amount','Importe (RD$)','number',e.amount/100,'required min="0.01" step="0.01"')+input('receipt','Número o referencia de factura','text',e.receipt)+input('reason','Motivo de corrección','text','','required'),help:'Se conserva el historial, los adjuntos y los pagos. El importe no puede quedar por debajo de lo pagado. Use Adjuntos para agregar una foto o documento corregido.'}},
-  edit_employee:id=>{const e=S.employees.find(x=>x.id===id);return {title:'Editar ficha de personal · '+(e?.name||'#'+id),initial:{id},fields:input('name','Nombre completo','text',e?.name||'','required')+input('position','Puesto / función','text',e?.position||'','required')+select('employment_type','Tipo de vinculación laboral',[['fixed','🏢 Empleado Fijo (Nómina regular / Planta / Recurrente)'],['temporary','🚜 Empleado Temporero (Jornalero / Contratado por labor / Finca / Obra)']],e?.employment_type||'fixed')+select('department_id','Departamento',options('departments'),e?.department_id||'')+select('project_id','Proyecto',options('projects'),e?.project_id||'')+select('basis','Base de remuneración',[['monthly','Mensual'],['weekly','Semanal'],['daily','Diaria'],['hourly','Por hora']],e?.basis||'monthly')+input('rate','Tarifa vigente (RD$)','number',(e?.rate||0)/100,'required min="0" step="0.01"')+area('conditions','Condiciones, horario y observaciones',e?.conditions||''),help:'Modifique los datos vigentes del colaborador. Distinga claramente entre personal fijo y temporero. Los registros y nóminas históricas anteriores se conservan intactos. Use Adjuntos para subir copia de cédula, pasaporte u otra identificación.'}},
+  edit_employee:id=>{const e=S.employees.find(x=>x.id===id);return {title:'Editar ficha de personal · '+(e?.name||'#'+id),initial:{id},fields:input('name','Nombre completo','text',e?.name||'','required')+input('position','Puesto / función','text',e?.position||'','required')+select('employment_type','Tipo de vinculación laboral',[['fixed','🏢 Empleado Fijo (Nómina regular / Planta / Recurrente)'],['temporary','🚜 Empleado Temporero (Jornalero / Contratado por labor / Finca / Obra)']],e?.employment_type||'fixed')+select('farm_id',unitLabel(false,true)+' / Sucursal asignada (opcional)',options('farms',true),e?.farm_id||'')+select('department_id','Departamento',options('departments'),e?.department_id||'')+select('project_id','Proyecto',options('projects'),e?.project_id||'')+select('basis','Base de remuneración',[['monthly','Mensual'],['weekly','Semanal'],['daily','Diaria'],['hourly','Por hora']],e?.basis||'monthly')+input('rate','Tarifa vigente (RD$)','number',(e?.rate||0)/100,'required min="0" step="0.01"')+area('conditions','Condiciones, horario y observaciones',e?.conditions||''),help:'Modifique los datos vigentes del colaborador y su '+unitLabel(false,true).toLowerCase()+' o sucursal asignada. Los registros y nóminas históricas anteriores se conservan intactos. Use Adjuntos para subir copia de cédula, pasaporte u otra identificación.'}},
   terminate_employee:id=>{
     const e=S.employees?.find(x=>x.id===id);
     const isTemp=e?.employment_type==='temporary';
@@ -3618,6 +3640,7 @@ function agricultureView(){
      const co = contracts.find(c => c.id === j.contract_id);
      return j.employee_id || co?.employee_id;
    }).filter(Boolean))];
+   const fAssignedEmps = (S.employees || []).filter(e => e.farm_id === f.id && (e.status || 'active') === 'active');
    const fApprovedEarned = fJobs.filter(j => j.status === 'approved').reduce((n, j) => n + (j.earned_amount || j.amount), 0);
    const fPendingCount = fJobs.filter(j => j.status === 'proposed').length;
 
@@ -3634,6 +3657,10 @@ function agricultureView(){
      <td>
        ${f.address ? `<div>${esc(f.address)}</div>` : ''}
        ${f.size_capacity ? `<div class="muted">Cap / Ext: ${esc(f.size_capacity)}</div>` : ''}
+       <div style="font-size:11.5px;margin-top:4px">
+         <strong>👥 En nómina/sede (${fAssignedEmps.length}):</strong>
+         ${fAssignedEmps.length ? `<div class="muted" style="font-size:11px">${fAssignedEmps.map(e => esc(e.name)).join(', ')}</div>` : '<div class="muted" style="font-size:11px">Sin colaboradores asignados</div>'}
+       </div>
      </td>
      <td>
        <div>${esc(lookup('departments', f.department_id))}</div>
@@ -3656,6 +3683,7 @@ function agricultureView(){
      </td>
      <td>
        <div class="row-actions">
+         <button class="small" data-action="add_employee_to_farm" data-id="${f.id}" title="Registrar colaborador en esta unidad / sucursal">+ Personal</button>
          <button class="small" data-action="add_labor_to_farm" data-id="${f.id}">+ Labor</button>
          ${canAdmin() ? action('Ficha / Editar', 'edit_farm', f.id) : ''}
          ${filesButton('farms', f.id)}

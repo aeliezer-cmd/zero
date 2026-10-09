@@ -73,7 +73,7 @@ CREATE TABLE IF NOT EXISTS products(id INTEGER PRIMARY KEY, company_id INTEGER N
 CREATE TABLE IF NOT EXISTS subscriptions(id INTEGER PRIMARY KEY, company_id INTEGER NOT NULL REFERENCES companies(id), customer_id INTEGER NOT NULL REFERENCES customers(id), product_id INTEGER NOT NULL REFERENCES products(id), amount INTEGER NOT NULL CHECK(amount>0), frequency TEXT NOT NULL CHECK(frequency IN ('once','days','months')), interval INTEGER NOT NULL CHECK(interval>0), start_date TEXT NOT NULL, end_date TEXT, due_days INTEGER NOT NULL, canceled_at TEXT, created_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS charges(id INTEGER PRIMARY KEY, company_id INTEGER NOT NULL REFERENCES companies(id), subscription_id INTEGER NOT NULL REFERENCES subscriptions(id), period_date TEXT NOT NULL, due_date TEXT NOT NULL, amount INTEGER NOT NULL CHECK(amount>0), created_at TEXT NOT NULL, UNIQUE(subscription_id,period_date));
 CREATE TABLE IF NOT EXISTS payments(id INTEGER PRIMARY KEY, company_id INTEGER NOT NULL REFERENCES companies(id), charge_id INTEGER NOT NULL REFERENCES charges(id), amount INTEGER NOT NULL CHECK(amount>0), paid_date TEXT NOT NULL, reference TEXT NOT NULL, request_key TEXT UNIQUE NOT NULL, created_at TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS employees(id INTEGER PRIMARY KEY, company_id INTEGER NOT NULL REFERENCES companies(id), name TEXT NOT NULL, position TEXT NOT NULL, department_id INTEGER REFERENCES departments(id), project_id INTEGER REFERENCES projects(id), basis TEXT NOT NULL CHECK(basis IN ('monthly','weekly','daily','hourly')), rate INTEGER NOT NULL CHECK(rate>=0), conditions TEXT NOT NULL DEFAULT '', employment_type TEXT NOT NULL DEFAULT 'fixed', status TEXT NOT NULL DEFAULT 'active', termination_date TEXT, termination_reason TEXT, termination_notes TEXT NOT NULL DEFAULT '');
+CREATE TABLE IF NOT EXISTS employees(id INTEGER PRIMARY KEY, company_id INTEGER NOT NULL REFERENCES companies(id), name TEXT NOT NULL, position TEXT NOT NULL, department_id INTEGER REFERENCES departments(id), project_id INTEGER REFERENCES projects(id), basis TEXT NOT NULL CHECK(basis IN ('monthly','weekly','daily','hourly')), rate INTEGER NOT NULL CHECK(rate>=0), conditions TEXT NOT NULL DEFAULT '', employment_type TEXT NOT NULL DEFAULT 'fixed', status TEXT NOT NULL DEFAULT 'active', termination_date TEXT, termination_reason TEXT, termination_notes TEXT NOT NULL DEFAULT '', farm_id INTEGER);
 CREATE TABLE IF NOT EXISTS worklogs(id INTEGER PRIMARY KEY, company_id INTEGER NOT NULL REFERENCES companies(id), employee_id INTEGER NOT NULL REFERENCES employees(id), department_id INTEGER REFERENCES departments(id), project_id INTEGER REFERENCES projects(id), work_date TEXT NOT NULL, minutes INTEGER NOT NULL CHECK(minutes>0), activity TEXT NOT NULL, method TEXT NOT NULL, notes TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'proposed' CHECK(status IN ('proposed','approved')), created_by INTEGER NOT NULL REFERENCES users(id));
 CREATE TABLE IF NOT EXISTS tasks(id INTEGER PRIMARY KEY, company_id INTEGER NOT NULL REFERENCES companies(id), title TEXT NOT NULL, responsible_id INTEGER REFERENCES employees(id), department_id INTEGER REFERENCES departments(id), project_id INTEGER REFERENCES projects(id), due_date TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','progress','done')), support TEXT NOT NULL DEFAULT '', duration REAL NOT NULL DEFAULT 1.0, duration_unit TEXT NOT NULL DEFAULT 'hours' CHECK(duration_unit IN ('hours','days','weeks','months')), rate INTEGER NOT NULL DEFAULT 0, farm_id INTEGER REFERENCES farms(id), completed_at TEXT);
 CREATE TABLE IF NOT EXISTS expenses(id INTEGER PRIMARY KEY, company_id INTEGER NOT NULL REFERENCES companies(id), description TEXT NOT NULL, department_id INTEGER REFERENCES departments(id), project_id INTEGER REFERENCES projects(id), expense_date TEXT NOT NULL, amount INTEGER NOT NULL CHECK(amount>0), status TEXT NOT NULL DEFAULT 'proposed' CHECK(status IN ('proposed','approved')), receipt TEXT NOT NULL DEFAULT '', created_by INTEGER NOT NULL REFERENCES users(id));
@@ -110,7 +110,7 @@ def initialize(seed=True):
         for column, default in [('accent_color','#185b4d'),('surface_color','#f4f6f3'),('card_color','#ffffff'),('text_color','#172f2d'),('font_scale','100')]:
             try: c.execute('ALTER TABLE companies ADD COLUMN '+column+' TEXT NOT NULL DEFAULT '+repr(default))
             except sqlite3.OperationalError: pass
-        for col, col_type, default in [('employment_type', 'TEXT', "'fixed'"), ('status', 'TEXT', "'active'"), ('termination_date', 'TEXT', 'NULL'), ('termination_reason', 'TEXT', 'NULL'), ('termination_notes', 'TEXT', "''")]:
+        for col, col_type, default in [('employment_type', 'TEXT', "'fixed'"), ('status', 'TEXT', "'active'"), ('termination_date', 'TEXT', 'NULL'), ('termination_reason', 'TEXT', 'NULL'), ('termination_notes', 'TEXT', "''"), ('farm_id', 'INTEGER', 'NULL')]:
             try: c.execute(f"ALTER TABLE employees ADD COLUMN {col} {col_type} DEFAULT {default}")
             except sqlite3.OperationalError: pass
         emp_sql = c.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='employees'").fetchone()
@@ -339,7 +339,9 @@ def mutate(c,uid,cid,action,d):
         emp_type=d.get('employment_type',item.get('employment_type','fixed'))
         if emp_type not in ('fixed','temporary'): emp_type='fixed'
         dims=dimensions(c,cid,m,d)
-        update=dict(name=name,position=position,basis=basis,rate=rate,conditions=conditions,employment_type=emp_type,**dims)
+        farm_id=int(d['farm_id']) if d.get('farm_id') else None
+        if farm_id: ref(c,'farms',farm_id,cid)
+        update=dict(name=name,position=position,basis=basis,rate=rate,conditions=conditions,employment_type=emp_type,farm_id=farm_id,**dims)
         c.execute('UPDATE employees SET '+','.join(k+'=?' for k in update)+' WHERE id=?',(*update.values(),item['id']))
         audit(c,uid,cid,'editar personal','employees',item['id'],dict(before=item,after=update))
         return {'id':item['id']}
@@ -538,7 +540,9 @@ def mutate(c,uid,cid,action,d):
         if basis not in ('monthly','weekly','daily','hourly'): raise ValueError('Modalidad inválida.')
         emp_type=d.get('employment_type','fixed')
         if emp_type not in ('fixed','temporary'): emp_type='fixed'
-        table='employees';record=dict(dimensions(c,cid,m,d),name=text(d.get('name'),'Nombre'),position=text(d.get('position'),'Puesto'),basis=basis,rate=amount(d.get('rate'),True),conditions=str(d.get('conditions',''))[:3000],employment_type=emp_type,status='active',termination_date=None,termination_reason=None,termination_notes='')
+        farm_id=int(d['farm_id']) if d.get('farm_id') else None
+        if farm_id: ref(c,'farms',farm_id,cid)
+        table='employees';record=dict(dimensions(c,cid,m,d),name=text(d.get('name'),'Nombre'),position=text(d.get('position'),'Puesto'),basis=basis,rate=amount(d.get('rate'),True),conditions=str(d.get('conditions',''))[:3000],employment_type=emp_type,farm_id=farm_id,status='active',termination_date=None,termination_reason=None,termination_notes='')
     elif action=='approve_all_worklogs':
         if not (m['role']=='admin' or m['role']=='review'): raise Denied('Aprobación no autorizada.')
         work_date=d.get('work_date')
