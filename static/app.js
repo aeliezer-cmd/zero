@@ -82,6 +82,7 @@ function getSavedCompanyId(user){
 }
 let currentCategory = 'rrhh';
 function getCategoryForView(v){
+  if(v==='departments') return currentCategory === 'administracion' ? 'administracion' : 'rrhh';
   if(['team','payroll','tasks','agriculture'].includes(v)) return 'rrhh';
   if(['dashboard','collections','expenses','treasury','reports'].includes(v)) return 'contabilidad';
   if(v==='settings'||v?.startsWith('settings:')) return 'administracion';
@@ -144,7 +145,7 @@ async function boot(){
     setActiveCompany(matched?matched.id:me.companies[0].id);
     const savedView=getSavedView();
     const savedCat=getSavedCategory();
-    if(['dashboard','collections','expenses','treasury','payroll','team','agriculture','tasks','reports','settings'].includes(savedView)){
+    if(['dashboard','collections','expenses','treasury','payroll','team','agriculture','tasks','reports','settings','departments'].includes(savedView)){
       view=savedView;
       currentCategory=getCategoryForView(savedView);
     } else {
@@ -164,6 +165,7 @@ function render(){
 
   const rrhhNav = [
     ['team', '👥', 'Personal y reportes'],
+    ['departments', '🏛️', 'Departamentos y Áreas'],
     ['payroll', '♧', 'Nóminas y compensación'],
     ['tasks', '☷', 'Tareas y asignaciones'],
     ['agriculture', '🌱', `${unitLabel(true)} y labores`]
@@ -181,6 +183,7 @@ function render(){
     ['settings:server', '⚙️', 'Servidor e Intranet'],
     ['settings:companies', '🏢', 'Empresas del Grupo'],
     ...(canAdmin() ? [
+      ['settings:departments', '🏛️', 'Departamentos y Áreas'],
       ['settings:users', '👥', 'Usuarios y Permisos'],
       ['settings:fiscal', '🧾', 'Comprobantes Fiscales e-CF'],
       ['settings:branding', '🎨', 'Identidad Visual y Marca'],
@@ -294,7 +297,7 @@ function render(){
       ${floatingMasterBar}
       <main class="content">
         ${company().demo?'<div class="notice">Está en demostración: todas las personas, clientes y movimientos son ficticios. Use su usuario empresarial para trabajar con datos reales.</div>':'<div class="notice">Empresa real · Piloto local. Registre datos autorizados y cree un respaldo al finalizar la jornada.</div>'}
-        ${({payroll:payrollView,treasury:treasuryView,dashboard:dashboardView,collections:collectionsView,expenses:expensesView,team:teamView,tasks:tasksView,settings:settingsView,agriculture:agricultureView,reports:reportsView}[view])()}
+        ${({payroll:payrollView,treasury:treasuryView,dashboard:dashboardView,collections:collectionsView,expenses:expensesView,team:teamView,tasks:tasksView,settings:settingsView,agriculture:agricultureView,reports:reportsView,departments:departmentsView}[view])()}
         <div class="footer-note">Actualizado ${esc(new Date(S.updated_at).toLocaleString('es-DO',{timeZone:'America/Santo_Domingo'}))} · Importes en RD$, salvo cuentas de caja y banco con otra moneda indicada.</div>
       </main>
     </div>
@@ -422,7 +425,7 @@ function dashboardPayrollSection(){
 function alertList(){if(!canCollect())return '<div class="empty">Su rol no tiene permiso de cobros.</div>';const alerts=(S.charges||[]).filter(c=>c.alert);return alerts.length?alerts.map(c=>`<div class="alert-row"><span class="dot"></span><div><strong>${esc(c.customer)}</strong><br><span class="muted">${esc(c.alert)} · ${displayDate(c.due_date)}</span></div><span class="amount">${money(c.balance)}</span></div>`).join(''):'<div class="empty">Sin cobros vencidos o próximos en esta empresa.</div>'}
 function collectionsView(){const tabs=[['invoices','Facturas'],['charges','Cuentas por cobrar'],['subscriptions','Servicios contratados'],['customers','Clientes'],['products','Catálogo'],['payments','Recibos y pagos'],['fiscal','Facturación fiscal']];let body='';if(tab==='invoices')body=invoicesView();if(tab==='fiscal')body=fiscalView();if(tab==='charges')body=panel('Cargos y saldos',table(['Cliente / servicio','Período','Vencimiento','Importe','Pagado','Saldo','Estado',''],S.charges.map(c=>`<tr><td><strong>${esc(c.customer)}</strong><div class="muted">${esc(c.product)} · Cargo #${c.id}</div></td><td>${displayDate(c.period_date)}</td><td>${displayDate(c.due_date)}${c.alert?`<div class="muted">${esc(c.alert)}</div>`:''}</td><td>${money(c.amount)}</td><td>${money(c.paid)}</td><td><strong>${money(c.balance)}</strong></td><td>${badge(c.status)}</td><td>${c.balance&&canPay()?action('Registrar pago','payment',c.id):''} ${invoiceLink(c.id)} ${filesButton('charges',c.id)}</td></tr>`)),`<button class="small" data-action="generate">Generar períodos hasta hoy</button>`)+panel('Alertas internas · empresa activa',alertList());if(tab==='customers')body=panel('Clientes',table(['Nombre','Contacto','Acciones'],S.customers.map(c=>`<tr><td><strong>${esc(c.name)}</strong></td><td>${esc(c.contact)}</td><td>${action('Editar','edit_customer',c.id)} ${action('Borrar','delete_customer',c.id)}</td></tr>`)),openButton('+ Cliente','customer'));if(tab==='products')body=catalogView();if(tab==='subscriptions')body=panel('Servicios contratados',table(['Cliente / servicio','Frecuencia','Inicio / fin del servicio','Vencimiento','Importe','Estado',''],S.subscriptions.map(s=>`<tr><td><strong>${esc(lookup('customers',s.customer_id))}</strong><div class="muted">${esc(lookup('products',s.product_id))}</div></td><td>${s.frequency==='once'?'Cargo único':`Cada ${s.interval} ${s.frequency==='days'?'día(s)':'mes(es)'}`}</td><td>${displayDate(s.start_date)}<br><span class="muted">${displayDate(s.end_date)}</span></td><td>${s.due_days} días después de cada período</td><td>${money(s.amount)}</td><td>${badge(s.canceled_at?'Cancelado':s.end_date&&s.end_date<S.today?'Finalizado':'Activo')}</td><td>${!s.canceled_at&&canReview()?action('Cancelar','cancel_subscription',s.id):''}</td></tr>`)),openButton('+ Contratar servicio','subscription'));if(tab==='payments')body=panel('Pagos recibidos',table(['Fecha','Cargo','Cliente','Importe','Referencia','Comprobantes'],S.payments.map(p=>`<tr><td>${displayDate(p.paid_date)}</td><td>#${p.charge_id}</td><td>${esc(S.charges.find(c=>c.id===p.charge_id)?.customer)}</td><td>${money(p.amount)}</td><td>${esc(p.reference)}</td><td>${documentLink('receipt',p.id,'Recibo / PDF')} ${filesButton('payments',p.id)}</td></tr>`)));return heading('Facturación y cobros','Emita facturas, consulte saldos y registre pagos.',`<button class="primary" data-tab="products">+ Nueva factura</button>`)+`<div class="tabs">${tabs.map(([id,name])=>`<button data-tab="${id}" class="${tab===id?'active':''}">${name}</button>`).join('')}</div><div class="notice">Los cargos se generan al contratar y con “Generar períodos hasta hoy”. No hay cobros bancarios automáticos ni mensajes externos. Alertas compartidas según permiso: próximos 5 días, 24 horas, día de vencimiento y vencidos.</div>`+body}
 function expensesView(){return heading('Gastos y pagos','Registre, revise y pague sin perder el historial.',openButton('+ Registrar gasto','expense'))+panel('Registro de gastos',table(['Concepto','Fecha','Departamento / proyecto','Importe','Estado','Saldo',''],S.expenses.map(e=>`<tr><td><strong>${esc(e.description)}</strong><div class="muted">${esc(e.receipt||'Sin referencia de comprobante')}</div></td><td>${displayDate(e.expense_date)}</td><td>${esc(lookup('departments',e.department_id))}<div class="muted">${esc(lookup('projects',e.project_id))}</div></td><td>${money(e.amount)}</td><td>${badge(e.status)}${e.balance===0?' '+badge('paid'):''}</td><td>${money(e.balance)}</td><td>${canReview()?(e.status==='proposed'?action('Aprobar','approve_expense',e.id):e.balance&&canPay()?action('Registrar pago','expense_payment',e.id):''):''} ${canReview()?action('Editar factura','edit_expense',e.id):''} ${filesButton('expenses',e.id)}</td></tr>`)))+panel('Pagos de gastos',table(['Fecha','Gasto','Importe','Referencia','Comprobantes'],(S.expense_payments||[]).map(p=>`<tr><td>${displayDate(p.paid_date)}</td><td>${esc(S.expenses.find(e=>e.id===p.expense_id)?.description||('#'+p.expense_id))}</td><td>${money(p.amount)}</td><td>${esc(p.reference)}</td><td>${filesButton('expense_payments',p.id)}</td></tr>`)))+`<div class="notice">Comprobantes: use Adjuntos para subir fotos o documentos a cada gasto o pago. Los pagos están condicionados al saldo disponible en las cuentas de tesorería y son manejados por los niveles jerárquicos 1 y 2.</div>`}
-let teamFilter = 'active', queueFilter = 'all';
+let teamFilter = 'active', queueFilter = 'all', deptSearch = '', deptFilter = 'all', deptOrgTab = 'departments';
 function teamView(){
   const allEmployees = S.employees || [];
   const activeEmployees = allEmployees.filter(e => (e.status || 'active') === 'active');
@@ -550,7 +553,7 @@ function teamView(){
   return heading(
     'Personas que hacen que todo avance',
     'Fichas de personal fijo vs. temporero, condiciones y reportes de supervisión.',
-    `<button class="small primary" data-view="payroll">Ir a Módulo de Nóminas ♧</button> ` + openButton('+ Persona', 'employee')
+    `<button class="small secondary" data-view="departments">🏛️ Departamentos</button> <button class="small primary" data-view="payroll">Ir a Módulo de Nóminas ♧</button> ` + openButton('+ Persona', 'employee')
   ) + teamCards + explanatoryNotice + panel('Fichas de Personal', filterBar + employeeTable) + panel('Reportes de trabajo y supervisión', worklogTable, worklogPanelActions) + payrollPanel();
 }
 
@@ -1024,9 +1027,10 @@ function settingsNavTabs(){
     ['server', '⚙️', 'Servidor e Intranet'],
     ['companies', '🏢', 'Empresas del Grupo'],
     ...(canAdmin() ? [
+      ['departments', '🏛️', 'Departamentos y Áreas'],
+      ['users', '👥', 'Usuarios y Permisos'],
       ['fiscal', '🧾', 'Facturación Fiscal e-CF'],
       ['branding', '🎨', 'Identidad Visual'],
-      ['users', '👥', 'Usuarios y Permisos'],
       ['backup', '📦', 'Respaldos y Migración']
     ] : [])
   ];
@@ -1296,8 +1300,274 @@ function brandingPanel(){
   return panel('Identidad visual y Tema', `<form id="branding-form"><div class="branding-layout"><div><h3>Tema de marca</h3><p class="muted">Elige una combinación lista o ajusta colores a la derecha.</p><div class="theme-presets">${themePresets.map(t=>'<button type="button" class="theme-preset" data-theme-preset="'+t.join('|')+'"><span style="background:'+t[2]+'"></span>'+t[0]+'</button>').join('')}</div><label>Tamaño del texto<select name="font_scale"><option value="90" ${(S.branding?.font_scale==='90'?'selected':'')}>Pequeño</option><option value="100" ${(!S.branding?.font_scale||S.branding.font_scale==='100'?'selected':'')}>Normal</option><option value="110" ${(S.branding?.font_scale==='110'?'selected':'')}>Grande</option><option value="125" ${(S.branding?.font_scale==='125'?'selected':'')}>Muy grande</option><option value="140" ${(S.branding?.font_scale==='140'?'selected':'')}>Extra grande</option></select></label></div><div class="custom-colors"><h3>Colores personalizados</h3><div class="color-grid"><label>Acento<input type="color" name="accent_color" value="${(S.branding?.accent_color||'#185b4d')}"></label><label>Fondo<input type="color" name="surface_color" value="${(S.branding?.surface_color||'#f4f6f3')}"></label><label>Tarjetas<input type="color" name="card_color" value="${(S.branding?.card_color||'#ffffff')}"></label><label>Texto<input type="color" name="text_color" value="${(S.branding?.text_color||'#172f2d')}"></label></div></div></div><div class="form-actions"><button type="button" data-action="reset-branding">Restaurar original</button><button class="primary">Guardar cambios</button></div></form>`);
 }
 
+function departmentsView(){
+  return heading(
+    'Departamentos y Estructura Organizacional',
+    'Gestione, agregue, renombre y retire departamentos y áreas operativas de la empresa.',
+    openButton('＋ Nuevo departamento', 'department')
+  ) + departmentsManagementPanel();
+}
+
+function showDepartmentEmployeesModal(itemId, isProject = false){
+  const tableKey = isProject ? 'projects' : 'departments';
+  const entityIdKey = isProject ? 'project_id' : 'department_id';
+  const item = (S[tableKey] || []).find(x => x.id === itemId);
+  if(!item) return;
+
+  const emps = (S.employees || []).filter(e => e[entityIdKey] === itemId);
+  const tasks = (S.tasks || []).filter(t => t[entityIdKey] === itemId);
+  const expenses = (S.expenses || []).filter(ex => ex[entityIdKey] === itemId);
+
+  const empRows = emps.map(e => `
+    <tr>
+      <td><strong>${esc(e.name)}</strong></td>
+      <td>${esc(e.position)}</td>
+      <td>${badge(e.status === 'terminated' ? 'terminated' : 'active')}</td>
+      <td>${esc(e.employment_type === 'temporary' ? '🚜 Temporero' : '🏢 Fijo')}</td>
+      <td><button class="small" data-action="edit_employee" data-id="${e.id}">✏️ Editar ficha</button></td>
+    </tr>
+  `);
+
+  const taskRows = tasks.slice(0, 10).map(t => `
+    <tr>
+      <td><strong>${esc(t.title)}</strong></td>
+      <td>${esc(lookup('employees', t.responsible_id))}</td>
+      <td>${badge(t.status)}</td>
+      <td>${displayDate(t.due_date)}</td>
+    </tr>
+  `);
+
+  const content = `
+    <div class="modal-header">
+      <h2>${isProject ? '📁 Proyecto' : '🏛️ Departamento'}: «${esc(item.name)}»</h2>
+      <button type="button" id="close-modal" aria-label="Cerrar">×</button>
+    </div>
+    <div style="margin:12px 0 16px;display:flex;gap:10px;flex-wrap:wrap">
+      <span class="badge blue">👥 ${emps.length} Colaborador(es)</span>
+      <span class="badge green">☷ ${tasks.length} Tarea(s)</span>
+      <span class="badge orange">▤ ${expenses.length} Gasto(s)</span>
+    </div>
+    <h3 style="margin:16px 0 8px">Personal vinculado a este ${isProject ? 'proyecto' : 'departamento'} (${emps.length})</h3>
+    ${table(['Nombre', 'Puesto', 'Estado', 'Modalidad', 'Acción'], empRows, 'No hay colaboradores vinculados directamente a este registro.')}
+    ${tasks.length ? `
+      <h3 style="margin:20px 0 8px">Tareas asociadas (${tasks.length})</h3>
+      ${table(['Tarea', 'Responsable', 'Estado', 'Vencimiento'], taskRows)}
+    ` : ''}
+    <div class="form-actions" style="margin-top:20px">
+      <button type="button" id="cancel-modal">Volver</button>
+      <button type="button" class="primary" data-action="${isProject ? 'edit_project' : 'edit_department'}" data-id="${item.id}">✏️ Renombrar ${isProject ? 'proyecto' : 'departamento'}</button>
+    </div>
+  `;
+
+  $('#modal-content').innerHTML = content;
+  $('#modal').showModal();
+  $('#close-modal').onclick = $('#cancel-modal').onclick = () => $('#modal').close();
+  $('#modal-content').querySelectorAll('[data-action]').forEach(b => {
+    b.onclick = () => {
+      $('#modal').close();
+      handleAction(b);
+    };
+  });
+}
+
+function departmentsManagementPanel(){
+  const isDept = deptOrgTab === 'departments';
+  const items = isDept ? (S.departments || []) : (S.projects || []);
+  const allEmployees = S.employees || [];
+  const allTasks = S.tasks || [];
+  const allExpenses = S.expenses || [];
+  const allWorklogs = S.worklogs || [];
+  const allFarms = S.farms || [];
+  const idKey = isDept ? 'department_id' : 'project_id';
+
+  const enriched = items.map(item => {
+    const emps = allEmployees.filter(e => e[idKey] === item.id);
+    const activeEmps = emps.filter(e => (e.status || 'active') === 'active');
+    const tasks = allTasks.filter(t => t[idKey] === item.id);
+    const expenses = allExpenses.filter(x => x[idKey] === item.id);
+    const worklogs = allWorklogs.filter(w => w[idKey] === item.id);
+    const farms = allFarms.filter(f => f[idKey] === item.id);
+    const totalLinks = emps.length + tasks.length + expenses.length + worklogs.length + farms.length;
+    return {
+      ...item,
+      emps,
+      activeEmps,
+      tasks,
+      expenses,
+      worklogs,
+      farms,
+      totalLinks
+    };
+  });
+
+  let filtered = enriched;
+  if(deptSearch.trim()){
+    const q = deptSearch.trim().toLowerCase();
+    filtered = filtered.filter(x => x.name.toLowerCase().includes(q));
+  }
+  if(deptFilter === 'with_employees'){
+    filtered = filtered.filter(x => x.emps.length > 0);
+  } else if(deptFilter === 'empty'){
+    filtered = filtered.filter(x => x.emps.length === 0);
+  } else if(deptFilter === 'clean'){
+    filtered = filtered.filter(x => x.totalLinks === 0);
+  }
+
+  const totalCount = items.length;
+  const countWithEmps = enriched.filter(x => x.emps.length > 0).length;
+  const countClean = enriched.filter(x => x.totalLinks === 0).length;
+  const totalEmpsAssigned = allEmployees.filter(e => e[idKey] !== null && e[idKey] !== undefined).length;
+
+  const kpiCards = `
+    <div class="cards" style="margin-bottom:20px">
+      <article class="card">
+        <div class="card-title">Total ${isDept ? 'Departamentos' : 'Proyectos'} <span>${isDept ? '🏛️' : '📁'}</span></div>
+        <div class="card-value">${totalCount}</div>
+        <div class="card-note">Estructura activa de la empresa</div>
+      </article>
+      <article class="card highlight">
+        <div class="card-title">Con Personal Asignado <span>👥</span></div>
+        <div class="card-value">${countWithEmps}</div>
+        <div class="card-note">${totalEmpsAssigned} colaboradores vinculados</div>
+      </article>
+      <article class="card">
+        <div class="card-title">Sin Vínculos (Listos para retirar) <span>🗑️</span></div>
+        <div class="card-value">${countClean}</div>
+        <div class="card-note">Sin personal ni operaciones vinculadas</div>
+      </article>
+    </div>
+  `;
+
+  const tabsSelector = `
+    <div class="panel-filters" style="margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+      <div style="display:flex;gap:6px">
+        <button type="button" class="settings-tab-btn ${isDept ? 'active' : ''}" data-dept-org-tab="departments">
+          <span>🏛️</span> Departamentos (${(S.departments || []).length})
+        </button>
+        <button type="button" class="settings-tab-btn ${!isDept ? 'active' : ''}" data-dept-org-tab="projects">
+          <span>📁</span> Proyectos (${(S.projects || []).length})
+        </button>
+      </div>
+      <div>
+        <button type="button" class="primary small" data-open="${isDept ? 'department' : 'project'}">
+          ＋ Nuevo ${isDept ? 'departamento' : 'proyecto'}
+        </button>
+      </div>
+    </div>
+  `;
+
+  const quickAddForm = `
+    <form id="${isDept ? 'quick-add-dept-form' : 'quick-add-proj-form'}" class="quick-add-bar" style="display:flex;gap:10px;align-items:center;margin-bottom:18px;background:var(--card);padding:14px 18px;border-radius:10px;border:1px solid var(--border);box-shadow:0 1px 3px rgba(0,0,0,0.04)">
+      <span style="font-size:22px">${isDept ? '🏛️' : '📁'}</span>
+      <input type="text" id="${isDept ? 'quick-dept-name' : 'quick-proj-name'}" placeholder="Crear nuevo ${isDept ? 'departamento (ej. Recursos Humanos, Ventas, Logística, Mantenimiento...)' : 'proyecto (ej. Fase 1, Expansión, Obras Civiles...)'}" required style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px">
+      <button class="primary" type="submit" style="white-space:nowrap">＋ Agregar ${isDept ? 'departamento' : 'proyecto'}</button>
+    </form>
+  `;
+
+  const filterBar = `
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
+      <div style="flex:1;min-width:240px">
+        <input type="search" id="dept-search-input" placeholder="🔍 Buscar ${isDept ? 'departamento' : 'proyecto'} por nombre..." value="${esc(deptSearch)}" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px">
+      </div>
+      <div class="panel-filters" style="margin:0">
+        <button class="small ${deptFilter === 'all' ? 'primary' : ''}" data-dept-filter="all">Todos (${items.length})</button>
+        <button class="small ${deptFilter === 'with_employees' ? 'primary' : ''}" data-dept-filter="with_employees">Con personal (${countWithEmps})</button>
+        <button class="small ${deptFilter === 'empty' ? 'primary' : ''}" data-dept-filter="empty">Sin personal (${items.length - countWithEmps})</button>
+        <button class="small ${deptFilter === 'clean' ? 'primary' : ''}" data-dept-filter="clean">Sin vínculos (${countClean})</button>
+      </div>
+    </div>
+  `;
+
+  const tableHeaders = [
+    `${isDept ? 'Departamento' : 'Proyecto'}`,
+    'Personal Asignado',
+    'Tareas y Labores',
+    'Gastos Vinculados',
+    'Estado Operativo',
+    'Acciones'
+  ];
+
+  const tableRows = filtered.map(item => {
+    const empCount = item.emps.length;
+    const empPreview = empCount > 0
+      ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">${item.emps.slice(0, 2).map(e => esc(e.name)).join(', ')}${empCount > 2 ? ` <span style="font-weight:600">+${empCount - 2} más</span>` : ''}</div>`
+      : '';
+    
+    const taskBadge = item.tasks.length > 0
+      ? `<span class="badge blue" style="font-size:11px">☷ ${item.tasks.length} tarea(s)</span>`
+      : '<span class="muted">—</span>';
+
+    const expenseBadge = item.expenses.length > 0
+      ? `<span class="badge orange" style="font-size:11px">▤ ${item.expenses.length} gasto(s)</span>`
+      : '<span class="muted">—</span>';
+
+    const statusBadge = item.totalLinks > 0
+      ? `<span class="badge green">● Activo (${item.totalLinks} reg.)</span>`
+      : `<span class="badge gray">○ Sin uso (Eliminable)</span>`;
+
+    const blockedReason = `No se puede eliminar «${item.name}» porque tiene ${item.totalLinks} registro(s) vinculado(s): ${item.emps.length} colaborador(es), ${item.tasks.length} tarea(s), ${item.expenses.length} gasto(s), ${item.worklogs.length} reporte(s). Reasígnelos antes de eliminar este ${isDept ? 'departamento' : 'proyecto'}.`;
+
+    const deleteBtn = item.totalLinks === 0
+      ? `<button class="small danger" data-action="${isDept ? 'delete_department' : 'delete_project'}" data-id="${item.id}" title="Eliminar definitivamente">🗑️ Eliminar</button>`
+      : `<button class="small" type="button" data-dept-blocked-reason="${esc(blockedReason)}" style="opacity:0.8;cursor:help" title="Haga clic para ver por qué no se puede eliminar aún">🔒 Protegido (${item.totalLinks})</button>`;
+
+    const viewDetailsBtn = item.totalLinks > 0
+      ? `<button class="small secondary" data-view-dept-employees="${item.id}" data-is-project="${!isDept}" title="Ver colaboradores y detalles">👥 Ver (${empCount})</button>`
+      : '';
+
+    return `<tr>
+      <td>
+        <strong style="font-size:14px">${isDept ? '🏛️' : '📁'} ${esc(item.name)}</strong>
+        <div class="muted" style="font-size:11px">Código interno #${item.id}</div>
+      </td>
+      <td>
+        <div><strong>${empCount} colaborador(es)</strong></div>
+        ${empPreview}
+      </td>
+      <td>${taskBadge}</td>
+      <td>${expenseBadge}</td>
+      <td>${statusBadge}</td>
+      <td>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <button class="small" data-action="${isDept ? 'edit_department' : 'edit_project'}" data-id="${item.id}" title="Cambiar nombre">✏️ Renombrar</button>
+          ${viewDetailsBtn}
+          ${deleteBtn}
+        </div>
+      </td>
+    </tr>`;
+  });
+
+  const emptyMsg = deptSearch || deptFilter !== 'all'
+    ? 'No se encontraron resultados con los filtros actuales.'
+    : `No hay ${isDept ? 'departamentos' : 'proyectos'} registrados todavía. Agregue el primero usando el formulario superior.`;
+
+  const infoNotice = `
+    <div class="notice" style="margin-top:20px">
+      <strong>💡 Guía de Estructura Organizativa y Departamentos:</strong><br>
+      • <strong>🏢 Departamentos:</strong> Estructuran al personal de la empresa, asignan áreas de supervisión y clasifican los gastos contables.<br>
+      • <strong>✏️ Editar o renombrar:</strong> Puede cambiar el nombre de cualquier departamento en cualquier momento; todas las fichas de personal, tareas y gastos mantendrán su relación intacta.<br>
+      • <strong>🗑️ Eliminar:</strong> Por seguridad contable y trazabilidad histórica, un departamento solo se elimina si no tiene personal ni registros vinculados. Si el botón dice <strong>🔒 Protegido</strong>, pulse sobre él para consultar exactamente qué registros deben reasignarse primero.<br>
+      • <strong>👥 Reasignación rápida:</strong> Pulse el botón <strong>👥 Ver</strong> para ver las personas asignadas y reasignarlas abriendo su ficha.
+    </div>
+  `;
+
+  return tabsSelector + kpiCards + quickAddForm + panel(
+    `Estructura interactiva de ${isDept ? 'Departamentos' : 'Proyectos'} (${filtered.length})`,
+    filterBar + table(tableHeaders, tableRows, emptyMsg)
+  ) + infoNotice;
+}
+
 function usersAndHierarchyPanel(){
-  return `<div class="two-col">${panel('Departamentos',table(['Nombre','Acciones'],S.departments.map(d=>`<tr><td>${esc(d.name)}</td><td>${action('Editar','edit_department',d.id)+' '+action('Borrar','delete_department',d.id)}</td></tr>`)),openButton('+ Departamento','department'))}${panel('Proyectos',table(['Nombre','Acciones'],S.projects.map(p=>`<tr><td>${esc(p.name)}</td><td>${action('Editar','edit_project',p.id)+' '+action('Borrar','delete_project',p.id)}</td></tr>`)),openButton('+ Proyecto','project'))}</div>`+panel('Usuarios, puestos y jerarquía',table(['Usuario','Puesto','Jerarquía','Acceso','Cobros','Alcance','Acciones'],S.members.map(m=>`<tr><td><strong>${esc(m.name)}</strong><div class="muted">${esc(m.username)}</div></td><td>${esc(m.role_name)}</td><td>${m.hierarchy_rank}</td><td>${esc({register:'Registra',review:'Registra y aprueba',admin:'Administra'}[m.role])}</td><td>${m.collections||m.role==='admin'?'Sí':'No'}</td><td>${JSON.parse(m.departments).length||JSON.parse(m.projects).length?'Departamentos/proyectos seleccionados':'Toda la empresa'}</td><td>${m.id!==me.user.id?(action('Editar','edit_member',m.id)+' '+action('Eliminar','delete_member',m.id)):''}</td></tr>`)),openButton('+ Usuario','member'))+panel('Historial reciente y auditoría',table(['Fecha','Usuario','Operación','Registro'],S.audit.map(a=>`<tr><td>${esc(new Date(a.created_at).toLocaleString('es-DO',{timeZone:'America/Santo_Domingo'}))}</td><td>${esc(a.user_name)}</td><td>${esc(a.action)}</td><td>${esc(a.entity)} #${a.entity_id}</td></tr>`)));
+  const deptShortcut = `
+    <div style="display:flex;justify-content:space-between;align-items:center;background:var(--card);padding:14px 18px;border-radius:10px;border:1px solid var(--border);margin-bottom:16px;box-shadow:0 1px 3px rgba(0,0,0,0.03)">
+      <div>
+        <strong style="font-size:14px">🏛️ Menú Interactivo de Departamentos y Proyectos</strong>
+        <p class="muted" style="margin:2px 0 0">Gestione, agregue, renombre o elimine departamentos y proyectos con métricas de personal vinculado y validaciones automáticas.</p>
+      </div>
+      <button type="button" class="primary small" data-settings-tab="departments">Abrir Menú de Departamentos →</button>
+    </div>
+  `;
+  return deptShortcut + `<div class="two-col">${panel('Departamentos',table(['Nombre','Acciones'],S.departments.map(d=>`<tr><td>${esc(d.name)}</td><td>${action('Editar','edit_department',d.id)+' '+action('Borrar','delete_department',d.id)}</td></tr>`)),openButton('+ Departamento','department'))}${panel('Proyectos',table(['Nombre','Acciones'],S.projects.map(p=>`<tr><td>${esc(p.name)}</td><td>${action('Editar','edit_project',p.id)+' '+action('Borrar','delete_project',p.id)}</td></tr>`)),openButton('+ Proyecto','project'))}</div>`+panel('Usuarios, puestos y jerarquía',table(['Usuario','Puesto','Jerarquía','Acceso','Cobros','Alcance','Acciones'],S.members.map(m=>`<tr><td><strong>${esc(m.name)}</strong><div class="muted">${esc(m.username)}</div></td><td>${esc(m.role_name)}</td><td>${m.hierarchy_rank}</td><td>${esc({register:'Registra',review:'Registra y aprueba',admin:'Administra'}[m.role])}</td><td>${m.collections||m.role==='admin'?'Sí':'No'}</td><td>${JSON.parse(m.departments).length||JSON.parse(m.projects).length?'Departamentos/proyectos seleccionados':'Toda la empresa'}</td><td>${m.id!==me.user.id?(action('Editar','edit_member',m.id)+' '+action('Eliminar','delete_member',m.id)):''}</td></tr>`)),openButton('+ Usuario','member'))+panel('Historial reciente y auditoría',table(['Fecha','Usuario','Operación','Registro'],S.audit.map(a=>`<tr><td>${esc(new Date(a.created_at).toLocaleString('es-DO',{timeZone:'America/Santo_Domingo'}))}</td><td>${esc(a.user_name)}</td><td>${esc(a.action)}</td><td>${esc(a.entity)} #${a.entity_id}</td></tr>`)));
 }
 
 function backupAndExportPanel(){
@@ -1310,6 +1580,8 @@ function settingsView(){
     content = serverConditionsPanel() + serverInstructionsAndClientGuidePanel();
   } else if(settingsTab === 'companies'){
     content = companiesDirectoryPanel() + (canAdmin() ? companyProfilePanel() : '');
+  } else if(settingsTab === 'departments'){
+    content = departmentsManagementPanel();
   } else if(settingsTab === 'fiscal'){
     content = canAdmin() ? fiscalView() : '<div class="notice">La configuración fiscal está reservada a administradores.</div>';
   } else if(settingsTab === 'branding'){
@@ -1442,9 +1714,95 @@ function loadLiveNetworkStatus(){
   });
 }
 
+function bindDepartments(){
+  const searchInput = $('#dept-search-input');
+  if(searchInput){
+    searchInput.oninput = (e) => {
+      deptSearch = e.target.value;
+      render();
+      const nextInput = $('#dept-search-input');
+      if(nextInput){
+        nextInput.focus();
+        nextInput.selectionStart = nextInput.selectionEnd = nextInput.value.length;
+      }
+    };
+  }
+
+  document.querySelectorAll('[data-dept-filter]').forEach(b => {
+    b.onclick = () => {
+      deptFilter = b.dataset.deptFilter;
+      render();
+    };
+  });
+
+  document.querySelectorAll('[data-dept-org-tab]').forEach(b => {
+    b.onclick = () => {
+      deptOrgTab = b.dataset.deptOrgTab;
+      deptSearch = '';
+      deptFilter = 'all';
+      render();
+    };
+  });
+
+  const quickDeptForm = $('#quick-add-dept-form');
+  if(quickDeptForm){
+    quickDeptForm.onsubmit = async (e) => {
+      e.preventDefault();
+      const input = $('#quick-dept-name');
+      const name = input?.value?.trim();
+      if(!name) return;
+      const btn = quickDeptForm.querySelector('button');
+      if(btn) btn.disabled = true;
+      try {
+        await save('department', { name });
+        input.value = '';
+        toast(`Departamento «${name}» agregado con éxito.`);
+      } catch(err) {
+        toast(err.message);
+        if(btn) btn.disabled = false;
+      }
+    };
+  }
+
+  const quickProjForm = $('#quick-add-proj-form');
+  if(quickProjForm){
+    quickProjForm.onsubmit = async (e) => {
+      e.preventDefault();
+      const input = $('#quick-proj-name');
+      const name = input?.value?.trim();
+      if(!name) return;
+      const btn = quickProjForm.querySelector('button');
+      if(btn) btn.disabled = true;
+      try {
+        await save('project', { name });
+        input.value = '';
+        toast(`Proyecto «${name}» agregado con éxito.`);
+      } catch(err) {
+        toast(err.message);
+        if(btn) btn.disabled = false;
+      }
+    };
+  }
+
+  document.querySelectorAll('[data-dept-blocked-reason]').forEach(btn => {
+    btn.onclick = () => {
+      alert(btn.dataset.deptBlockedReason);
+    };
+  });
+
+  document.querySelectorAll('[data-view-dept-employees]').forEach(btn => {
+    btn.onclick = () => {
+      const id = Number(btn.dataset.viewDeptEmployees);
+      const isProject = btn.dataset.isProject === 'true';
+      showDepartmentEmployeesModal(id, isProject);
+    };
+  });
+}
+
 function bind(){
   bindCommerce();
   bindReports();
+  bindDepartments();
   loadLiveNetworkStatus();
   const btnRefreshNet = $('#btn-refresh-network');
   if(btnRefreshNet) btnRefreshNet.onclick = () => loadLiveNetworkStatus();
@@ -1686,6 +2044,7 @@ function openHelpModal(){
     const q = filterText.trim().toLowerCase();
 
     const quickActions = [
+      {icon:'🏛️', title:'Departamentos y Áreas', desc:'Agregue, edite o retire departamentos y proyectos de la empresa.', action:'view:departments', keywords:'departamento area estructura organigrama agregar editar borrar quitar'},
       {icon:'↗', title:'Nueva Factura / Venta', desc:'Emita una factura comercial o con comprobante fiscal a un cliente.', action:'open_form:product', keywords:'factura venta cobrar cobro cliente catalogo'},
       {icon:'🧾', title:'Facturación Fiscal e-CF', desc:'Comprobantes fiscales electrónicos bajo la Ley 32-23 (DGII).', action:'view:settings:fiscal', keywords:'ecf dgii fiscal ncf comprobante b01 b02'},
       {icon:'▤', title:'Registrar Gasto / Compra', desc:'Registre facturas de compra y gastos operativos para revisión y pago.', action:'open_form:expense', keywords:'gasto compra proveedor factura pago dinero'},
@@ -1699,6 +2058,7 @@ function openHelpModal(){
 
     const navRoutes = [
       {view:'dashboard', icon:'◫', title:'Vista Corporativa', desc:'Panel ejecutivo de control, KPIs de balance, horas y empresas del grupo.'},
+      {view:'departments', icon:'🏛️', title:'Departamentos y Áreas', desc:'Estructura organizativa interactiva, personal vinculado, tareas y centros de costo.'},
       {view:'collections', icon:'↗', title:'Facturación y Cobros', desc:'Gestión de clientes, catálogo, suscripciones periódicas, facturas e-CF y cobros.'},
       {view:'expenses', icon:'▤', title:'Gastos y Pagos', desc:'Registro de facturas, control de saldos pendientes y pagos a proveedores.'},
       {view:'treasury', icon:'▣', title:'Caja y Bancos', desc:'Tesorería multimoneda (DOP/USD/EUR), saldos y movimientos conciliados.'},
@@ -1711,6 +2071,17 @@ function openHelpModal(){
     ];
 
     const tutorials = [
+      {
+        id:'tut_departments',
+        title:'🏛️ Gestión de Departamentos y Áreas',
+        steps:[
+          '1. Ingrese a <strong>Departamentos y Áreas</strong> desde el menú lateral de RRHH o Administración.',
+          '2. Para agregar uno nuevo, escriba el nombre en la barra superior y pulse <strong>+ Agregar departamento</strong> (o use el botón <strong>+ Nuevo departamento</strong>).',
+          '3. Para renombrarlo, pulse <strong>✏️ Renombrar</strong>; todos los colaboradores vinculados conservan su relación de inmediato.',
+          '4. Para retirarlo, use <strong>🗑️ Eliminar</strong> (si tiene personal o tareas vinculadas, el botón dirá <em>🔒 Protegido</em> y le indicará qué registros reasignar primero).'
+        ],
+        keywords:'departamento area agregar editar quitar borrar renombrar estructura'
+      },
       {
         id:'tut_payroll',
         title:'🚜 Flujo de Jornaleros y Liquidación de Nómina',
@@ -1952,9 +2323,10 @@ if(kind==='payroll'){title='Generar nómina';fields=input('start_date','Desde','
 if(kind==='payroll_payment'){title='Registrar pago de nómina';fields=input('reference','Referencia del pago','text','','required maxlength="200"');help='Confirme únicamente un pago ya realizado. Esta acción no realiza transferencias bancarias.'}
 if(kind==='task'){title='Nueva tarea';fields=input('title','Tarea / Labor a realizar','text','','required')+select('responsible_id','Responsable / Colaborador encargado',options('employees',true,true))+input('duration','Duración estimada (Cantidad de tiempo)','number',1,'required min="0.1" step="0.1"')+select('duration_unit','Unidad de tiempo (Impacta directamente en nómina)',[['hours','Horas (h)'],['days','Días (jornadas)'],['weeks','Semanas'],['months','Meses']],'hours')+select('farm_id',unitLabel(false,true)+' vinculada (opcional)',options('farms',true))+input('rate','Tarifa personalizada (RD$, opcional)','number','','min="0" step="0.01" placeholder="Usa la tarifa de nómina del empleado si se deja en blanco"')+dims()+input('due_date','Fecha límite / ejecución','date',extraData?.date||calSelectedDate||S.today,'required')+area('support','Instrucciones, especificaciones y apoyo solicitado');help='Las tareas con colaborador asignado y duración en horas, días, semanas o meses influyen directamente en la nómina del colaborador (devengan según la duración y su tarifa base o específica al completarse).'}
 if(kind==='edit_task'){const t=S.tasks?.find(x=>x.id===id);title='Editar tarea · #'+id;initial={id};fields=input('title','Tarea / Labor a realizar','text',t?.title||'','required')+select('responsible_id','Responsable / Colaborador encargado',options('employees'),t?.responsible_id||'')+input('duration','Duración estimada (Cantidad de tiempo)','number',t?.duration||1,'required min="0.1" step="0.1"')+select('duration_unit','Unidad de tiempo (Impacta directamente en nómina)',[['hours','Horas (h)'],['days','Días (jornadas)'],['weeks','Semanas'],['months','Meses']],t?.duration_unit||'hours')+select('farm_id',unitLabel(false,true)+' vinculada (opcional)',options('farms',true),t?.farm_id||'')+input('rate','Tarifa personalizada (RD$, opcional)','number',t?.rate?(t.rate/100):'','min="0" step="0.01" placeholder="Usa la tarifa de nómina del empleado si se deja en blanco"')+dims(t?.department_id||'',t?.project_id||'')+input('due_date','Fecha límite / ejecución','date',t?.due_date||S.today,'required')+select('status','Estado',[['pending','Pendiente'],['progress','En progreso'],['done','Completada (Devengada para nómina)']],t?.status||'pending')+area('support','Instrucciones, especificaciones y apoyo solicitado',t?.support||'');help='Al marcar la tarea como Completada, el tiempo computado en horas, días, semanas o meses se incorpora a los devengos del período de nómina del colaborador.'}
-if(['department','project'].includes(kind)){title=kind==='department'?'Nuevo departamento':'Nuevo proyecto';fields=input('name','Nombre','text','','required')}
-if(kind==='edit_department'){const d=S.departments?.find(x=>x.id===id);title='Editar departamento';initial={id};fields=input('name','Nombre del departamento','text',d?.name||'','required')}
-if(kind==='edit_project'){const p=S.projects?.find(x=>x.id===id);title='Editar proyecto';initial={id};fields=input('name','Nombre del proyecto','text',p?.name||'','required')}
+if(kind==='department'){title='Nuevo departamento';fields=input('name','Nombre del departamento','text','','required maxlength="100" placeholder="Ej. Operaciones, Ventas, Logística, Contabilidad..."');help='El departamento servirá para agrupar colaboradores, asignar tareas y clasificar centros de costo de la empresa.';submit='Crear departamento';}
+if(kind==='edit_department'){const d=S.departments?.find(x=>x.id===id);title=`Editar departamento: «${d?.name||''}»`;initial={id};fields=input('name','Nombre del departamento','text',d?.name||'','required maxlength="100"');help='Al cambiar el nombre, todos los colaboradores, tareas y gastos asignados mantendrán su vinculación automáticamente.';submit='Guardar cambios';}
+if(kind==='project'){title='Nuevo proyecto';fields=input('name','Nombre del proyecto','text','','required maxlength="100" placeholder="Ej. Expansión Este, Desarrollo Fase 2, Obras..."');help='Los proyectos permiten clasificar presupuestos y ejecuciones temporales o transversales.';submit='Crear proyecto';}
+if(kind==='edit_project'){const p=S.projects?.find(x=>x.id===id);title=`Editar proyecto: «${p?.name||''}»`;initial={id};fields=input('name','Nombre del proyecto','text',p?.name||'','required maxlength="100"');help='Al modificar el nombre del proyecto se actualiza en todas las fichas vinculadas.';submit='Guardar cambios';}
 if(kind==='company'){title='Agregar empresa';fields=input('name','Nombre de la empresa','text','','required maxlength="200"')+input('group_name','Grupo corporativo / Cuenta dependiente','text',company()?.group_name||'','maxlength="200"')+'<label><input type="checkbox" name="demo"> Empresa de demostración (datos ficticios)</label>';help='La empresa se crea con usted como administrador y quedará disponible en el directorio de empresas y el selector superior.'}
 if(kind==='edit_company'){const targetComp=me?.companies?.find(x=>x.id===id)||(id===Number(cid)?{...company(),...S.company_profile}:{id,name:''});const compProfile=(id===Number(cid)?S.company_profile:targetComp)||{};const uSingular=targetComp.unit_singular||compProfile.unit_singular||'Unidad operativa';const uPlural=targetComp.unit_plural||compProfile.unit_plural||'Unidades operativas';const presets=[['Unidad operativa|Unidades operativas','Unidad operativa / Multifuncional (Servicios, general)'],['Finca|Fincas','Finca / Agropecuaria (Agrícola, cacao, ganado)'],['Propiedad|Propiedades','Propiedad / Inmueble (Inmobiliaria, bienes raíces)'],['Sucursal|Sucursales','Sucursal / Agencia (Financiera, comercial, seguros)'],['Sede|Sedes','Sede / Centro (Corporativo, consultorías, clínicas)'],['Proyecto|Proyectos','Proyecto / Obra (Constructoras, proyectos de campo)'],['custom','Personalizado (Escribir término propio)']];const matched=presets.find(([val])=>val===`${uSingular}|${uPlural}`)?`${uSingular}|${uPlural}`:'custom';title=`Ficha y ajustes de empresa: ${esc(targetComp.name||'')}`;initial={id,target_company_id:id};fields=input('name','Nombre de la empresa','text',targetComp.name||'','required maxlength="200"')+input('group_name','Grupo corporativo / Cuenta dependiente','text',targetComp.group_name||'','maxlength="200"')+input('tax_id','Identificación fiscal / RNC','text',targetComp.tax_id||compProfile.tax_id||'')+input('phone','Teléfono de contacto','text',targetComp.phone||compProfile.phone||'')+input('email','Correo electrónico','email',targetComp.email||compProfile.email||'')+input('address','Dirección física / sede','text',targetComp.address||compProfile.address||'')+`<div><label for="f-unit-preset-modal">Tipo de negocio / Modelo operativo</label><select id="f-unit-preset-modal" name="unit_preset">${presets.map(([v,t])=>`<option value="${esc(v)}" ${v===matched?'selected':''}>${esc(t)}</option>`).join('')}</select></div>`+`<div id="custom-unit-fields-modal" style="${matched==='custom'?'':'display:none'}"><div class="form-grid" style="margin-top:8px">${input('unit_singular','Término en singular (ej. Finca, Sucursal)','text',uSingular,'maxlength="50"')}${input('unit_plural','Término en plural (ej. Fincas, Sucursales)','text',uPlural,'maxlength="50"')}</div></div>`+`<div><label><input type="checkbox" name="demo" ${targetComp.demo?'checked':''}> Empresa de demostración (datos ficticios)</label></div>`+`<div><label for="company-logo-modal">Logo de la empresa (PNG, JPEG o WebP, hasta 500 KB)</label><input id="company-logo-modal" type="file" accept="image/png,image/jpeg,image/webp">${(targetComp.logo||compProfile.logo)?`<div style="margin-top:6px"><img class="company-logo" src="${esc(targetComp.logo||compProfile.logo)}" alt="Logo" style="max-height:40px;display:block;margin-bottom:4px"><label><input type="checkbox" name="remove_logo"> Quitar logo actual</label></div>`:''}</div>`;help='Todas las dimensiones de la empresa son editables por el administrador. Los cambios aplican de inmediato en la cuenta.';submit='Guardar ficha de empresa'}
 if(['payment','expense_payment'].includes(kind)){const item=(kind==='payment'?S.charges:S.expenses).find(x=>x.id===id);title=kind==='payment'?'Registrar pago recibido':'Registrar pago de gasto';initial={id,[kind==='payment'?'charge_id':'expense_id']:id,request_key:operationKey()};fields=input('amount','Importe (RD$)','number',item.balance/100,`required min="0.01" max="${item.balance/100}" step="0.01"`)+input('paid_date','Fecha efectiva','date',S.today,`required max="${S.today}" min="${item.period_date||item.expense_date}"`)+input('reference','Referencia / recibo','text','','required');help=`Saldo actual: ${money(item.balance)}. Confirme únicamente dinero efectivamente recibido o pagado. El registro no realiza una transferencia bancaria.`;submit='Confirmar pago'}

@@ -26,4 +26,6 @@ env/
 venv/
 .vscode/
 .idea/
-
+# Archive packages
+*.zip
+.github/
