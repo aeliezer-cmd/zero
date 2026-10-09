@@ -1,0 +1,18 @@
+'use strict';
+const assert=require('node:assert/strict');
+const {build,csv}=require('../static/reports.js');
+const state={today:'2026-09-22',departments:[{id:1,name:'Cocina'},{id:2,name:'Obras'}],projects:[{id:1,name:'Urbanización'}],employees:[{id:1,name:'Persona QA'}],expenses:[{id:1,expense_date:'2026-09-01',description:'Café',department_id:1,project_id:1,amount:20000,paid:5000,balance:15000,status:'approved'},{id:2,expense_date:'2026-09-20',description:'Material',department_id:2,amount:10000,paid:0,balance:10000,status:'proposed'},{id:3,expense_date:'2026-08-31',description:'Anterior',amount:1000,paid:1000,balance:0,status:'approved'}],worklogs:[{id:1,work_date:'2026-09-05',employee_id:1,department_id:1,project_id:1,activity:'Preparación',minutes:90,status:'approved'}],tasks:[{id:1,due_date:'2026-09-10',responsible_id:1,status:'pending',title:'Pendiente'},{id:2,due_date:'2026-09-01',status:'done',title:'Terminada'}],charges:[{id:1,due_date:'2026-09-21',product:'Plan',customer:'Cliente QA',amount:50000,paid:20000,balance:30000,status:'overdue'}],payments:[{id:1,charge_id:1,paid_date:'2026-09-20',amount:20000,reference:'Recibo QA'}]};
+const base={type:'expenses',start:'2026-09-01',end:'2026-09-22'};
+assert.equal(build(state,base).totals.count,2);
+assert.equal(build(state,{...base,department:'1',project:'1',status:'approved'}).totals.balance,15000);
+assert.equal(build(state,{...base,search:'cafe'}).totals.count,1);
+assert.equal(build(state,{...base,department:'999'}).totals.count,0);
+assert.equal(build(state,{...base,type:'worklogs',person:'1'}).totals.minutes,90);
+assert.equal(build(state,{...base,type:'tasks',status:'late'}).totals.count,1);
+assert.equal(build(state,{...base,type:'payments'}).records[0].customer,'Cliente QA');
+assert.equal(build(state,{...base,type:'charges',status:'overdue'}).totals.balance,30000);
+assert.throws(()=>build(state,{...base,start:'2026-10-01'}),/período/);
+assert.equal(build({...state,expenses:[]},base).records.length,0);
+const out=csv(['Concepto'],[['=SUM(A1)'],['Dijo "hola"'],['Uno;dos']]);
+assert.ok(out.includes('"\'=SUM(A1)"'));assert.ok(out.includes('"Dijo ""hola"""'));assert.ok(out.includes('"Uno;dos"'));
+console.log('Reportes: 13 verificaciones correctas (filtros, límites de fecha, totales y CSV seguro).');

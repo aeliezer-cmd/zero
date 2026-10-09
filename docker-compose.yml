@@ -1,0 +1,14 @@
+services:
+  zero:
+    build: .
+    container_name: zero-erp
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./respaldos:/app/respaldos
+    environment:
+      - PORT=8000
+      - HOST=0.0.0.0
+      - TZ=America/Santo_Domingo

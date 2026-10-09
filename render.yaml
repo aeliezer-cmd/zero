@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: zero-erp
+    env: docker
+    plan: starter
+    region: oregon
+    dockerfilePath: Dockerfile
+    disk:
+      name: zero-data
+      mountPath: /app/data
+      sizeGB: 1
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: HOST
+        value: 0.0.0.0
+      - key: TZ
+        value: America/Santo_Domingo
