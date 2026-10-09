@@ -107,10 +107,12 @@ def initialize(seed=True):
             if col not in task_cols:
                 try: c.execute(f"ALTER TABLE tasks ADD COLUMN {col} {col_type} DEFAULT {default}")
                 except Exception: pass
-        for column, default in [('accent_color','#185b4d'),('surface_color','#f4f6f3'),('card_color','#ffffff'),('text_color','#172f2d'),('font_scale','100'),('deleted_at','NULL')]:
-            try: c.execute('ALTER TABLE companies ADD COLUMN '+column+' TEXT DEFAULT '+repr(default if default!='NULL' else None))
+        for column, default in [('accent_color','#185b4d'),('surface_color','#f4f6f3'),('card_color','#ffffff'),('text_color','#172f2d'),('font_scale','100')]:
+            try: c.execute('ALTER TABLE companies ADD COLUMN '+column+' TEXT DEFAULT '+repr(default))
             except sqlite3.OperationalError: pass
         try: c.execute("ALTER TABLE companies ADD COLUMN deleted_at TEXT DEFAULT NULL")
+        except sqlite3.OperationalError: pass
+        try: c.execute("UPDATE companies SET deleted_at=NULL WHERE deleted_at='None'")
         except sqlite3.OperationalError: pass
         for col, col_type, default in [('employment_type', 'TEXT', "'fixed'"), ('status', 'TEXT', "'active'"), ('termination_date', 'TEXT', 'NULL'), ('termination_reason', 'TEXT', 'NULL'), ('termination_notes', 'TEXT', "''"), ('farm_id', 'INTEGER', 'NULL')]:
             try: c.execute(f"ALTER TABLE employees ADD COLUMN {col} {col_type} DEFAULT {default}")
