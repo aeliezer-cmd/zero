@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""Zero pilot: standard-library HTTP server + transactional SQLite."""
-import agriculture, commerce, fiscal, payroll, treasury, ecf, dmca, mailer
+import agriculture, commerce, fiscal, payroll, treasury, ecf, dmca, mailer, gdrive
 import sys, transfer, report_export, attachments, base64, webbrowser
 import argparse, calendar, datetime as dt, hashlib, hmac, json, os, secrets, sqlite3, threading, time
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
@@ -64,7 +63,7 @@ def audit(c, uid, company, action, entity, entity_id, details):
 
 SCHEMA = '''
 CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY, username TEXT UNIQUE NOT NULL, name TEXT NOT NULL, password TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1);
-CREATE TABLE IF NOT EXISTS companies(id INTEGER PRIMARY KEY, name TEXT NOT NULL, demo INTEGER NOT NULL DEFAULT 0, group_name TEXT NOT NULL DEFAULT '', accent_color TEXT NOT NULL DEFAULT '#185b4d', surface_color TEXT NOT NULL DEFAULT '#f4f6f3', card_color TEXT NOT NULL DEFAULT '#ffffff', text_color TEXT NOT NULL DEFAULT '#172f2d', font_scale TEXT NOT NULL DEFAULT '100');
+CREATE TABLE IF NOT EXISTS companies(id INTEGER PRIMARY KEY, name TEXT NOT NULL, demo INTEGER NOT NULL DEFAULT 0, group_name TEXT NOT NULL DEFAULT '', accent_color TEXT NOT NULL DEFAULT '#185b4d', surface_color TEXT NOT NULL DEFAULT '#f4f6f3', card_color TEXT NOT NULL DEFAULT '#ffffff', text_color TEXT NOT NULL DEFAULT '#172f2d', font_scale TEXT NOT NULL DEFAULT '100', deleted_at TEXT DEFAULT NULL);
 CREATE TABLE IF NOT EXISTS memberships(user_id INTEGER REFERENCES users(id), company_id INTEGER REFERENCES companies(id), role TEXT NOT NULL CHECK(role IN ('register','review','admin')), role_name TEXT NOT NULL, collections INTEGER NOT NULL DEFAULT 0, departments TEXT NOT NULL DEFAULT '[]', projects TEXT NOT NULL DEFAULT '[]', PRIMARY KEY(user_id,company_id));
 CREATE TABLE IF NOT EXISTS departments(id INTEGER PRIMARY KEY, company_id INTEGER NOT NULL REFERENCES companies(id), name TEXT NOT NULL, UNIQUE(company_id,name));
 CREATE TABLE IF NOT EXISTS projects(id INTEGER PRIMARY KEY, company_id INTEGER NOT NULL REFERENCES companies(id), name TEXT NOT NULL, UNIQUE(company_id,name));
@@ -86,7 +85,7 @@ CREATE INDEX IF NOT EXISTS charges_company ON charges(company_id,due_date);
 CREATE INDEX IF NOT EXISTS audit_company ON audit(company_id,id);
 '''
 
-SCHEMA += agriculture.SCHEMA + commerce.SCHEMA + treasury.SCHEMA + payroll.SCHEMA + ecf.SCHEMA + dmca.SCHEMA
+SCHEMA += agriculture.SCHEMA + commerce.SCHEMA + treasury.SCHEMA + payroll.SCHEMA + ecf.SCHEMA + dmca.SCHEMA + gdrive.SCHEMA
 
 def initialize(seed=True):
     new_directory=not DB.parent.exists()
@@ -102,14 +101,17 @@ def initialize(seed=True):
         commerce.migrate(c)
         agriculture.migrate(c)
         ecf.migrate(c)
+        gdrive.migrate(c)
         task_cols = {row[1] for row in c.execute("PRAGMA table_info(tasks)").fetchall()}
         for col, col_type, default in [('duration', 'REAL', '1.0'), ('duration_unit', 'TEXT', "'hours'"), ('rate', 'INTEGER', '0'), ('farm_id', 'INTEGER', 'NULL'), ('completed_at', 'TEXT', 'NULL')]:
             if col not in task_cols:
                 try: c.execute(f"ALTER TABLE tasks ADD COLUMN {col} {col_type} DEFAULT {default}")
                 except Exception: pass
-        for column, default in [('accent_color','#185b4d'),('surface_color','#f4f6f3'),('card_color','#ffffff'),('text_color','#172f2d'),('font_scale','100')]:
-            try: c.execute('ALTER TABLE companies ADD COLUMN '+column+' TEXT NOT NULL DEFAULT '+repr(default))
+        for column, default in [('accent_color','#185b4d'),('surface_color','#f4f6f3'),('card_color','#ffffff'),('text_color','#172f2d'),('font_scale','100'),('deleted_at','NULL')]:
+            try: c.execute('ALTER TABLE companies ADD COLUMN '+column+' TEXT DEFAULT '+repr(default if default!='NULL' else None))
             except sqlite3.OperationalError: pass
+        try: c.execute("ALTER TABLE companies ADD COLUMN deleted_at TEXT DEFAULT NULL")
+        except sqlite3.OperationalError: pass
         for col, col_type, default in [('employment_type', 'TEXT', "'fixed'"), ('status', 'TEXT', "'active'"), ('termination_date', 'TEXT', 'NULL'), ('termination_reason', 'TEXT', 'NULL'), ('termination_notes', 'TEXT', "''"), ('farm_id', 'INTEGER', 'NULL')]:
             try: c.execute(f"ALTER TABLE employees ADD COLUMN {col} {col_type} DEFAULT {default}")
             except sqlite3.OperationalError: pass
@@ -218,6 +220,9 @@ def charge_list(c,cid):
     return result
 
 def state(c,uid,cid):
+    co_del = one(c, 'SELECT deleted_at FROM companies WHERE id=?', (cid,))
+    if co_del and co_del.get('deleted_at'):
+        raise Denied('Esta empresa se encuentra en la papelera. Restáurela desde el Directorio de empresas para acceder.')
     m=membership(c,uid,cid)
     result={'membership':m,'today':today().isoformat(),'updated_at':now(),'branding':one(c,'SELECT accent_color,surface_color,card_color,text_color,font_scale FROM companies WHERE id=?',(cid,))}
     for table in ('departments','projects','employees','worklogs','tasks','expenses'):
@@ -247,11 +252,12 @@ def state(c,uid,cid):
     result.update(payroll.state(sys.modules[__name__],c,cid,m))
     result.update(treasury.state(sys.modules[__name__],c,cid,m))
     if m['collections'] or m['role']=='admin': result.update(ecf.state(sys.modules[__name__],c,cid,m))
+    result.update(gdrive.state(sys.modules[__name__],c,uid,cid,m))
     return result
 
 def dashboard(c,uid,start,end):
     if end<start: raise ValueError('El fin del período debe ser posterior al inicio.')
-    companies=rows(c,'SELECT co.* FROM companies co JOIN memberships m ON m.company_id=co.id WHERE m.user_id=? ORDER BY co.demo,co.name',(uid,))
+    companies=rows(c,'SELECT co.* FROM companies co JOIN memberships m ON m.company_id=co.id WHERE m.user_id=? AND (co.deleted_at IS NULL OR co.deleted_at="") ORDER BY co.demo,co.name',(uid,))
     output=[]
     for co in companies:
         cid=co['id']; m=membership(c,uid,cid); s=state(c,uid,cid)
@@ -315,7 +321,10 @@ def mutate(c,uid,cid,action,d):
     if action=='ncf_sequence': return fiscal.cargar_secuencia_ncf(sys.modules[__name__],c,uid,cid,d)
     if action in payroll.ACTIONS: return payroll.mutate(sys.modules[__name__],c,uid,cid,action,d)
     if action in treasury.ACTIONS: return treasury.mutate(sys.modules[__name__],c,uid,cid,action,d)
-    if action in ('company_profile','invoice','edit_company','delete_company'): return commerce.mutate(sys.modules[__name__],c,uid,cid,action,d)
+    if action in ('company_profile','invoice','edit_company','delete_company','soft_delete_company','archive_company','restore_company','restore_company_from_backup'): return commerce.mutate(sys.modules[__name__],c,uid,cid,action,d)
+    if action=='gdrive_config': return gdrive.save_config(sys.modules[__name__],c,uid,cid,d)
+    if action=='gdrive_test': return gdrive.test_connection(sys.modules[__name__],c,uid,cid,d)
+    if action=='gdrive_upload': return gdrive.upload_backup(sys.modules[__name__],c,uid,cid,d)
     if action in agriculture.ACTIONS: return agriculture.mutate(sys.modules[__name__],c,uid,cid,action,d)
     if action=='edit_expense':
         m=membership(c,uid,cid,2)
@@ -718,9 +727,18 @@ class Handler(BaseHTTPRequestHandler):
                         FROM companies co
                         JOIN memberships m ON m.company_id=co.id
                         LEFT JOIN company_profiles cp ON cp.company_id=co.id
-                        WHERE m.user_id=?
+                        WHERE m.user_id=? AND (co.deleted_at IS NULL OR co.deleted_at='')
                         ORDER BY co.demo,co.name''',(s['uid'],))
-                    return self.respond(200,{'user':user,'companies':companies,'csrf':s['csrf']})
+                    deleted_companies=rows(c,'''SELECT co.*,m.role,m.role_name,
+                        COALESCE(cp.phone,'') AS phone,
+                        COALESCE(cp.email,'') AS email,
+                        COALESCE(cp.tax_id,'') AS tax_id
+                        FROM companies co
+                        JOIN memberships m ON m.company_id=co.id
+                        LEFT JOIN company_profiles cp ON cp.company_id=co.id
+                        WHERE m.user_id=? AND co.deleted_at IS NOT NULL AND co.deleted_at<>''
+                        ORDER BY co.deleted_at DESC''',(s['uid'],))
+                    return self.respond(200,{'user':user,'companies':companies,'deleted_companies':deleted_companies,'csrf':s['csrf']})
                 if path=='/api/network':
                     import iniciar_red
                     port=self.server.server_address[1]

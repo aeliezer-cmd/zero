@@ -54,14 +54,14 @@ def mutate(core,c,uid,cid,action,d):
         c.execute('INSERT INTO company_profiles(company_id,phone,email,address,tax_id,logo,unit_singular,unit_plural) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(company_id) DO UPDATE SET phone=excluded.phone,email=excluded.email,address=excluded.address,tax_id=excluded.tax_id,logo=excluded.logo,unit_singular=excluded.unit_singular,unit_plural=excluded.unit_plural',(target_cid,values['phone'],values['email'],values['address'],values['tax_id'],logo,unit_singular,unit_plural))
         core.audit(c,uid,target_cid,'editar empresa','companies',target_cid,{'name':name,'group_name':group_name,'demo':demo,'contact':{k:v for k,v in values.items() if k!='logo'},'unit_singular':unit_singular,'unit_plural':unit_plural,'logo_changed':before.get('logo')!=logo})
         return {'ok':True,'company_id':target_cid}
-    if action=='delete_company':
+    if action in ('delete_company', 'soft_delete_company', 'archive_company'):
         target_cid=int(d.get('id') or d.get('target_company_id') or 0)
         m=core.membership(c,uid,target_cid,3)
         target_comp=core.one(c,'SELECT * FROM companies WHERE id=?',(target_cid,))
         if not target_comp: raise ValueError('Empresa no encontrada.')
-        user_companies=core.rows(c,'SELECT company_id FROM memberships WHERE user_id=?',(uid,))
+        user_companies=core.rows(c,'SELECT co.id FROM companies co JOIN memberships m ON m.company_id=co.id WHERE m.user_id=? AND (co.deleted_at IS NULL OR co.deleted_at="")',(uid,))
         if len(user_companies)<=1:
-            raise ValueError('No puede eliminar su única empresa. Debe conservar o crear al menos otra empresa activa.')
+            raise ValueError('No puede eliminar su única empresa activa. Debe conservar o crear al menos otra empresa activa.')
         b_path=str(d.get('backup_path') or '').strip()
         if b_path:
             from pathlib import Path
@@ -70,6 +70,15 @@ def mutate(core,c,uid,cid,action,d):
             archive=transfer.export_company(core,c,uid,target_cid)
             bp.write_text(json.dumps(archive,ensure_ascii=False,indent=2),encoding='utf-8')
         
+        # Soft delete vs Permanent delete
+        is_soft = bool(d.get('soft') or d.get('mode') == 'soft' or action in ('soft_delete_company', 'archive_company'))
+        if is_soft:
+            c.execute('UPDATE companies SET deleted_at=? WHERE id=?',(core.now(), target_cid))
+            core.audit(c,uid,target_cid,'enviar empresa a papelera','companies',target_cid,{'name':target_comp['name']})
+            rem = core.rows(c,'SELECT co.id as company_id FROM companies co JOIN memberships m ON m.company_id=co.id WHERE m.user_id=? AND (co.deleted_at IS NULL OR co.deleted_at="") ORDER BY co.id ASC',(uid,))
+            next_cid = rem[0]['company_id'] if rem else 0
+            return {'ok':True,'soft_deleted':True,'deleted_company_id':target_cid,'deleted_name':target_comp['name'],'next_company_id':next_cid}
+
         for subquery in [
             'DELETE FROM dmca_counter_notices WHERE notice_id IN (SELECT id FROM dmca_notices WHERE company_id=?)',
             'DELETE FROM ecf_xml_logs WHERE ecf_id IN (SELECT id FROM ecf_documents WHERE company_id=?)',
@@ -81,6 +90,7 @@ def mutate(core,c,uid,cid,action,d):
             except sqlite3.OperationalError: pass
         
         for t in [
+            'gdrive_backups','gdrive_config',
             'dmca_notices','ecf_documents','ecf_receptions','ecf_config',
             'farm_payrolls','farm_contracts','farm_sales','farms',
             'payroll_payments','payroll_adjustments','payrolls','work_contracts','employee_pay_settings',
@@ -101,6 +111,20 @@ def mutate(core,c,uid,cid,action,d):
         rem = core.rows(c,'SELECT company_id FROM memberships WHERE user_id=? ORDER BY company_id ASC',(uid,))
         next_cid = rem[0]['company_id'] if rem else 0
         return {'ok':True,'deleted_company_id':target_cid,'deleted_name':target_comp['name'],'next_company_id':next_cid}
+    if action=='restore_company':
+        target_cid=int(d.get('id') or d.get('target_company_id') or 0)
+        m=core.membership(c,uid,target_cid,3)
+        target_comp=core.one(c,'SELECT * FROM companies WHERE id=?',(target_cid,))
+        if not target_comp: raise ValueError('Empresa no encontrada.')
+        c.execute('UPDATE companies SET deleted_at=NULL WHERE id=?',(target_cid,))
+        core.audit(c,uid,target_cid,'restaurar empresa','companies',target_cid,{'name':target_comp['name']})
+        return {'ok':True,'restored':True,'company_id':target_cid,'name':target_comp['name']}
+    if action=='restore_company_from_backup':
+        import transfer
+        archive=d.get('archive')
+        if not isinstance(archive,dict): raise ValueError('Archivo de respaldo JSON inválido.')
+        res=transfer.restore_company_for_user(core,c,uid,archive,d.get('name'))
+        return {'ok':True,'restored':True,'company_id':res['company_id'],'name':res['name']}
     key=core.text(d.get('request_key'),'Clave de factura',100)
     old=core.one(c,'SELECT * FROM sales_invoices WHERE request_key=?',(key,))
     if old:

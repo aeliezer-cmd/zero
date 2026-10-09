@@ -205,3 +205,39 @@ def register(core,c,d,importing=False):
         c.execute('INSERT INTO imports(fingerprint,company_id,created_at) VALUES(?,?,?)',(fingerprint,cid,core.now()))
     core.audit(c,uid,cid,'importar empresa' if importing else 'registrar empresa','companies',cid,{'name':name,'records':sum(len(v) for v in bundle['data'].values()) if importing else 0})
     return {'user_id':uid,'company_id':cid,'username':username}
+
+def restore_company_for_user(core, c, uid, bundle, new_name=None):
+    fingerprint = validate(core, c, bundle)
+    name = (new_name or bundle['company']['name']).strip()
+    existing_names = [x['name'].casefold() for x in core.rows(c, 'SELECT name FROM companies WHERE (deleted_at IS NULL OR deleted_at="")')]
+    if name.casefold() in existing_names:
+        name = f"{name} (Restaurada {core.today().isoformat()})"
+    demo = bundle['company']['demo']
+    group = bundle['company'].get('group_name', '')
+    cid = c.execute('INSERT INTO companies(name,demo,group_name) VALUES(?,?,?)', (name, demo, group)).lastrowid
+    c.execute("INSERT INTO memberships(user_id,company_id,role,role_name,collections) VALUES(?,?,'admin','Administrador',1)", (uid, cid))
+    maps = {table: {} for table in TABLES}; maps['users'] = {}
+    prefix = secrets.token_hex(12)
+    for actor in bundle['actors']:
+        ident = c.execute('INSERT INTO users(username,name,password,active) VALUES(?,?,?,0)', ('archivo-'+prefix+'-'+str(actor['id']), actor['name'], '!')).lastrowid
+        maps['users'][actor['id']] = ident
+    for table in TABLES:
+        for source in bundle['data'][table]:
+            row = {**source}; old = row.pop('id', row.get('company_id')); row['company_id'] = cid
+            for key, target in REFS.get(table, {}).items():
+                if row[key] is not None: row[key] = maps[target][row[key]]
+            if table == 'secuencias_ncf': row.update(contador_actual=row['numero_final'], estado='Agotado')
+            if table == 'attachments': row['entity_id'] = maps[row['entity']][row['entity_id']]
+            if 'request_key' in row and row['request_key'] is not None: row['request_key'] = prefix+':'+table+':'+str(old)
+            if table == 'cash_movements':
+                source_table = {'payroll_payment':'payroll_payments','payments':'payments','expense_payments':'expense_payments','farm_payroll':'farm_payrolls','farm_sale':'farm_sales','capital':'audit','opening':'audit','income':'audit','transfer_in':'audit','transfer_out':'audit'}.get(row['source'])
+                if source_table: row['source_id'] = maps[source_table][row['source_id']]
+            if table == 'audit':
+                if row['entity'] in maps: row['entity_id'] = maps[row['entity']].get(row['entity_id'])
+                row['details'] = json.dumps({'original_details':source['details'],'source_entity_id':source['entity_id'],'source_company':bundle['company']['id']}, ensure_ascii=False)
+            ident = c.execute('INSERT INTO '+table+'('+','.join(row)+') VALUES('+','.join('?' for _ in row)+')', tuple(row.values())).lastrowid
+            maps[table][old] = ident
+    c.execute('INSERT INTO imports(fingerprint,company_id,created_at) VALUES(?,?,?)', (fingerprint, cid, core.now()))
+    core.audit(c, uid, cid, 'restaurar empresa desde respaldo', 'companies', cid, {'name': name, 'records': sum(len(v) for v in bundle['data'].values())})
+    return {'company_id': cid, 'name': name}
+

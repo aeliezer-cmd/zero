@@ -91,3 +91,54 @@ class CommerceTests(unittest.TestCase):
   self.assertEqual(res['next_company_id'], 1)
   self.assertIsNone(app.one(self.c, "SELECT * FROM companies WHERE id=2"))
   self.assertIsNone(app.one(self.c, "SELECT * FROM customers WHERE id=2"))
+
+ def test_soft_delete_and_restore_company(self):
+  self.c.execute("INSERT INTO companies(id,name) VALUES(3,'Empresa Tres')")
+  self.c.execute("INSERT INTO memberships(user_id,company_id,role,role_name) VALUES(1,3,'admin','Admin')")
+  self.c.execute("INSERT INTO customers(id,company_id,name,contact) VALUES(3,3,'Cliente 3','Contacto 3')")
+  
+  # Soft delete company 3
+  res = app.mutate(self.c, 1, 1, 'soft_delete_company', dict(id=3))
+  self.assertTrue(res['ok'])
+  self.assertTrue(res.get('soft_deleted'))
+  co = app.one(self.c, "SELECT * FROM companies WHERE id=3")
+  self.assertIsNotNone(co)
+  self.assertIsNotNone(co['deleted_at'])
+  
+  # Attempting to load state of soft-deleted company raises Denied
+  with self.assertRaises(app.Denied):
+   app.state(self.c, 1, 3)
+   
+  # Restore company 3
+  restore_res = app.mutate(self.c, 1, 1, 'restore_company', dict(id=3))
+  self.assertTrue(restore_res['ok'])
+  self.assertTrue(restore_res['restored'])
+  co_restored = app.one(self.c, "SELECT * FROM companies WHERE id=3")
+  self.assertIsNone(co_restored['deleted_at'])
+  st = app.state(self.c, 1, 3)
+  self.assertEqual(len(st['customers']), 1)
+
+ def test_restore_company_from_backup(self):
+  archive = transfer.export_company(app, self.c, 1, 1)
+  res = app.mutate(self.c, 1, 1, 'restore_company_from_backup', dict(archive=archive, name='Empresa Restaurada'))
+  self.assertTrue(res['ok'])
+  new_cid = res['company_id']
+  co = app.one(self.c, 'SELECT name FROM companies WHERE id=?', (new_cid,))
+  self.assertEqual(co['name'], 'Empresa Restaurada')
+
+ def test_gdrive_config_and_actions(self):
+  import gdrive
+  # Save config
+  res = app.mutate(self.c, 1, 1, 'gdrive_config', dict(enabled=True, mode='webhook', webhook_url='https://script.google.com/macros/s/test/exec', folder_id='folder123', auto_backup=True))
+  self.assertTrue(res['ok'])
+  cfg = gdrive.get_config(self.c, 1)
+  self.assertEqual(cfg['enabled'], 1)
+  self.assertEqual(cfg['webhook_url'], 'https://script.google.com/macros/s/test/exec')
+  self.assertEqual(cfg['folder_id'], 'folder123')
+  self.assertEqual(cfg['auto_backup'], 1)
+
+  # State includes gdrive
+  st = app.state(self.c, 1, 1)
+  self.assertIn('gdrive_config', st)
+  self.assertIn('gdrive_backups', st)
+

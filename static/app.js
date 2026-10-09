@@ -979,15 +979,47 @@ function tasksView(){
 }
 
 function companiesDirectoryPanel(){
-  const rows = (me?.companies || []).map(c => {
+  const activeRows = (me?.companies || []).map(c => {
     const isActive = c.id === Number(cid);
     const isAdmin = c.role === 'admin';
     const unitDesc = (c.unit_singular && c.unit_plural) ? `${esc(c.unit_singular)} / ${esc(c.unit_plural)}` : 'Unidad operativa (Estándar)';
     const contactInfo = [c.tax_id ? `RNC: ${esc(c.tax_id)}` : '', c.phone ? `Tel: ${esc(c.phone)}` : '', c.email ? esc(c.email) : ''].filter(Boolean).join(' · ') || 'Sin contacto registrado';
-    const deleteBtn = (isAdmin && me.companies.length > 1) ? `<button class="small danger" data-delete-company="${c.id}" data-name="${esc(c.name)}">🗑 Eliminar</button>` : '';
+    const deleteBtn = (isAdmin && me.companies.length > 1) ? `<button class="small danger" data-delete-company="${c.id}" data-name="${esc(c.name)}">🗑 Borrar / Papelera</button>` : '';
     return `<tr><td><strong>${esc(c.name)}</strong> ${isActive ? '<span class="badge green">Activa</span>' : ''}<div class="muted">${esc(c.group_name || 'Empresa independiente')}</div></td><td><div>${contactInfo}</div>${c.address ? `<div class="muted">${esc(c.address)}</div>` : ''}</td><td><span class="badge ${c.demo ? 'orange' : 'green'}">${c.demo ? 'DEMO' : 'EMPRESA REAL'}</span><div class="muted">Modelo: ${unitDesc}</div></td><td><strong>${esc(c.role_name || (c.role === 'admin' ? 'Administrador' : c.role))}</strong></td><td><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${isAdmin ? action('✏ Ficha y ajustes', 'edit_company', c.id) : '<span class="muted">Solo lectura</span>'} ${!isActive ? `<button class="small" data-switch-company="${c.id}">Seleccionar</button>` : ''} ${deleteBtn}</div></td></tr>`;
   });
-  return panel('Directorio y administración de empresas', table(['Empresa / Grupo', 'Identificación y Contacto', 'Tipo y Modelo operativo', 'Mi Rol', 'Acciones'], rows), canAdmin() ? openButton('＋ Agregar empresa', 'company') : '');
+
+  const actions = `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      ${canAdmin() ? openButton('＋ Agregar empresa', 'company') : ''}
+      ${canAdmin() ? `<button type="button" class="small secondary" id="btn-restore-company-file">📥 Restaurar desde respaldo (.json)</button>` : ''}
+    </div>
+  `;
+
+  let trashSection = '';
+  const deleted = me?.deleted_companies || [];
+  if(deleted.length > 0){
+    const trashRows = deleted.map(c => {
+      const isAdmin = c.role === 'admin';
+      return `<tr>
+        <td><strong>${esc(c.name)}</strong><div class="muted">${esc(c.group_name || 'Sin grupo')}</div></td>
+        <td>${c.tax_id ? `RNC: ${esc(c.tax_id)}` : '<span class="muted">—</span>'}</td>
+        <td><span class="badge red">En Papelera</span></td>
+        <td>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+            ${isAdmin ? `<button class="small primary" data-restore-company="${c.id}" data-name="${esc(c.name)}">♻️ Restaurar</button>` : ''}
+            <button class="small" data-download-backup="${c.id}" data-name="${esc(c.name)}">📥 Descargar Respaldo</button>
+            ${isAdmin ? `<button class="small danger" data-purge-company="${c.id}" data-name="${esc(c.name)}">🔥 Eliminar definitivamente</button>` : ''}
+          </div>
+        </td>
+      </tr>`;
+    });
+    trashSection = panel('🗑 Papelera de reciclaje (' + deleted.length + ' ' + (deleted.length === 1 ? 'empresa en papelera' : 'empresas en papelera') + ')', 
+      `<p style="font-size:13px;color:var(--muted,#64748b);margin:0 0 12px">Las empresas en la papelera están archivadas. Puede <strong>restaurarlas con 1 clic</strong> en cualquier momento conservando la totalidad de sus datos, empleados y fincas, o eliminarlas definitivamente.</p>` +
+      table(['Empresa', 'Identificación', 'Estado', 'Acciones'], trashRows)
+    );
+  }
+
+  return panel('Directorio y administración de empresas', table(['Empresa / Grupo', 'Identificación y Contacto', 'Tipo y Modelo operativo', 'Mi Rol', 'Acciones'], activeRows), actions) + trashSection;
 }
 let settingsTab = 'server';
 
@@ -1591,8 +1623,146 @@ function usersAndHierarchyPanel(){
   return deptShortcut + `<div class="two-col">${panel('Departamentos',table(['Nombre','Acciones'],S.departments.map(d=>`<tr><td>${esc(d.name)}</td><td>${action('Editar','edit_department',d.id)+' '+action('Borrar','delete_department',d.id)}</td></tr>`)),openButton('+ Departamento','department'))}${panel('Proyectos',table(['Nombre','Acciones'],S.projects.map(p=>`<tr><td>${esc(p.name)}</td><td>${action('Editar','edit_project',p.id)+' '+action('Borrar','delete_project',p.id)}</td></tr>`)),openButton('+ Proyecto','project'))}</div>`+panel('Usuarios, puestos y jerarquía',table(['Usuario','Puesto','Jerarquía','Acceso','Cobros','Alcance','Acciones'],S.members.map(m=>`<tr><td><strong>${esc(m.name)}</strong><div class="muted">${esc(m.username)}</div></td><td>${esc(m.role_name)}</td><td>${m.hierarchy_rank}</td><td>${esc({register:'Registra',review:'Registra y aprueba',admin:'Administra'}[m.role])}</td><td>${m.collections||m.role==='admin'?'Sí':'No'}</td><td>${JSON.parse(m.departments).length||JSON.parse(m.projects).length?'Departamentos/proyectos seleccionados':'Toda la empresa'}</td><td>${m.id!==me.user.id?(action('Editar','edit_member',m.id)+' '+action('Eliminar','delete_member',m.id)):''}</td></tr>`)),openButton('+ Usuario','member'))+panel('Historial reciente y auditoría',table(['Fecha','Usuario','Operación','Registro'],S.audit.map(a=>`<tr><td>${esc(new Date(a.created_at).toLocaleString('es-DO',{timeZone:'America/Santo_Domingo'}))}</td><td>${esc(a.user_name)}</td><td>${esc(a.action)}</td><td>${esc(a.entity)} #${a.entity_id}</td></tr>`)));
 }
 
+const GDRIVE_APPS_SCRIPT_TEMPLATE = `function doPost(e) {
+  try {
+    var data = JSON.parse(e.postData.contents);
+    if (data.action === "ping") {
+      return ContentService.createTextOutput(JSON.stringify({ok: true, message: "Conexión exitosa con Google Drive"})).setMimeType(ContentService.MimeType.JSON);
+    }
+    var folder = data.folder_id ? DriveApp.getFolderById(data.folder_id) : DriveApp.getRootFolder();
+    var bytes = Utilities.base64Decode(data.content_base64);
+    var blob = Utilities.newBlob(bytes, data.mime_type || "application/json", data.filename);
+    var file = folder.createFile(blob);
+    return ContentService.createTextOutput(JSON.stringify({
+      ok: true,
+      file_id: file.getId(),
+      url: file.getUrl(),
+      name: file.getName(),
+      size: file.getSize()
+    })).setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({ok: false, error: err.toString()})).setMimeType(ContentService.MimeType.JSON);
+  }
+}`;
+
 function backupAndExportPanel(){
-  return panel('Exportar e importar datos',`<div class="definition">Descargue los datos de <strong>${esc(company().name)}</strong> en un archivo Zero (.json). Incluye registros, comprobantes adjuntos e historial de esta empresa; no incluye contraseñas ni permisos de acceso.<br><br>Para recuperar el archivo, cierre sesión y elija <strong>Importar empresa</strong>. Se crea una copia independiente con un nuevo administrador, sin reemplazar empresas existentes. Los rangos NCF importados quedan agotados para impedir que la copia reutilice números fiscales.</div>`,`<button class="primary" data-action="export">Exportar empresa</button>`)+panel('Respaldo y límites del piloto',`<div class="definition">Cada operación se confirma en la base local. Para crear una copia consistente, ejecute en la carpeta del proyecto:<br><code>python3 app.py --backup respaldos/zero-fecha.sqlite3</code><br><br>Un respaldo no sincroniza equipos. No coloque la base activa en una carpeta sincronizada. Google Drive, sincronización desconectada, e-CF, nómina legal y cobro de licencias no están integrados.<br><br>El servidor escucha solo en este equipo por defecto. Para una intranet o alojamiento público se requiere configurar acceso, HTTPS, respaldos y revisar seguridad. Administrar una empresa no da acceso a otras. Puede crear e importar empresas desde la pantalla inicial. Vincular un usuario existente a otra empresa requiere la herramienta local documentada.</div>`);
+  const cfg = S.gdrive_config || {};
+  const backups = S.gdrive_backups || [];
+  const isGdriveEnabled = Boolean(cfg.enabled);
+
+  const gdriveHero = `
+    <div style="background:var(--card,#fff);border:1px solid var(--border,#cbd5e1);border-radius:10px;padding:18px;margin-bottom:18px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:12px">
+        <div>
+          <h3 style="margin:0;display:flex;align-items:center;gap:8px">
+            <span style="font-size:22px">☁️</span> Almacenamiento en Google Drive
+          </h3>
+          <p style="font-size:13px;color:var(--muted,#64748b);margin:4px 0 0">
+            Respalde sus empresas automáticamente o a petición directamente en su cuenta de Google Drive.
+          </p>
+        </div>
+        <div>
+          ${isGdriveEnabled ? '<span class="badge green">✓ Google Drive Conectado</span>' : '<span class="badge orange">Sin configurar</span>'}
+        </div>
+      </div>
+
+      <form id="gdrive-settings-form" style="margin-top:14px">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-bottom:14px">
+          <div>
+            <label style="font-weight:700;display:block;margin-bottom:6px">Modo de integración</label>
+            <select name="mode" id="gdrive-mode-select">
+              <option value="webhook" ${cfg.mode!=='oauth'?'selected':''}>Google Apps Script Webhook (Recomendado sin API keys)</option>
+              <option value="oauth" ${cfg.mode==='oauth'?'selected':''}>Google Drive API (OAuth / Token de acceso)</option>
+            </select>
+          </div>
+          <div id="gdrive-webhook-field" style="${cfg.mode==='oauth'?'display:none':''}">
+            <label style="font-weight:700;display:block;margin-bottom:6px">URL de Webhook (Google Apps Script)</label>
+            <input name="webhook_url" type="url" value="${esc(cfg.webhook_url || '')}" placeholder="https://script.google.com/macros/s/.../exec">
+          </div>
+          <div id="gdrive-oauth-field" style="${cfg.mode==='oauth'?'':'display:none'}">
+            <label style="font-weight:700;display:block;margin-bottom:6px">Token de Acceso de Google Drive</label>
+            <input name="access_token" type="password" value="${esc(cfg.access_token || '')}" placeholder="Bearer token de Google Drive v3">
+          </div>
+          <div>
+            <label style="font-weight:700;display:block;margin-bottom:6px">ID de Carpeta en Google Drive (opcional)</label>
+            <input name="folder_id" type="text" value="${esc(cfg.folder_id || '')}" placeholder="Ej: 1AbCdEfGhIjKlMnOp (deje vacío para guardar en Mi Unidad)">
+          </div>
+        </div>
+
+        <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin-bottom:16px">
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+            <input type="checkbox" name="enabled" ${isGdriveEnabled?'checked':''}>
+            <span>Habilitar integración con Google Drive</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+            <input type="checkbox" name="auto_backup" ${cfg.auto_backup?'checked':''}>
+            <span>Subir respaldo automáticamente al cerrar jornada o eliminar empresas</span>
+          </label>
+        </div>
+
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+          <button type="submit" class="primary">Guardar Configuración de Google Drive</button>
+          <button type="button" class="secondary" id="btn-gdrive-test">🧪 Probar Conexión</button>
+          <button type="button" class="primary" id="btn-gdrive-upload" style="background:#1d4ed8;border-color:#1d4ed8">☁️ Subir respaldo a Google Drive ahora</button>
+        </div>
+        <div id="gdrive-test-msg" style="margin-top:10px;font-size:13px;font-weight:600"></div>
+        <div id="gdrive-upload-msg" style="margin-top:8px;font-size:13px;font-weight:600"></div>
+      </form>
+
+      <details style="margin-top:16px;background:var(--surface,#f8fafc);border:1px solid var(--border,#cbd5e1);border-radius:8px;padding:12px">
+        <summary style="font-weight:700;cursor:pointer;color:var(--brand-accent,#0f766e)">
+          📖 Instrucciones de 1 minuto: Cómo conectar Google Drive con Google Apps Script
+        </summary>
+        <div style="margin-top:10px;font-size:13px;line-height:1.6">
+          <ol style="padding-left:20px;margin:0 0 12px">
+            <li>Abre <a href="https://script.google.com/home/start" target="_blank" rel="noopener noreferrer" style="text-decoration:underline">script.google.com</a> e inicia sesión con tu cuenta de Google.</li>
+            <li>Haz clic en <strong>+ Nuevo proyecto</strong> y reemplaza el código con el script siguiente:</li>
+          </ol>
+          <div style="margin-bottom:10px">
+            <button type="button" class="small secondary" id="btn-copy-gdrive-script">📋 Copiar código de Google Apps Script</button>
+          </div>
+          <ol start="3" style="padding-left:20px;margin:0">
+            <li>Haz clic en <strong>Implementar → Nueva implementación</strong>.</li>
+            <li>Selecciona tipo <strong>Aplicación web</strong>. En <em>Quién tiene acceso</em> elige <strong>Cualquier usuario</strong> y haz clic en <em>Implementar</em>.</li>
+            <li>Copia la <strong>URL de la aplicación web</strong> (termina en <code>/exec</code>) y pégala en el campo de arriba. ¡Listo!</li>
+          </ol>
+        </div>
+      </details>
+    </div>
+  `;
+
+  let historyHtml = '';
+  if(backups.length > 0){
+    const backupRows = backups.map(b => {
+      const link = b.drive_file_url ? `<a href="${esc(b.drive_file_url)}" target="_blank" rel="noopener noreferrer" class="badge green">Abrir en Drive ↗</a>` : '<span class="muted">—</span>';
+      return `<tr>
+        <td><strong>${esc(b.filename)}</strong></td>
+        <td>${displayDate(b.created_at.substring(0,10))} ${esc(b.created_at.substring(11,16))}</td>
+        <td>${(b.size/1024).toFixed(1)} KB</td>
+        <td><span class="badge ${b.status==='success'?'green':'red'}">${esc(b.status)}</span></td>
+        <td>${link}</td>
+      </tr>`;
+    });
+    historyHtml = panel('Historial de Respaldos en Google Drive (' + backups.length + ')', table(['Archivo', 'Fecha y Hora', 'Tamaño', 'Estado', 'Enlace'], backupRows));
+  }
+
+  const exportActions = `
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="primary" data-action="export">📥 Exportar empresa a JSON</button>
+      <button type="button" class="secondary" id="btn-restore-company-file-2">📤 Restaurar empresa desde JSON</button>
+    </div>
+  `;
+
+  const localPanel = panel('Exportar y restaurar datos de ' + esc(company().name), 
+    `<div class="definition">Descargue los datos de <strong>${esc(company().name)}</strong> en un archivo Zero (.json). Incluye todos los registros, facturas, comprobantes adjuntos, empleados y fincas.<br><br>Puede guardar este archivo como respaldo externo o subirlo a su Google Drive, y restaurarlo en cualquier momento usando el botón <strong>Restaurar empresa desde JSON</strong> sin perder ninguna otra empresa existente.</div>`,
+    exportActions
+  );
+
+  const serverBackupPanel = panel('Copia de seguridad local del servidor (SQLite)', 
+    `<div class="definition">Para crear una instantánea consistente de toda la base de datos en su computadora o servidor:<br><code>python3 app.py --backup respaldos/zero-${S.today || 'fecha'}.sqlite3</code><br><br>Los respaldos en Google Drive protegen automáticamente contra reinicios del servidor en la nube.</div>`
+  );
+
+  return gdriveHero + historyHtml + localPanel + serverBackupPanel;
 }
 
 function settingsView(){
@@ -1928,22 +2098,129 @@ function bind(){
   document.querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>openForm(b.dataset.open));
   document.querySelectorAll('[data-action]').forEach(b=>b.onclick=()=>handleAction(b));
   document.querySelectorAll('[data-delete-company]').forEach(b=>b.onclick=()=>openDeleteCompanyDialog(Number(b.dataset.deleteCompany)));
+  document.querySelectorAll('[data-restore-company]').forEach(b=>b.onclick=async()=>{
+    const targetCid=Number(b.dataset.restoreCompany);
+    if(!targetCid)return;
+    b.disabled=true;
+    try{
+      await save('restore_company',{id:targetCid});
+      me = await api('me');
+      await refresh();
+      toast(`Empresa «${b.dataset.name||'seleccionada'}» restaurada exitosamente.`);
+    }catch(err){toast(err.message);b.disabled=false;}
+  });
+  document.querySelectorAll('[data-purge-company]').forEach(b=>b.onclick=()=>openDeleteCompanyDialog(Number(b.dataset.purgeCompany),{permanent:true}));
+  document.querySelectorAll('[data-download-backup]').forEach(b=>b.onclick=()=>{
+    const targetCid=Number(b.dataset.downloadBackup);
+    const link=document.createElement('a');
+    link.href='/api/export?company_id='+targetCid;
+    link.download=(b.dataset.name||'empresa').replace(/[^a-zA-Z0-9_-]/g,'_')+'-backup-'+(S.today||'')+'.zero.json';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  });
+  const btnRestoreFile = $('#btn-restore-company-file');
+  if(btnRestoreFile) btnRestoreFile.onclick = () => openRestoreCompanyFromFileDialog();
+  const btnRestoreFile2 = $('#btn-restore-company-file-2');
+  if(btnRestoreFile2) btnRestoreFile2.onclick = () => openRestoreCompanyFromFileDialog();
+
+  const gdriveForm = $('#gdrive-settings-form');
+  if(gdriveForm){
+    gdriveForm.onsubmit = async e => {
+      e.preventDefault();
+      const f = new FormData(e.target);
+      const btn = e.target.querySelector('[type=submit]');
+      btn.disabled = true;
+      try {
+        await save('gdrive_config', {
+          enabled: f.has('enabled'),
+          mode: f.get('mode') || 'webhook',
+          webhook_url: (f.get('webhook_url') || '').trim(),
+          access_token: (f.get('access_token') || '').trim(),
+          folder_id: (f.get('folder_id') || '').trim(),
+          auto_backup: f.has('auto_backup')
+        });
+        toast('Configuración de Google Drive guardada.');
+      } catch(err){ toast(err.message); }
+      finally { btn.disabled = false; }
+    };
+  }
+
+  const gdriveModeSelect = $('#gdrive-mode-select');
+  if(gdriveModeSelect){
+    gdriveModeSelect.onchange = () => {
+      const isOauth = gdriveModeSelect.value === 'oauth';
+      if($('#gdrive-webhook-field')) $('#gdrive-webhook-field').style.display = isOauth ? 'none' : '';
+      if($('#gdrive-oauth-field')) $('#gdrive-oauth-field').style.display = isOauth ? '' : 'none';
+    };
+  }
+
+  const btnGdriveTest = $('#btn-gdrive-test');
+  if(btnGdriveTest){
+    btnGdriveTest.onclick = async () => {
+      const msgEl = $('#gdrive-test-msg');
+      if(msgEl) msgEl.textContent = 'Probando conexión con Google Drive...';
+      btnGdriveTest.disabled = true;
+      try {
+        const res = await api('action', {company_id: Number(cid), action: 'gdrive_test'});
+        if(msgEl) msgEl.innerHTML = `<span style="color:var(--brand-accent,#0f766e)">✓ ${esc(res.message || 'Conexión exitosa')}</span>`;
+        toast('Conexión con Google Drive exitosa.');
+      } catch(err){
+        if(msgEl) msgEl.innerHTML = `<span style="color:var(--danger,#b91c1c)">✗ Error: ${esc(err.message)}</span>`;
+        toast('Error: ' + err.message);
+      } finally { btnGdriveTest.disabled = false; }
+    };
+  }
+
+  const btnGdriveUpload = $('#btn-gdrive-upload');
+  if(btnGdriveUpload){
+    btnGdriveUpload.onclick = async () => {
+      const msgEl = $('#gdrive-upload-msg');
+      if(msgEl) msgEl.textContent = 'Generando y subiendo respaldo a Google Drive...';
+      btnGdriveUpload.disabled = true;
+      try {
+        const res = await api('action', {company_id: Number(cid), action: 'gdrive_upload'});
+        const linkHtml = res.file_url ? ` <a href="${esc(res.file_url)}" target="_blank" rel="noopener noreferrer" style="text-decoration:underline">Abrir en Google Drive ↗</a>` : '';
+        if(msgEl) msgEl.innerHTML = `<span style="color:var(--brand-accent,#0f766e)">✓ Respaldo subido (${esc(res.filename)}):${linkHtml}</span>`;
+        toast('Respaldo subido a Google Drive exitosamente.');
+        await refresh();
+      } catch(err){
+        if(msgEl) msgEl.innerHTML = `<span style="color:var(--danger,#b91c1c)">✗ Error: ${esc(err.message)}</span>`;
+        toast('Error: ' + err.message);
+      } finally { btnGdriveUpload.disabled = false; }
+    };
+  }
+
+  const btnCopyScript = $('#btn-copy-gdrive-script');
+  if(btnCopyScript){
+    btnCopyScript.onclick = () => {
+      copyToClipboard(GDRIVE_APPS_SCRIPT_TEMPLATE);
+      toast('Código de Google Apps Script copiado al portapapeles.');
+    };
+  }
+
   document.querySelectorAll('[data-switch-company]').forEach(b=>b.onclick=async()=>{const targetCid=Number(b.dataset.switchCompany);if(!targetCid||targetCid===Number(cid))return;setActiveCompany(targetCid);reportFilters.department='';reportFilters.project='';reportFilters.person='';document.querySelectorAll('button,select').forEach(el=>el.disabled=true);try{await refresh();toast(`Cambiado a ${esc(company()?.name||'empresa')}.`)}catch(err){toast(err.message)}});
   document.querySelectorAll('.task-status').forEach(b=>b.onchange=async()=>{b.disabled=true;try{await save('task_status',{id:Number(b.dataset.id),status:b.value})}catch(err){toast(err.message);await refresh()}});
   document.querySelectorAll('.job-status-select').forEach(b=>b.onchange=async()=>{b.disabled=true;try{await save('job_status',{id:Number(b.dataset.id),status:b.value});toast('Estado de trabajo actualizado.')}catch(err){toast(err.message);await refresh()}});
   document.querySelectorAll('.contract-status-select').forEach(b=>b.onchange=async()=>{b.disabled=true;try{await save('contract_status',{id:Number(b.dataset.id),status:b.value});toast('Estado del contrato actualizado.')}catch(err){toast(err.message);await refresh()}});
   if($('#period-form'))$('#period-form').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);start=f.get('start');end=f.get('end');try{await refresh()}catch(err){toast(err.message)}}
 }
-function openDeleteCompanyDialog(targetId){
-  const comp = me?.companies?.find(c => c.id === targetId);
+
+function openDeleteCompanyDialog(targetId, opts = {}){
+  const isPurge = Boolean(opts.permanent);
+  let comp = me?.companies?.find(c => c.id === targetId);
+  if(!comp && me?.deleted_companies){
+    comp = me.deleted_companies.find(c => c.id === targetId);
+  }
   if(!comp) return;
-  if(me.companies.length <= 1){
-    toast('No puede eliminar su única empresa. Debe existir al menos otra empresa activa.');
+
+  if(!isPurge && me.companies.length <= 1){
+    toast('No puede eliminar su única empresa activa. Debe existir al menos otra empresa activa.');
     return;
   }
-  const title = `Eliminar empresa: ${comp.name}`;
-  const defaultBackupName = comp.name.replace(/[^a-zA-Z0-9_-]/g,'_') + '-backup-' + S.today + '.zero.json';
-  const defaultServerPath = 'respaldos/' + defaultBackupName;
+
+  const title = isPurge ? `Eliminar definitivamente: ${comp.name}` : `Eliminar o mover a papelera: ${comp.name}`;
+  const defaultBackupName = comp.name.replace(/[^a-zA-Z0-9_-]/g,'_') + '-backup-' + (S.today || '') + '.zero.json';
 
   $('#modal-content').innerHTML = `
     <div class="modal-header">
@@ -1951,14 +2228,32 @@ function openDeleteCompanyDialog(targetId){
       <button type="button" id="close-modal" aria-label="Cerrar">×</button>
     </div>
     <form id="delete-company-form">
-      <div class="delete-company-warning">
-        <strong>⚠️ Advertencia de seguridad y pérdida de datos:</strong><br>
-        Esta acción eliminará de forma <strong>permanente e irreversible</strong> la empresa <strong>«${esc(comp.name)}»</strong> y la totalidad de sus registros (clientes, facturas, compras, nóminas, fincas, inventario y cuentas).
-      </div>
+      ${isPurge ? `
+        <div class="delete-company-warning" style="background:#fee2e2;border:1px solid #f87171;border-radius:8px;padding:12px;margin-bottom:14px">
+          <strong style="color:#b91c1c">⚠️ Destrucción permanente e irreversible:</strong><br>
+          Esta acción purgará de forma definitiva la empresa <strong>«${esc(comp.name)}»</strong> y la totalidad de sus registros asociados. Esta operación no se puede deshacer.
+        </div>
+      ` : `
+        <div style="background:#eff6ff;border:1px solid #93c5fd;border-radius:8px;padding:12px;margin-bottom:14px;font-size:13px;color:#1e3a8a">
+          <strong>💡 Recomendación de seguridad:</strong><br>
+          Puede <strong>mover a la papelera</strong> la empresa para desactivarla. Permanecerá archivada y podrá <strong>restaurarla con 1 clic</strong> en cualquier momento desde el Directorio.
+        </div>
+        <div style="background:var(--surface,#f8fafc);border:1px solid var(--border,#cbd5e1);border-radius:8px;padding:12px;margin-bottom:14px">
+          <label style="font-weight:700;display:block;margin-bottom:8px">Seleccione el modo de eliminación:</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:8px">
+            <input type="radio" name="delete_mode" value="soft" checked>
+            <span><strong>Mover a la Papelera (Recomendado)</strong> — Desactiva la empresa y permite restaurarla cuando desee.</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+            <input type="radio" name="delete_mode" value="permanent">
+            <span><strong>Eliminar definitivamente</strong> — Destruye la empresa y todos sus registros de forma irreversible.</span>
+          </label>
+        </div>
+      `}
 
       <div style="background:var(--surface,#f8fafc);border:1px solid var(--border,#cbd5e1);border-radius:8px;padding:14px;margin-bottom:16px">
         <label style="font-weight:700;display:block;margin-bottom:6px">📦 Copia de seguridad previa</label>
-        <p style="font-size:12px;color:var(--muted,#64748b);margin:0 0 10px">Genere un respaldo para conservar todo el historial antes de borrar la empresa.</p>
+        <p style="font-size:12px;color:var(--muted,#64748b);margin:0 0 10px">Genere un archivo de respaldo antes de continuar.</p>
         
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
           <button type="button" class="small primary" id="btn-download-backup-now">📥 Descargar Respaldo JSON ahora</button>
@@ -1969,16 +2264,11 @@ function openDeleteCompanyDialog(targetId){
           <input type="checkbox" name="auto_download_backup" checked>
           <span>Descargar copia de seguridad automáticamente al confirmar</span>
         </label>
-
-        <div>
-          <label for="f-backup_path" style="font-size:12px;font-weight:600">Ruta de guardado en el servidor (opcional):</label>
-          <input id="f-backup_path" name="backup_path" type="text" placeholder="${defaultServerPath}" value="${defaultServerPath}" style="font-size:13px">
-        </div>
       </div>
 
       <div style="margin-bottom:16px">
         <label for="f-confirm_name" style="font-weight:700;color:var(--danger,#b91c1c)">
-          Para confirmar, escriba exactamente el nombre de la empresa: <strong>«${esc(comp.name)}»</strong>
+          Para confirmar, escriba el nombre exacto de la empresa: <strong>«${esc(comp.name)}»</strong>
         </label>
         <input id="f-confirm_name" name="confirm_name" type="text" required placeholder="${esc(comp.name)}" autocomplete="off" style="margin-top:6px;border-color:color-mix(in srgb, #b91c1c 40%, var(--border))">
       </div>
@@ -1987,16 +2277,11 @@ function openDeleteCompanyDialog(targetId){
 
       <div class="form-actions" style="margin-top:20px">
         <button type="button" id="cancel-modal">Cancelar</button>
-        <button class="danger" type="submit" style="background:#b91c1c;color:#fff;border-color:#b91c1c">Confirmar y eliminar definitivamente</button>
+        <button class="danger" type="submit" id="btn-submit-delete" style="background:#b91c1c;color:#fff;border-color:#b91c1c">${isPurge ? 'Eliminar definitivamente' : 'Confirmar eliminación'}</button>
       </div>
     </form>
   `;
 
-  $('#modal').querySelectorAll('input,textarea,select').forEach(el=>{
-    el.setAttribute('data-clarity-mask','true');
-    el.setAttribute('data-recording-sensitive','true');
-    el.classList.add('fs-mask','dd-privacy-hidden');
-  });
   if(!$('#modal').open) $('#modal').showModal();
   $('#close-modal').onclick = $('#cancel-modal').onclick = () => $('#modal').close();
 
@@ -2017,7 +2302,7 @@ function openDeleteCompanyDialog(targetId){
 
   $('#delete-company-form').onsubmit = async e => {
     e.preventDefault();
-    const btn = e.target.querySelector('[type=submit]');
+    const btn = $('#btn-submit-delete');
     btn.disabled = true;
     const form = new FormData(e.target);
     const typedName = (form.get('confirm_name') || '').trim();
@@ -2039,11 +2324,12 @@ function openDeleteCompanyDialog(targetId){
     }
 
     try {
-      const backupPath = (form.get('backup_path') || '').trim();
+      const mode = isPurge ? 'permanent' : (form.get('delete_mode') || 'soft');
       const res = await save('delete_company', {
         id: targetId,
         target_company_id: targetId,
-        backup_path: backupPath
+        soft: mode === 'soft',
+        permanent: mode === 'permanent'
       });
       $('#modal').close();
       me = await api('me');
@@ -2051,11 +2337,95 @@ function openDeleteCompanyDialog(targetId){
         setActiveCompany(res.next_company_id || me.companies[0]?.id || 1);
       }
       await refresh();
-      toast(`Empresa «${comp.name}» eliminada correctamente.`);
+      if(mode === 'soft'){
+        toast(`Empresa «${comp.name}» movida a la papelera. Puede restaurarla cuando desee.`);
+      } else {
+        toast(`Empresa «${comp.name}» eliminada definitivamente.`);
+      }
     } catch(err){
       $('#form-error').textContent = err.message;
       btn.disabled = false;
     }
+  };
+}
+
+function openRestoreCompanyFromFileDialog(){
+  $('#modal-content').innerHTML = `
+    <div class="modal-header">
+      <h2 style="display:flex;align-items:center;gap:8px"><span>📥</span> Restaurar Empresa desde Respaldo (.json)</h2>
+      <button type="button" id="close-modal" aria-label="Cerrar">×</button>
+    </div>
+    <form id="restore-backup-file-form">
+      <p style="font-size:13px;color:var(--muted,#64748b);margin-bottom:14px">
+        Seleccione un archivo de respaldo descargado previamente (archivo <code>.zero.json</code> o <code>.json</code>) o desde su Google Drive. Se creará una copia completa e independiente dentro de su cuenta con todos sus registros, clientes, empleados, cuentas y fincas.
+      </p>
+
+      <div style="margin-bottom:14px">
+        <label for="f-restore_file" style="font-weight:700">Seleccionar archivo de respaldo (*.json):</label>
+        <input id="f-restore_file" name="file" type="file" accept=".json" required style="margin-top:6px;width:100%">
+      </div>
+
+      <div style="margin-bottom:14px">
+        <label for="f-restore_custom_name" style="font-weight:700">Nombre de la empresa (opcional):</label>
+        <input id="f-restore_custom_name" name="custom_name" type="text" placeholder="Dejar en blanco para conservar el nombre original" style="margin-top:6px">
+      </div>
+
+      <div class="error" id="restore-file-error" role="alert"></div>
+
+      <div class="form-actions" style="margin-top:20px">
+        <button type="button" id="cancel-modal">Cancelar</button>
+        <button class="primary" type="submit" id="btn-submit-restore">Restaurar Empresa</button>
+      </div>
+    </form>
+  `;
+
+  if(!$('#modal').open) $('#modal').showModal();
+  $('#close-modal').onclick = $('#cancel-modal').onclick = () => $('#modal').close();
+
+  $('#restore-backup-file-form').onsubmit = async e => {
+    e.preventDefault();
+    const btn = $('#btn-submit-restore');
+    const errEl = $('#restore-file-error');
+    errEl.textContent = '';
+    const fileInput = $('#f-restore_file');
+    if(!fileInput.files.length){
+      errEl.textContent = 'Seleccione un archivo JSON.';
+      return;
+    }
+    const file = fileInput.files[0];
+    const customName = ($('#f-restore_custom_name').value || '').trim();
+    btn.disabled = true;
+    btn.textContent = 'Procesando archivo...';
+
+    const reader = new FileReader();
+    reader.onload = async evt => {
+      try {
+        const text = evt.target.result;
+        const parsed = JSON.parse(text);
+        btn.textContent = 'Importando datos...';
+        const res = await save('restore_company_from_backup', {
+          archive: parsed,
+          name: customName || undefined
+        });
+        $('#modal').close();
+        me = await api('me');
+        if(res.company_id){
+          setActiveCompany(res.company_id);
+        }
+        await refresh();
+        toast(`Empresa «${res.name || 'restaurada'}» importada y activada con éxito.`);
+      } catch(err){
+        errEl.textContent = 'Error: ' + err.message;
+        btn.disabled = false;
+        btn.textContent = 'Restaurar Empresa';
+      }
+    };
+    reader.onerror = () => {
+      errEl.textContent = 'No fue posible leer el archivo seleccionado.';
+      btn.disabled = false;
+      btn.textContent = 'Restaurar Empresa';
+    };
+    reader.readAsText(file);
   };
 }
 
