@@ -26,7 +26,21 @@ def profile(core,c,cid):
 
 def mutate(core,c,uid,cid,action,d):
     target_cid = int(d.get('id') or d.get('target_company_id') or cid)
-    core.membership(c,uid,target_cid if action in ('company_profile','edit_company') else cid,3 if action in ('company_profile','edit_company') else 1,action=='invoice')
+    core.membership(c,uid,target_cid if action in ('company_profile','edit_company') else cid,3 if action in ('company_profile','edit_company') else 2 if action in ('delete_invoice','cancel_invoice') else 1,action in ('invoice','delete_invoice','cancel_invoice'))
+    if action in ('delete_invoice','cancel_invoice'):
+        inv=core.ref(c,'sales_invoices',d.get('id'),cid)
+        paid=c.execute('SELECT COUNT(*) FROM payments WHERE charge_id=?',(inv['charge_id'],)).fetchone()[0]
+        if paid>0:
+            raise ValueError('No se puede anular o eliminar una factura con cobros/pagos registrados. Anule los cobros primero.')
+        c.execute('DELETE FROM attachments WHERE company_id=? AND entity="charges" AND entity_id=?',(cid,inv['charge_id']))
+        c.execute('DELETE FROM sales_invoices WHERE id=? AND company_id=?',(inv['id'],cid))
+        ch=core.one(c,'SELECT subscription_id FROM charges WHERE id=?',(inv['charge_id'],))
+        c.execute('DELETE FROM charges WHERE id=? AND company_id=?',(inv['charge_id'],cid))
+        if ch and ch.get('subscription_id'):
+            rem=c.execute('SELECT COUNT(*) FROM charges WHERE subscription_id=?',(ch['subscription_id'],)).fetchone()[0]
+            if rem==0: c.execute('DELETE FROM subscriptions WHERE id=? AND company_id=?',(ch['subscription_id'],cid))
+        core.audit(c,uid,cid,'anular factura','sales_invoices',inv['id'],inv)
+        return {'ok':True,'id':inv['id']}
     if action in ('company_profile','edit_company'):
         name=core.text(d.get('name'),'Nombre de empresa')
         if any(x['name'].casefold()==name.casefold() for x in core.rows(c,'SELECT name FROM companies WHERE id<>?',(target_cid,))): raise ValueError('Ya existe otra empresa con ese nombre.')

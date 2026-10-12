@@ -54,3 +54,30 @@ def obtener_siguiente_ncf(core,c,cid,tipo_comprobante):
     c.execute('UPDATE secuencias_ncf SET contador_actual=?,estado=? WHERE id=?',(number,'Agotado' if number==r['numero_final'] else 'Activo',r['id']))
     remaining=r['numero_final']-number
     return dict(ncf_asignado=tipo_comprobante+str(number).zfill(8),tipo_ncf=tipo_comprobante,secuencia_ncf_id=r['id'],fecha_vencimiento=r['fecha_vencimiento'],aviso='Quedan menos del 10% de los NCF de esta secuencia.' if remaining*10<r['numero_final']-r['numero_inicial']+1 else '')
+
+def editar_secuencia_ncf(core,c,uid,cid,d):
+    core.membership(c,uid,cid,3)
+    seq=core.ref(c,'secuencias_ncf',d.get('id'),cid)
+    tipo=seq['tipo_ncf']
+    end=int(d.get('numero_final',seq['numero_final']))
+    if end<=seq['contador_actual'] or end>99999999:
+        raise ValueError(f'El número final debe ser mayor que el último emitido ({seq["contador_actual"]}) y hasta 99,999,999.')
+    expiry=core.date(d.get('fecha_vencimiento')).isoformat() if tipo=='B01' else None
+    if expiry and expiry<core.today().isoformat():
+        raise ValueError('La fecha de vencimiento debe ser posterior o igual a hoy.')
+    if core.one(c,'SELECT id FROM secuencias_ncf WHERE company_id=? AND tipo_ncf=? AND id<>? AND numero_inicial<=? AND numero_final>=?',(cid,tipo,seq['id'],end,seq['numero_inicial'])):
+        raise ValueError('El nuevo rango se superpone con otra secuencia registrada.')
+    c.execute('UPDATE secuencias_ncf SET numero_final=?, fecha_vencimiento=? WHERE id=?',(end,expiry,seq['id']))
+    core.audit(c,uid,cid,'editar secuencia NCF','secuencias_ncf',seq['id'],dict(before=seq,numero_final=end,fecha_vencimiento=expiry))
+    return {'ok':True,'id':seq['id']}
+
+def eliminar_secuencia_ncf(core,c,uid,cid,d):
+    core.membership(c,uid,cid,3)
+    seq=core.ref(c,'secuencias_ncf',d.get('id'),cid)
+    used=c.execute('SELECT COUNT(*) FROM sales_invoices WHERE secuencia_ncf_id=? AND company_id=?',(seq['id'],cid)).fetchone()[0]
+    if used>0 or seq['contador_actual']>=seq['numero_inicial']:
+        raise ValueError(f'No se puede eliminar la secuencia «{seq["tipo_ncf"]} ({seq["numero_inicial"]}-{seq["numero_final"]})» porque ya tiene {used} factura(s) emitida(s).')
+    c.execute('DELETE FROM secuencias_ncf WHERE id=? AND company_id=?',(seq['id'],cid))
+    core.audit(c,uid,cid,'borrar secuencia NCF','secuencias_ncf',seq['id'],seq)
+    return {'ok':True,'id':seq['id']}
+

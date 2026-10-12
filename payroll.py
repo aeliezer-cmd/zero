@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS payroll_adjustments(id INTEGER PRIMARY KEY,company_id
 CREATE TABLE IF NOT EXISTS payroll_payments(id INTEGER PRIMARY KEY,company_id INTEGER NOT NULL REFERENCES companies(id),payroll_id INTEGER NOT NULL REFERENCES payrolls(id),account_id INTEGER NOT NULL REFERENCES cash_accounts(id),amount INTEGER NOT NULL CHECK(amount>0),paid_date TEXT NOT NULL,reference TEXT NOT NULL,request_key TEXT NOT NULL UNIQUE,created_by INTEGER NOT NULL REFERENCES users(id));
 CREATE TABLE IF NOT EXISTS employee_account_entries(id INTEGER PRIMARY KEY,company_id INTEGER NOT NULL REFERENCES companies(id),employee_id INTEGER NOT NULL REFERENCES employees(id),entry_date TEXT NOT NULL,kind TEXT NOT NULL,concept TEXT NOT NULL,credit INTEGER NOT NULL DEFAULT 0 CHECK(credit>=0),debit INTEGER NOT NULL DEFAULT 0 CHECK(debit>=0),cash_account_id INTEGER REFERENCES cash_accounts(id),reference TEXT NOT NULL DEFAULT '',notes TEXT NOT NULL DEFAULT '',created_by INTEGER NOT NULL REFERENCES users(id),created_at TEXT NOT NULL);
 '''
-ACTIONS={'payroll','payroll_preview','payroll_projection','payroll_payment','employee_pay','payroll_adjustment','work_contract','contract_release','employee_account','employee_account_entry','apply_employee_tss','record_employee_viatico','pay_employee_balance'}
+ACTIONS={'payroll','payroll_preview','payroll_projection','payroll_payment','employee_pay','payroll_adjustment','work_contract','contract_release','employee_account','employee_account_entry','apply_employee_tss','record_employee_viatico','pay_employee_balance','discard_payroll','delete_payroll','delete_payroll_adjustment','delete_employee_account_entry'}
 
 def migrate(c):
     for table,columns in {'payrolls':{'cadence':'TEXT','request_key':'TEXT','request_json':'TEXT'},'payroll_lines':{'detail':"TEXT NOT NULL DEFAULT '{}'"}}.items():
@@ -467,6 +467,37 @@ def mutate(core,c,uid,cid,action,d):
         ))
         treasury.post(core,c,uid,cid,acc['id'],-val,day,f"Pago a empleado {emp['name']}: {ref_str}",'employee_payout',ident)
         return {'ok':True,'id':ident}
+    if action in ('discard_payroll','delete_payroll'):
+        if not (m['role']=='admin' or m.get('hierarchy_rank',3)<=2): raise core.Denied('La gestión de nóminas requiere nivel jerárquico 1 o 2.')
+        p=core.ref(c,'payrolls',d.get('id'),cid)
+        has_pay=c.execute('SELECT COUNT(*) FROM payroll_payments WHERE payroll_id=?',(p['id'],)).fetchone()[0]
+        if has_pay>0 or p.get('status')=='paid': raise ValueError('No se puede descartar una nómina que ya fue pagada total o parcialmente.')
+        c.execute('UPDATE payroll_adjustments SET payroll_id=NULL WHERE payroll_id=?',(p['id'],))
+        c.execute('DELETE FROM employee_account_entries WHERE company_id=? AND reference LIKE ?',(cid,f"payroll:{p['id']}:%"))
+        c.execute("DELETE FROM attachments WHERE company_id=? AND entity='payrolls' AND entity_id=?",(cid,p['id']))
+        c.execute('DELETE FROM payroll_lines WHERE payroll_id=?',(p['id'],))
+        c.execute('DELETE FROM payrolls WHERE id=? AND company_id=?',(p['id'],cid))
+        core.audit(c,uid,cid,'descartar nómina','payrolls',p['id'],p)
+        return {'ok':True,'id':p['id']}
+    if action=='delete_payroll_adjustment':
+        adj=core.ref(c,'payroll_adjustments',d.get('id'),cid)
+        if adj.get('payroll_id'): raise ValueError('No se puede eliminar un ajuste que ya está liquidado en una nómina.')
+        c.execute("DELETE FROM employee_account_entries WHERE company_id=? AND reference=?",(cid,f"adjustment:{adj['id']}"))
+        c.execute("DELETE FROM payroll_adjustments WHERE id=? AND company_id=?",(adj['id'],cid))
+        core.audit(c,uid,cid,'borrar ajuste nómina','payroll_adjustments',adj['id'],adj)
+        return {'ok':True,'id':adj['id']}
+    if action=='delete_employee_account_entry':
+        entry=core.ref(c,'employee_account_entries',d.get('id'),cid)
+        ref_str=entry.get('reference') or ''
+        if ref_str.startswith('payroll:') or ref_str.startswith('payroll_line:'):
+            raise ValueError('Este movimiento proviene de una nómina corporativa. Debe descartar la nómina desde Cierres.')
+        if ref_str.startswith('farm_job:'):
+            raise ValueError('Este movimiento proviene de una labor aprobada. Debe gestionarse desde la cola de labores.')
+        if entry.get('kind')=='payment':
+            c.execute("DELETE FROM cash_movements WHERE company_id=? AND source='employee_payout' AND source_id=?",(cid,entry['id']))
+        c.execute("DELETE FROM employee_account_entries WHERE id=? AND company_id=?",(entry['id'],cid))
+        core.audit(c,uid,cid,'borrar movimiento cuenta empleado','employee_account_entries',entry['id'],entry)
+        return {'ok':True,'id':entry['id']}
     raise ValueError('Acción de nómina inválida.')
 
 def ensure_employee_account_sync(core, c, cid, employee_id):

@@ -321,9 +321,11 @@ def mutate(c,uid,cid,action,d):
     if action=='ecf_cancel': return ecf.cancel_or_void_ecf(sys.modules[__name__],c,uid,cid,d.get('id'),d.get('reason',''))
     if action=='ecf_retry_contingency': return ecf.retry_contingency_queue(sys.modules[__name__],c,uid,cid)
     if action=='ncf_sequence': return fiscal.cargar_secuencia_ncf(sys.modules[__name__],c,uid,cid,d)
+    if action=='edit_ncf_sequence': return fiscal.editar_secuencia_ncf(sys.modules[__name__],c,uid,cid,d)
+    if action=='delete_ncf_sequence': return fiscal.eliminar_secuencia_ncf(sys.modules[__name__],c,uid,cid,d)
     if action in payroll.ACTIONS: return payroll.mutate(sys.modules[__name__],c,uid,cid,action,d)
     if action in treasury.ACTIONS: return treasury.mutate(sys.modules[__name__],c,uid,cid,action,d)
-    if action in ('company_profile','invoice','edit_company','delete_company','soft_delete_company','archive_company','restore_company','restore_company_from_backup'): return commerce.mutate(sys.modules[__name__],c,uid,cid,action,d)
+    if action in ('company_profile','invoice','delete_invoice','cancel_invoice','edit_company','delete_company','soft_delete_company','archive_company','restore_company','restore_company_from_backup'): return commerce.mutate(sys.modules[__name__],c,uid,cid,action,d)
     if action=='gdrive_config': return gdrive.save_config(sys.modules[__name__],c,uid,cid,d)
     if action=='gdrive_test': return gdrive.test_connection(sys.modules[__name__],c,uid,cid,d)
     if action=='gdrive_upload': return gdrive.upload_backup(sys.modules[__name__],c,uid,cid,d)
@@ -341,6 +343,15 @@ def mutate(c,uid,cid,action,d):
         c.execute('UPDATE expenses SET '+','.join(k+'=?' for k in update)+' WHERE id=?',(*update.values(),item['id']))
         audit(c,uid,cid,'editar gasto','expenses',item['id'],dict(before=item,after=update,reason=reason))
         return {'id':item['id']}
+    if action=='delete_expense':
+        m=membership(c,uid,cid,2)
+        item=ref(c,'expenses',d.get('id'),cid);assert_scope(m,item)
+        paid=c.execute('SELECT COUNT(*) FROM expense_payments WHERE expense_id=?',(item['id'],)).fetchone()[0]
+        if paid>0: raise ValueError('No se puede eliminar un gasto con pagos registrados. Anule o elimine los pagos asociados primero.')
+        c.execute('DELETE FROM attachments WHERE company_id=? AND entity="expenses" AND entity_id=?',(cid,item['id']))
+        c.execute('DELETE FROM expenses WHERE id=? AND company_id=?',(item['id'],cid))
+        audit(c,uid,cid,'borrar gasto','expenses',item['id'],item)
+        return {'ok':True,'id':item['id']}
     if action=='edit_employee':
         m=membership(c,uid,cid,2)
         item=ref(c,'employees',d.get('id'),cid);assert_scope(m,item)
@@ -519,6 +530,66 @@ def mutate(c,uid,cid,action,d):
             c.execute('DELETE FROM customers WHERE id=? AND company_id=?',(item['id'],cid))
             audit(c,uid,cid,'borrar cliente','customers',item['id'],item)
             return {'ok':True,'id':item['id']}
+
+    if action=='edit_worklog':
+        m=membership(c,uid,cid,2)
+        item=ref(c,'worklogs',d.get('id'),cid);assert_scope(m,item)
+        emp=ref(c,'employees',d.get('employee_id',item['employee_id']),cid);assert_scope(m,emp)
+        try: minutes=int(float(d.get('minutes',item['minutes'])))
+        except Exception: minutes=item['minutes']
+        if not 1<=minutes<=1440: raise ValueError('Duración permitida: 1–1,440 minutos.')
+        work_date=date(d.get('work_date',item['work_date']))
+        if work_date>today(): raise ValueError('No se pueden reportar horas futuras.')
+        activity=text(d.get('activity',item['activity']),'Qué hizo',3000)
+        method=text(d.get('method',item['method']),'Cómo lo hizo',3000)
+        notes=str(d.get('notes',item['notes']))[:3000]
+        status=d.get('status',item['status'])
+        if status not in ('proposed','approved'): status=item['status']
+        dims=dimensions(c,cid,m,d)
+        update=dict(employee_id=emp['id'],work_date=work_date.isoformat(),minutes=minutes,activity=activity,method=method,notes=notes,status=status,**dims)
+        c.execute('UPDATE worklogs SET '+','.join(k+'=?' for k in update)+' WHERE id=?',(*update.values(),item['id']))
+        audit(c,uid,cid,'editar parte trabajo','worklogs',item['id'],dict(before=item,after=update))
+        return {'ok':True,'id':item['id']}
+    if action=='delete_worklog':
+        m=membership(c,uid,cid,2)
+        item=ref(c,'worklogs',d.get('id'),cid);assert_scope(m,item)
+        c.execute('DELETE FROM worklogs WHERE id=? AND company_id=?',(item['id'],cid))
+        audit(c,uid,cid,'borrar parte trabajo','worklogs',item['id'],item)
+        return {'ok':True,'id':item['id']}
+    if action=='edit_subscription':
+        m=membership(c,uid,cid,2,True)
+        sub=ref(c,'subscriptions',d.get('id'),cid)
+        amount_val=amount(d.get('amount',sub['amount']/100)) if 'amount' in d else sub['amount']
+        interval_val=int(d.get('interval',sub['interval']))
+        frequency=d.get('frequency',sub['frequency'])
+        if frequency not in ('days','months','once') or not 1<=interval_val<=365: raise ValueError('Frecuencia o intervalo inválidos.')
+        due_days=int(d.get('due_days',sub['due_days']))
+        start_val=date(d.get('start_date',sub['start_date'])).isoformat()
+        end_val=date(d.get('end_date')).isoformat() if d.get('end_date') else None
+        update=dict(amount=amount_val,frequency=frequency,interval=interval_val,start_date=start_val,end_date=end_val,due_days=due_days)
+        c.execute('UPDATE subscriptions SET '+','.join(k+'=?' for k in update)+' WHERE id=?',(*update.values(),sub['id']))
+        audit(c,uid,cid,'editar suscripción','subscriptions',sub['id'],dict(before=sub,after=update))
+        return {'ok':True,'id':sub['id']}
+    if action=='delete_subscription':
+        m=membership(c,uid,cid,2,True)
+        sub=ref(c,'subscriptions',d.get('id'),cid)
+        paid_charges=c.execute("SELECT COUNT(*) FROM charges ch JOIN payments p ON p.charge_id=ch.id WHERE ch.subscription_id=? AND ch.company_id=?",(sub['id'],cid)).fetchone()[0]
+        if paid_charges>0:
+            raise ValueError(f'No se puede eliminar el servicio porque tiene {paid_charges} cobro(s) con pagos registrados. Utilice «Cancelar servicio» en su lugar.')
+        c.execute("DELETE FROM charges WHERE subscription_id=? AND company_id=?",(sub['id'],cid))
+        c.execute("DELETE FROM subscriptions WHERE id=? AND company_id=?",(sub['id'],cid))
+        audit(c,uid,cid,'borrar suscripción','subscriptions',sub['id'],sub)
+        return {'ok':True,'id':sub['id']}
+    if action in ('delete_payment','delete_expense_payment'):
+        m=membership(c,uid,cid,2,True)
+        is_expense=action=='delete_expense_payment'
+        table='expense_payments' if is_expense else 'payments'
+        item=ref(c,table,d.get('id'),cid)
+        c.execute("DELETE FROM cash_movements WHERE company_id=? AND source=? AND source_id=?",(cid,table,item['id']))
+        c.execute("DELETE FROM attachments WHERE company_id=? AND entity=? AND entity_id=?",(cid,table,item['id']))
+        c.execute("DELETE FROM "+table+" WHERE id=? AND company_id=?",(item['id'],cid))
+        audit(c,uid,cid,'borrar pago '+('gasto' if is_expense else 'cobro'),table,item['id'],item)
+        return {'ok':True,'id':item['id']}
 
     financial=action in ('customer','product','subscription','generate','cancel_subscription','payment')
     level=3 if action in ('department','project','member') else 2 if action in ('approve_expense','approve_worklog','expense_payment','payment','cancel_subscription') else 1

@@ -189,6 +189,36 @@ def mutate(core,c,uid,cid,action,d):
             if not d.get('account_id'): raise ValueError('Seleccione la cuenta receptora del ingreso.')
             treasury.post(core,c,uid,cid,d['account_id'],received,day.isoformat(),'Venta agrícola #'+str(result['id']),'farm_sale',result['id'])
         return result
+    if action=='edit_farm_sale':
+        item=core.ref(c,'farm_sales',d.get('id'),cid)
+        f=farm(core,c,cid,m,d.get('farm_id',item['farm_id']))
+        q=quantity(d.get('quantity',item['quantity']))
+        price=core.amount(d.get('price',item['price']/100)) if 'price' in d else item['price']
+        val=total(q,price)
+        received=core.amount(d.get('received',item['received']/100),True) if 'received' in d else item['received']
+        day=core.date(d.get('sale_date',item['sale_date'])).isoformat()
+        if day>core.today().isoformat(): raise ValueError('No puede registrar una venta futura.')
+        if received>val: raise ValueError('El ingreso recibido no puede superar el valor de la venta.')
+        product=core.text(d.get('product',item['product']),'Producto')
+        unit=core.text(d.get('unit',item['unit']),'Unidad')
+        customer=core.text(d.get('customer',item['customer']),'Comprador')
+        seller=core.text(d.get('seller',item['seller']),'Vendedor')
+        update=dict(farm_id=f['id'],product=product,quantity=str(q),unit=unit,price=price,amount=val,customer=customer,seller=seller,sale_date=day,received=received)
+        c.execute('UPDATE farm_sales SET '+','.join(k+'=?' for k in update)+' WHERE id=?',(*update.values(),item['id']))
+        cm=core.one(c,"SELECT id FROM cash_movements WHERE company_id=? AND source='farm_sale' AND source_id=?",(cid,item['id']))
+        if cm:
+            if received>0: c.execute("UPDATE cash_movements SET amount=?, movement_date=? WHERE id=?",(received,day,cm['id']))
+            else: c.execute("DELETE FROM cash_movements WHERE id=?",(cm['id'],))
+        elif received>0 and d.get('account_id'):
+            treasury.post(core,c,uid,cid,d['account_id'],received,day,'Venta agrícola #'+str(item['id']),'farm_sale',item['id'])
+        core.audit(c,uid,cid,'editar venta agrícola','farm_sales',item['id'],dict(before=item,after=update))
+        return {'ok':True,'id':item['id']}
+    if action=='delete_farm_sale':
+        item=core.ref(c,'farm_sales',d.get('id'),cid)
+        c.execute("DELETE FROM cash_movements WHERE company_id=? AND source='farm_sale' AND source_id=?",(cid,item['id']))
+        c.execute("DELETE FROM farm_sales WHERE id=? AND company_id=?",(item['id'],cid))
+        core.audit(c,uid,cid,'borrar venta agrícola','farm_sales',item['id'],item)
+        return {'ok':True,'id':item['id']}
     if action=='farm_contract':
         f=farm(core,c,cid,m,d.get('farm_id'));emp=core.ref(c,'employees',d.get('employee_id'),cid);core.assert_scope(m,emp)
         start=core.date(d.get('start_date'));end=core.date(d.get('end_date'))
@@ -381,6 +411,15 @@ def mutate(core,c,uid,cid,action,d):
             except Exception: pass
         core.audit(c,uid,cid,'aprobar trabajo cola','farm_jobs',item['id'],dict(before=item,after=update))
         return {'ok':True,'id':item['id'],'status':'approved','earned_amount':earned}
+    if action in ('discard_farm_payroll','delete_farm_payroll'):
+        if not (m['role']=='admin' or m.get('hierarchy_rank',3)<=2): raise core.Denied('La gestión de nóminas requiere nivel jerárquico 1 o 2.')
+        item=core.ref(c,'farm_payrolls',d.get('id'),cid)
+        if item.get('status')=='paid': raise ValueError('No se puede descartar una nómina que ya fue pagada.')
+        c.execute("DELETE FROM attachments WHERE company_id=? AND entity='farm_payrolls' AND entity_id=?",(cid,item['id']))
+        c.execute("DELETE FROM farm_payroll_lines WHERE payroll_id=?",(item['id'],))
+        c.execute("DELETE FROM farm_payrolls WHERE id=? AND company_id=?",(item['id'],cid))
+        core.audit(c,uid,cid,'descartar nómina agrícola','farm_payrolls',item['id'],item)
+        return {'ok':True,'id':item['id']}
     table={'contract_status':'farm_contracts','approve_job':'farm_jobs','job_status':'farm_jobs','pay_payroll':'farm_payrolls'}[action]
     item=core.ref(c,table,d.get('id'),cid)
     if action=='contract_status':
@@ -408,5 +447,5 @@ def mutate(core,c,uid,cid,action,d):
     c.execute('UPDATE '+table+' SET '+','.join(k+'=?' for k in update)+' WHERE id=?',(*update.values(),item['id']))
     core.audit(c,uid,cid,action,table,item['id'],dict(before=item,after=update));return {'id':item['id']}
 
-ACTIONS={'farm','edit_farm','delete_farm','farm_sale','farm_contract','edit_farm_contract','delete_farm_contract','farm_job','edit_farm_job','delete_farm_job','weekly_payroll','contract_status','approve_job','job_status','pay_payroll','approve_all_farm_jobs','assign_queue_job','report_queue_job','approve_queue_job','add_farm_labor'}
+ACTIONS={'farm','edit_farm','delete_farm','farm_sale','edit_farm_sale','delete_farm_sale','farm_contract','edit_farm_contract','delete_farm_contract','farm_job','edit_farm_job','delete_farm_job','weekly_payroll','discard_farm_payroll','delete_farm_payroll','contract_status','approve_job','job_status','pay_payroll','approve_all_farm_jobs','assign_queue_job','report_queue_job','approve_queue_job','add_farm_labor'}
 

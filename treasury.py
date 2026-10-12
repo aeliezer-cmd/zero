@@ -6,14 +6,17 @@ CURRENCIES=('DOP','USD','EUR','CAD','GBP','CHF','MXN','COP')
 ACCOUNT_TYPES=('savings','checking','business','other')
 TABLES=('cash_accounts','cash_movements')
 SCHEMA='''
-CREATE TABLE IF NOT EXISTS cash_accounts(id INTEGER PRIMARY KEY,company_id INTEGER NOT NULL REFERENCES companies(id),name TEXT NOT NULL,kind TEXT NOT NULL CHECK(kind IN ('cash','bank')),bank_name TEXT NOT NULL DEFAULT '',account_number TEXT NOT NULL DEFAULT '',holder_name TEXT NOT NULL DEFAULT '',holder_document TEXT NOT NULL DEFAULT '',account_type TEXT NOT NULL DEFAULT '',currency TEXT NOT NULL DEFAULT 'DOP',branch TEXT NOT NULL DEFAULT '',country TEXT NOT NULL DEFAULT '',swift TEXT NOT NULL DEFAULT '',iban TEXT NOT NULL DEFAULT '',notes TEXT NOT NULL DEFAULT '',UNIQUE(company_id,name));
+CREATE TABLE IF NOT EXISTS cash_accounts(id INTEGER PRIMARY KEY,company_id INTEGER NOT NULL REFERENCES companies(id),name TEXT NOT NULL,kind TEXT NOT NULL CHECK(kind IN ('cash','bank')),bank_name TEXT NOT NULL DEFAULT '',account_number TEXT NOT NULL DEFAULT '',holder_name TEXT NOT NULL DEFAULT '',holder_document TEXT NOT NULL DEFAULT '',account_type TEXT NOT NULL DEFAULT '',currency TEXT NOT NULL DEFAULT 'DOP',branch TEXT NOT NULL DEFAULT '',country TEXT NOT NULL DEFAULT '',swift TEXT NOT NULL DEFAULT '',iban TEXT NOT NULL DEFAULT '',notes TEXT NOT NULL DEFAULT '',archived INTEGER NOT NULL DEFAULT 0,UNIQUE(company_id,name));
 CREATE TABLE IF NOT EXISTS cash_movements(id INTEGER PRIMARY KEY,company_id INTEGER NOT NULL REFERENCES companies(id),account_id INTEGER NOT NULL REFERENCES cash_accounts(id),amount INTEGER NOT NULL CHECK(amount<>0),movement_date TEXT NOT NULL,reference TEXT NOT NULL,source TEXT NOT NULL,source_id INTEGER NOT NULL,created_by INTEGER NOT NULL REFERENCES users(id),UNIQUE(company_id,source,source_id));
 '''
-ACTIONS={'cash_account','edit_cash_account','cash_deposit','cash_transfer'}
+ACTIONS={'cash_account','edit_cash_account','delete_cash_account','archive_cash_account','cash_deposit','cash_transfer'}
 def migrate(c):
     existing={r[1] for r in c.execute('PRAGMA table_info(cash_accounts)')}
     for name,default in ACCOUNT_FIELDS.items():
         if name not in existing: c.execute('ALTER TABLE cash_accounts ADD COLUMN '+name+' TEXT NOT NULL DEFAULT '+repr(default))
+    if 'archived' not in existing:
+        try: c.execute('ALTER TABLE cash_accounts ADD COLUMN archived INTEGER NOT NULL DEFAULT 0')
+        except Exception: pass
 
 def account_details(core,d):
     fields={key:str(d.get(key,default)).strip() for key,default in ACCOUNT_FIELDS.items()}
@@ -56,6 +59,19 @@ def mutate(core,c,uid,cid,action,d):
             ident=old['id'];c.execute('UPDATE cash_accounts SET '+','.join(k+'=?' for k in fields)+' WHERE id=?',(*fields.values(),ident))
         else: ident=c.execute('INSERT INTO cash_accounts(company_id,'+','.join(fields)+') VALUES('+','.join('?' for _ in range(len(fields)+1))+')',(cid,*fields.values())).lastrowid
         core.audit(c,uid,cid,action,'cash_accounts',ident,{'before':old,'after':fields});return {'id':ident}
+    if action=='delete_cash_account':
+        old=core.ref(c,'cash_accounts',d.get('id'),cid)
+        movements=c.execute('SELECT COUNT(*) FROM cash_movements WHERE account_id=?',(old['id'],)).fetchone()[0]
+        if movements>0: raise ValueError(f'No se puede eliminar «{old["name"]}» porque tiene {movements} movimiento(s) registrado(s). Puede archivar la cuenta para ocultarla de las operaciones.')
+        c.execute('DELETE FROM cash_accounts WHERE id=? AND company_id=?',(old['id'],cid))
+        core.audit(c,uid,cid,'borrar cuenta tesorería','cash_accounts',old['id'],old)
+        return {'ok':True,'id':old['id']}
+    if action=='archive_cash_account':
+        old=core.ref(c,'cash_accounts',d.get('id'),cid)
+        new_archived=0 if old.get('archived') else 1
+        c.execute('UPDATE cash_accounts SET archived=? WHERE id=?',(new_archived,old['id']))
+        core.audit(c,uid,cid,'archivar cuenta tesorería','cash_accounts',old['id'],{'archived':new_archived})
+        return {'ok':True,'id':old['id'],'archived':new_archived}
     value=core.amount(d.get('amount'));day=core.date(d.get('movement_date'))
     if day>core.today(): raise ValueError('No registre movimientos futuros.')
     reference=core.text(d.get('reference'),'Concepto / referencia',500);key=core.text(d.get('request_key'),'Clave de operación',100)
