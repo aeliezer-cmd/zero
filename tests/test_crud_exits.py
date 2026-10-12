@@ -161,3 +161,55 @@ class CrudExitsTests(unittest.TestCase):
         res = self.save('delete_invoice', id=inv)
         self.assertTrue(res['ok'])
         self.assertEqual(self.c.execute('SELECT COUNT(*) FROM sales_invoices WHERE id=?', (inv,)).fetchone()[0], 0)
+
+    def test_reset_company_profile(self):
+        # Configure custom profile and branding
+        self.save('company_profile', name='Empresa Test', phone='809-555-9999', email='info@test.com', address='Calle 1', tax_id='130-12345-1', unit_singular='Finca', unit_plural='Fincas')
+        self.save('branding', accent_color='#ff0000', surface_color='#000000', card_color='#111111', text_color='#ffffff')
+        
+        prof = commerce.profile(app, self.c, 1)
+        self.assertEqual(prof['phone'], '809-555-9999')
+        self.assertEqual(prof['unit_singular'], 'Finca')
+        
+        # Reset profile
+        res = self.save('reset_company_profile', target_company_id=1)
+        self.assertTrue(res['ok'])
+        
+        prof_after = commerce.profile(app, self.c, 1)
+        self.assertEqual(prof_after['phone'], '')
+        self.assertEqual(prof_after['tax_id'], '')
+        self.assertEqual(prof_after['unit_singular'], 'Unidad operativa')
+        self.assertEqual(prof_after['unit_plural'], 'Unidades operativas')
+        
+        co = app.one(self.c, "SELECT accent_color, surface_color FROM companies WHERE id=1")
+        self.assertEqual(co['accent_color'], '#185b4d')
+        self.assertEqual(co['surface_color'], '#f4f6f3')
+
+    def test_reset_company_data(self):
+        # Create operational data
+        self.save('task', title='Tarea 1', responsible_id=1, duration=2, duration_unit='hours', due_date=app.today().isoformat())
+        self.save('worklog', employee_id=1, minutes=60, work_date=app.today().isoformat(), activity='Trabajo', method='Manual')
+        self.assertEqual(self.c.execute('SELECT COUNT(*) FROM tasks WHERE company_id=1').fetchone()[0], 1)
+        self.assertEqual(self.c.execute('SELECT COUNT(*) FROM worklogs WHERE company_id=1').fetchone()[0], 1)
+        
+        # Reset without backup confirmation must fail
+        with self.assertRaises(ValueError):
+            self.save('reset_company_data', target_company_id=1, backup_confirmed=False)
+            
+        # Reset with backup confirmation
+        res = self.save('reset_company_data', target_company_id=1, backup_confirmed=True)
+        self.assertTrue(res['ok'])
+        
+        # Operational records are cleared
+        self.assertEqual(self.c.execute('SELECT COUNT(*) FROM tasks WHERE company_id=1').fetchone()[0], 0)
+        self.assertEqual(self.c.execute('SELECT COUNT(*) FROM worklogs WHERE company_id=1').fetchone()[0], 0)
+        self.assertEqual(self.c.execute('SELECT COUNT(*) FROM employees WHERE company_id=1').fetchone()[0], 0)
+        
+        # Company and admin membership remain
+        self.assertEqual(self.c.execute('SELECT COUNT(*) FROM companies WHERE id=1').fetchone()[0], 1)
+        self.assertEqual(self.c.execute('SELECT COUNT(*) FROM memberships WHERE company_id=1 AND user_id=1').fetchone()[0], 1)
+        
+        # Default department and cash account were seeded
+        self.assertEqual(self.c.execute('SELECT COUNT(*) FROM departments WHERE company_id=1').fetchone()[0], 1)
+        self.assertEqual(self.c.execute('SELECT COUNT(*) FROM cash_accounts WHERE company_id=1').fetchone()[0], 1)
+

@@ -325,7 +325,7 @@ def mutate(c,uid,cid,action,d):
     if action=='delete_ncf_sequence': return fiscal.eliminar_secuencia_ncf(sys.modules[__name__],c,uid,cid,d)
     if action in payroll.ACTIONS: return payroll.mutate(sys.modules[__name__],c,uid,cid,action,d)
     if action in treasury.ACTIONS: return treasury.mutate(sys.modules[__name__],c,uid,cid,action,d)
-    if action in ('company_profile','invoice','delete_invoice','cancel_invoice','edit_company','delete_company','soft_delete_company','archive_company','restore_company','restore_company_from_backup'): return commerce.mutate(sys.modules[__name__],c,uid,cid,action,d)
+    if action in ('company_profile','invoice','delete_invoice','cancel_invoice','edit_company','delete_company','soft_delete_company','archive_company','restore_company','restore_company_from_backup','reset_company_profile','reset_company_data','reset_company'): return commerce.mutate(sys.modules[__name__],c,uid,cid,action,d)
     if action=='gdrive_config': return gdrive.save_config(sys.modules[__name__],c,uid,cid,d)
     if action=='gdrive_test': return gdrive.test_connection(sys.modules[__name__],c,uid,cid,d)
     if action=='gdrive_upload': return gdrive.upload_backup(sys.modules[__name__],c,uid,cid,d)

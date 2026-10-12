@@ -26,7 +26,8 @@ def profile(core,c,cid):
 
 def mutate(core,c,uid,cid,action,d):
     target_cid = int(d.get('id') or d.get('target_company_id') or cid)
-    core.membership(c,uid,target_cid if action in ('company_profile','edit_company') else cid,3 if action in ('company_profile','edit_company') else 2 if action in ('delete_invoice','cancel_invoice') else 1,action in ('invoice','delete_invoice','cancel_invoice'))
+    is_admin_action = action in ('company_profile','edit_company','delete_company','soft_delete_company','archive_company','restore_company','reset_company_profile','reset_company_data','reset_company')
+    core.membership(c,uid,target_cid if is_admin_action else cid,3 if is_admin_action else 2 if action in ('delete_invoice','cancel_invoice') else 1,action in ('invoice','delete_invoice','cancel_invoice'))
     if action in ('delete_invoice','cancel_invoice'):
         inv=core.ref(c,'sales_invoices',d.get('id'),cid)
         paid=c.execute('SELECT COUNT(*) FROM payments WHERE charge_id=?',(inv['charge_id'],)).fetchone()[0]
@@ -67,6 +68,17 @@ def mutate(core,c,uid,cid,action,d):
         c.execute('UPDATE companies SET name=?, group_name=?, demo=? WHERE id=?',(name,group_name,demo,target_cid))
         c.execute('INSERT INTO company_profiles(company_id,phone,email,address,tax_id,logo,unit_singular,unit_plural) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(company_id) DO UPDATE SET phone=excluded.phone,email=excluded.email,address=excluded.address,tax_id=excluded.tax_id,logo=excluded.logo,unit_singular=excluded.unit_singular,unit_plural=excluded.unit_plural',(target_cid,values['phone'],values['email'],values['address'],values['tax_id'],logo,unit_singular,unit_plural))
         core.audit(c,uid,target_cid,'editar empresa','companies',target_cid,{'name':name,'group_name':group_name,'demo':demo,'contact':{k:v for k,v in values.items() if k!='logo'},'unit_singular':unit_singular,'unit_plural':unit_plural,'logo_changed':before.get('logo')!=logo})
+        return {'ok':True,'company_id':target_cid}
+    if action=='reset_company_profile':
+        before=profile(core,c,target_cid)
+        c.execute('''INSERT INTO company_profiles(company_id,phone,email,address,tax_id,logo,unit_singular,unit_plural)
+                     VALUES(?,?,?,?,?,?,?,?)
+                     ON CONFLICT(company_id) DO UPDATE SET phone='',email='',address='',tax_id='',logo='',unit_singular='Unidad operativa',unit_plural='Unidades operativas'
+                  ''',(target_cid,'','','','','','Unidad operativa','Unidades operativas'))
+        c.execute('''UPDATE companies SET
+                     accent_color='#185b4d',surface_color='#f4f6f3',card_color='#ffffff',text_color='#172f2d',font_scale='100'
+                     WHERE id=?''',(target_cid,))
+        core.audit(c,uid,target_cid,'reiniciar perfil empresa','companies',target_cid,{'before':before})
         return {'ok':True,'company_id':target_cid}
     if action in ('delete_company', 'soft_delete_company', 'archive_company'):
         target_cid=int(d.get('id') or d.get('target_company_id') or 0)
@@ -139,6 +151,65 @@ def mutate(core,c,uid,cid,action,d):
         if not isinstance(archive,dict): raise ValueError('Archivo de respaldo JSON inválido.')
         res=transfer.restore_company_for_user(core,c,uid,archive,d.get('name'))
         return {'ok':True,'restored':True,'company_id':res['company_id'],'name':res['name']}
+    if action in ('reset_company_data', 'reset_company'):
+        target_comp=core.one(c,'SELECT * FROM companies WHERE id=?',(target_cid,))
+        if not target_comp: raise ValueError('Empresa no encontrada.')
+        if not d.get('backup_confirmed'):
+            raise ValueError('Debe descargar o confirmar la copia de seguridad antes de reiniciar la empresa.')
+        
+        try:
+            import transfer
+            from pathlib import Path
+            backup_dir=Path('data/backups')
+            backup_dir.mkdir(parents=True,exist_ok=True)
+            archive=transfer.export_company(core,c,uid,target_cid)
+            b_file=backup_dir / f"safety-pre-reset-{target_cid}-{core.today().isoformat()}.zero.json"
+            b_file.write_text(json.dumps(archive,ensure_ascii=False,indent=2),encoding='utf-8')
+        except Exception:
+            pass
+
+        for subquery in [
+            'DELETE FROM dmca_counter_notices WHERE notice_id IN (SELECT id FROM dmca_notices WHERE company_id=?)',
+            'DELETE FROM ecf_xml_logs WHERE ecf_id IN (SELECT id FROM ecf_documents WHERE company_id=?)',
+            'DELETE FROM farm_payroll_lines WHERE payroll_id IN (SELECT id FROM farm_payrolls WHERE company_id=?)',
+            'DELETE FROM farm_jobs WHERE contract_id IN (SELECT id FROM farm_contracts WHERE company_id=?)',
+            'DELETE FROM payroll_lines WHERE payroll_id IN (SELECT id FROM payrolls WHERE company_id=?)'
+        ]:
+            try: c.execute(subquery, (target_cid,))
+            except sqlite3.OperationalError: pass
+
+        for t in [
+            'gdrive_backups',
+            'dmca_notices','ecf_documents','ecf_receptions','ecf_config',
+            'farm_payrolls','farm_contracts','farm_jobs','farm_sales','farms',
+            'payroll_payments','payroll_adjustments','payrolls','work_contracts','employee_pay_settings','employee_account_entries',
+            'cash_movements','cash_accounts',
+            'sales_invoices','secuencias_ncf',
+            'attachments',
+            'expense_payments','expenses',
+            'payments','charges','subscriptions',
+            'worklogs','tasks','employees',
+            'products','customers','departments','projects',
+            'imports'
+        ]:
+            try: c.execute(f'DELETE FROM {t} WHERE company_id=?',(target_cid,))
+            except sqlite3.OperationalError: pass
+
+        c.execute('''INSERT INTO company_profiles(company_id,phone,email,address,tax_id,logo,unit_singular,unit_plural)
+                     VALUES(?,?,?,?,?,?,?,?)
+                     ON CONFLICT(company_id) DO UPDATE SET phone='',email='',address='',tax_id='',logo='',unit_singular='Unidad operativa',unit_plural='Unidades operativas'
+                  ''',(target_cid,'','','','','','Unidad operativa','Unidades operativas'))
+
+        c.execute('''UPDATE companies SET
+                     accent_color='#185b4d',surface_color='#f4f6f3',card_color='#ffffff',text_color='#172f2d',font_scale='100'
+                     WHERE id=?''',(target_cid,))
+
+        c.execute('INSERT INTO departments(company_id,name) VALUES(?,?)',(target_cid,'Operaciones'))
+        c.execute('INSERT INTO cash_accounts(company_id,name,kind,currency,bank_name,account_type,holder_name,holder_document) VALUES(?,?,?,?,?,?,?,?)',
+                  (target_cid,'Caja General','cash','DOP','Efectivo / Caja','savings',target_comp['name'],''))
+
+        core.audit(c,uid,target_cid,'reiniciar empresa a valores de fábrica','companies',target_cid,{'name':target_comp['name']})
+        return {'ok':True,'company_id':target_cid,'name':target_comp['name'],'message':'Empresa reiniciada a valores predeterminados.'}
     key=core.text(d.get('request_key'),'Clave de factura',100)
     old=core.one(c,'SELECT * FROM sales_invoices WHERE request_key=?',(key,))
     if old:

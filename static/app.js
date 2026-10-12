@@ -984,8 +984,9 @@ function companiesDirectoryPanel(){
     const isAdmin = c.role === 'admin';
     const unitDesc = (c.unit_singular && c.unit_plural) ? `${esc(c.unit_singular)} / ${esc(c.unit_plural)}` : 'Unidad operativa (Estándar)';
     const contactInfo = [c.tax_id ? `RNC: ${esc(c.tax_id)}` : '', c.phone ? `Tel: ${esc(c.phone)}` : '', c.email ? esc(c.email) : ''].filter(Boolean).join(' · ') || 'Sin contacto registrado';
+    const resetBtn = isAdmin ? `<button class="small" data-open-reset-company="${c.id}" data-name="${esc(c.name)}" title="Reiniciar empresa a valores de fábrica" style="color:var(--danger,#b91c1c);border-color:color-mix(in srgb, #b91c1c 40%, var(--border))">⚠️ Reiniciar</button>` : '';
     const deleteBtn = (isAdmin && me.companies.length > 1) ? `<button class="small danger" data-delete-company="${c.id}" data-name="${esc(c.name)}">🗑 Borrar / Papelera</button>` : '';
-    return `<tr><td><strong>${esc(c.name)}</strong> ${isActive ? '<span class="badge green">Activa</span>' : ''}<div class="muted">${esc(c.group_name || 'Empresa independiente')}</div></td><td><div>${contactInfo}</div>${c.address ? `<div class="muted">${esc(c.address)}</div>` : ''}</td><td><span class="badge ${c.demo ? 'orange' : 'green'}">${c.demo ? 'DEMO' : 'EMPRESA REAL'}</span><div class="muted">Modelo: ${unitDesc}</div></td><td><strong>${esc(c.role_name || (c.role === 'admin' ? 'Administrador' : c.role))}</strong></td><td><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${isAdmin ? action('✏ Ficha y ajustes', 'edit_company', c.id) : '<span class="muted">Solo lectura</span>'} ${!isActive ? `<button class="small" data-switch-company="${c.id}">Seleccionar</button>` : ''} ${deleteBtn}</div></td></tr>`;
+    return `<tr><td><strong>${esc(c.name)}</strong> ${isActive ? '<span class="badge green">Activa</span>' : ''}<div class="muted">${esc(c.group_name || 'Empresa independiente')}</div></td><td><div>${contactInfo}</div>${c.address ? `<div class="muted">${esc(c.address)}</div>` : ''}</td><td><span class="badge ${c.demo ? 'orange' : 'green'}">${c.demo ? 'DEMO' : 'EMPRESA REAL'}</span><div class="muted">Modelo: ${unitDesc}</div></td><td><strong>${esc(c.role_name || (c.role === 'admin' ? 'Administrador' : c.role))}</strong></td><td><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${isAdmin ? action('✏ Ficha y ajustes', 'edit_company', c.id) : '<span class="muted">Solo lectura</span>'} ${!isActive ? `<button class="small" data-switch-company="${c.id}">Seleccionar</button>` : ''} ${resetBtn} ${deleteBtn}</div></td></tr>`;
   });
 
   const actions = `
@@ -1020,6 +1021,26 @@ function companiesDirectoryPanel(){
   }
 
   return panel('Directorio y administración de empresas', table(['Empresa / Grupo', 'Identificación y Contacto', 'Tipo y Modelo operativo', 'Mi Rol', 'Acciones'], activeRows), actions) + trashSection;
+}
+
+function companyMaintenancePanel(){
+  const c = company();
+  return panel('⚠️ Zona de Mantenimiento y Reinicio de Empresa', `
+    <div class="definition" style="border-left:4px solid var(--danger,#b91c1c);padding-left:14px">
+      <h3 style="margin-top:0;color:var(--danger,#b91c1c);display:flex;align-items:center;gap:8px">
+        <span>🔄</span> Reiniciar empresa a valores de fábrica
+      </h3>
+      <p style="font-size:13px;color:var(--muted,#64748b);line-height:1.5;margin-bottom:12px">
+        Permite vaciar por completo las transacciones operativas (gastos, facturas, cobros, pagos, nóminas, contratos, jornadas y registros de unidades) de <strong>«${esc(c.name)}»</strong> para comenzar desde cero con la misma empresa y su usuario administrador activo.<br><br>
+        <strong>Seguridad garantizada:</strong> El sistema <strong>exige obligatoriamente descargar una copia de seguridad (.json)</strong> antes de desbloquear y permitir el reinicio, y además almacena un respaldo de seguridad automático en el servidor.
+      </p>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <button type="button" class="danger" data-open-reset-company="${c.id}" data-name="${esc(c.name)}" style="background:#dc2626;color:#fff;border-color:#dc2626">
+          ⚠️ Reiniciar «${esc(c.name)}» a valores de fábrica
+        </button>
+      </div>
+    </div>
+  `);
 }
 let settingsTab = 'server';
 
@@ -1747,9 +1768,10 @@ function backupAndExportPanel(){
   }
 
   const exportActions = `
-    <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
       <button class="primary" data-action="export">📥 Exportar empresa a JSON</button>
       <button type="button" class="secondary" id="btn-restore-company-file-2">📤 Restaurar empresa desde JSON</button>
+      ${canAdmin() ? `<button type="button" class="small" data-open-reset-company="${company().id}" data-name="${esc(company().name)}" style="color:var(--danger,#b91c1c);border-color:color-mix(in srgb, #b91c1c 40%, var(--border));margin-left:auto">⚠️ Reiniciar empresa a valores de fábrica</button>` : ''}
     </div>
   `;
 
@@ -1770,7 +1792,7 @@ function settingsView(){
   if(settingsTab === 'server'){
     content = serverConditionsPanel() + serverInstructionsAndClientGuidePanel();
   } else if(settingsTab === 'companies'){
-    content = companiesDirectoryPanel() + (canAdmin() ? companyProfilePanel() : '');
+    content = companiesDirectoryPanel() + (canAdmin() ? companyProfilePanel() + companyMaintenancePanel() : '');
   } else if(settingsTab === 'departments'){
     content = departmentsManagementPanel();
   } else if(settingsTab === 'fiscal'){
@@ -2123,6 +2145,9 @@ function bind(){
   if(btnRestoreFile) btnRestoreFile.onclick = () => openRestoreCompanyFromFileDialog();
   const btnRestoreFile2 = $('#btn-restore-company-file-2');
   if(btnRestoreFile2) btnRestoreFile2.onclick = () => openRestoreCompanyFromFileDialog();
+  document.querySelectorAll('[data-open-reset-company]').forEach(b => {
+    b.onclick = () => showResetCompanyModal(Number(b.dataset.openResetCompany), b.dataset.name);
+  });
 
   const gdriveForm = $('#gdrive-settings-form');
   if(gdriveForm){
@@ -2426,6 +2451,175 @@ function openRestoreCompanyFromFileDialog(){
       btn.textContent = 'Restaurar Empresa';
     };
     reader.readAsText(file);
+  };
+}
+
+function showResetCompanyModal(targetId, targetName){
+  const comp = (me?.companies || []).find(c => c.id === targetId) || (me?.deleted_companies || []).find(c => c.id === targetId) || { id: targetId, name: targetName || 'Empresa' };
+  const defaultBackupName = comp.name.replace(/[^a-zA-Z0-9_-]/g,'_') + '-backup-pre-reinicio-' + (S.today || '') + '.zero.json';
+  let backupDownloaded = false;
+
+  $('#modal-content').innerHTML = `
+    <div class="modal-header">
+      <h2 style="color:var(--danger,#b91c1c);display:flex;align-items:center;gap:8px">
+        <span>⚠️</span> Reiniciar Empresa a Valores de Fábrica
+      </h2>
+      <button type="button" id="close-modal" aria-label="Cerrar">×</button>
+    </div>
+    <form id="reset-company-form">
+      <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:14px;margin-bottom:14px;font-size:13px;color:#991b1b;line-height:1.5">
+        <strong>⚠️ Advertencia de Reajuste Operativo:</strong><br>
+        Está a punto de reiniciar la empresa <strong>«${esc(comp.name)}»</strong>.<br>
+        Este proceso vaciará las transacciones, facturas, compras, nóminas, contratos, fincas/unidades y movimientos de caja.<br>
+        Su cuenta de usuario administrador, la empresa registrada y un departamento inicial se mantendrán listos para operar.<br><br>
+        <strong>Requisito indispensable:</strong> Debe descargar la copia de seguridad (.json) antes de poder autorizar y ejecutar el reinicio.
+      </div>
+
+      <div style="background:var(--surface,#f8fafc);border:2px solid var(--brand-accent,#0f766e);border-radius:8px;padding:14px;margin-bottom:14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+          <strong style="color:var(--brand-accent,#0f766e);font-size:14px">Paso 1: Copia de Seguridad Obligatoria</strong>
+          <span id="badge-step-1" class="badge orange">Requerido</span>
+        </div>
+        <p style="font-size:12px;color:var(--muted,#64748b);margin:0 0 10px">
+          Descargue la copia de seguridad completa de la empresa para desbloquear el Paso 2 de confirmación.
+        </p>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <button type="button" class="primary" id="btn-force-backup-download" style="background:var(--brand-accent,#0f766e);border-color:var(--brand-accent,#0f766e)">
+            📥 Descargar Copia de Seguridad (.json)
+          </button>
+          <span id="step-1-status" style="font-size:12px;font-weight:600;color:var(--danger,#b91c1c)">
+            ⚠️ Requisito pendiente: Haga clic en descargar para desbloquear.
+          </span>
+        </div>
+      </div>
+
+      <div id="reset-step-2-section" style="opacity:0.4;pointer-events:none;background:var(--surface,#f8fafc);border:1px solid var(--border,#cbd5e1);border-radius:8px;padding:14px;margin-bottom:14px;transition:opacity 0.2s">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <strong style="font-size:14px">Paso 2: Confirmación de Seguridad</strong>
+          <span id="badge-step-2" class="badge">Bloqueado</span>
+        </div>
+        
+        <label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;cursor:pointer;margin-bottom:12px">
+          <input type="checkbox" id="chk-confirm-backup" disabled style="margin-top:2px">
+          <span>He descargado y respaldado los datos y confirmo que deseo reiniciar <strong>«${esc(comp.name)}»</strong> a valores de fábrica.</span>
+        </label>
+
+        <label for="f-confirm-reset-input" style="font-weight:700;display:block;margin-bottom:6px;font-size:13px">
+          Para autorizar el reinicio, escriba <strong style="color:var(--danger,#b91c1c)">REINICIAR</strong> o el nombre exacto: <strong>«${esc(comp.name)}»</strong>
+        </label>
+        <input id="f-confirm-reset-input" type="text" placeholder="REINICIAR" disabled autocomplete="off" style="width:100%">
+      </div>
+
+      <div class="error" id="reset-form-error" role="alert"></div>
+
+      <div class="form-actions" style="margin-top:20px;display:flex;justify-content:flex-end;gap:10px">
+        <button type="button" id="cancel-modal">Cancelar</button>
+        <button type="submit" class="danger" id="btn-submit-reset-company" disabled style="background:#dc2626;color:#fff;border-color:#dc2626;opacity:0.5;cursor:not-allowed">
+          ⚠️ Confirmar y Reiniciar Empresa
+        </button>
+      </div>
+    </form>
+  `;
+
+  if(!$('#modal').open) $('#modal').showModal();
+  $('#close-modal').onclick = $('#cancel-modal').onclick = () => $('#modal').close();
+
+  const step1Btn = $('#btn-force-backup-download');
+  const step1Status = $('#step-1-status');
+  const badgeStep1 = $('#badge-step-1');
+  const badgeStep2 = $('#badge-step-2');
+  const step2Sec = $('#reset-step-2-section');
+  const chkBackup = $('#chk-confirm-backup');
+  const confirmInput = $('#f-confirm-reset-input');
+  const submitBtn = $('#btn-submit-reset-company');
+  const errBox = $('#reset-form-error');
+
+  function checkFormValidity(){
+    const textVal = (confirmInput.value || '').trim();
+    const isTextMatch = textVal.toUpperCase() === 'REINICIAR' || textVal.toLowerCase() === comp.name.trim().toLowerCase();
+    const isChecked = chkBackup.checked;
+    if(backupDownloaded && isTextMatch && isChecked){
+      submitBtn.disabled = false;
+      submitBtn.style.opacity = '1';
+      submitBtn.style.cursor = 'pointer';
+    } else {
+      submitBtn.disabled = true;
+      submitBtn.style.opacity = '0.5';
+      submitBtn.style.cursor = 'not-allowed';
+    }
+  }
+
+  step1Btn.onclick = () => {
+    try {
+      const link = document.createElement('a');
+      link.href = '/api/export?company_id=' + targetId;
+      link.download = defaultBackupName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+
+      backupDownloaded = true;
+      badgeStep1.className = 'badge green';
+      badgeStep1.textContent = '✓ Descargado';
+      step1Status.style.color = 'var(--brand-accent,#0f766e)';
+      step1Status.textContent = '✓ Respaldo descargado exitosamente. Paso 2 desbloqueado.';
+
+      badgeStep2.className = 'badge orange';
+      badgeStep2.textContent = 'Desbloqueado';
+      step2Sec.style.opacity = '1';
+      step2Sec.style.pointerEvents = 'auto';
+      chkBackup.disabled = false;
+      chkBackup.checked = true;
+      confirmInput.disabled = false;
+      confirmInput.focus();
+      checkFormValidity();
+    } catch(err){
+      step1Status.textContent = 'Error al descargar: ' + err.message;
+    }
+  };
+
+  chkBackup.onchange = checkFormValidity;
+  confirmInput.oninput = checkFormValidity;
+
+  $('#reset-company-form').onsubmit = async e => {
+    e.preventDefault();
+    errBox.textContent = '';
+    if(!backupDownloaded){
+      errBox.textContent = 'Debe descargar la copia de seguridad en el Paso 1 antes de reiniciar.';
+      return;
+    }
+    const textVal = (confirmInput.value || '').trim();
+    if(textVal.toUpperCase() !== 'REINICIAR' && textVal.toLowerCase() !== comp.name.trim().toLowerCase()){
+      errBox.textContent = `Escriba "REINICIAR" o «${comp.name}» exactamente para autorizar el reinicio.`;
+      return;
+    }
+    if(!chkBackup.checked){
+      errBox.textContent = 'Marque la casilla de confirmación para continuar.';
+      return;
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Reiniciando empresa...';
+
+    try {
+      const res = await save('reset_company_data', {
+        target_company_id: targetId,
+        backup_confirmed: true
+      });
+      $('#modal').close();
+      me = await api('me');
+      if(Number(cid) === targetId){
+        await refresh();
+      } else {
+        setActiveCompany(targetId);
+        await refresh();
+      }
+      toast(`Empresa «${comp.name}» reiniciada a valores de fábrica.`);
+    } catch(err){
+      errBox.textContent = 'Error: ' + err.message;
+      submitBtn.disabled = false;
+      submitBtn.textContent = '⚠️ Confirmar y Reiniciar Empresa';
+    }
   };
 }
 
@@ -4176,7 +4370,7 @@ function companyProfilePanel(){
   ['custom','Personalizado (Escribir término propio)']
  ];
  const matched=presets.find(([val])=>val===`${uSingular}|${uPlural}`)?`${uSingular}|${uPlural}`:'custom';
- return panel('Datos de la empresa activa',`<form id="company-profile-form" class="definition"><div class="form-grid">${input('name','Nombre de empresa','text',company().name,'required maxlength="200"')}${input('group_name','Grupo corporativo / Cuenta dependiente','text',company().group_name||'','maxlength="200"')}${input('tax_id','Identificación / RNC','text',p.tax_id)}${input('phone','Teléfono','text',p.phone)}${input('email','Correo electrónico','email',p.email)}${input('address','Dirección','text',p.address)}<div><label for="f-unit-preset">Tipo de negocio / Modelo operativo</label><select id="f-unit-preset">${presets.map(([v,t])=>`<option value="${esc(v)}" ${v===matched?'selected':''}>${esc(t)}</option>`).join('')}</select></div><div id="custom-unit-fields" style="${matched==='custom'?'':'display:none'}"><div class="form-grid" style="margin-top:8px">${input('unit_singular','Término en singular (ej. Finca, Sucursal, Propiedad)','text',uSingular,'maxlength="50"')}${input('unit_plural','Término en plural (ej. Fincas, Sucursales, Propiedades)','text',uPlural,'maxlength="50"')}</div></div><div><label><input type="checkbox" name="demo" ${company().demo?'checked':''}> Empresa de demostración (datos ficticios)</label></div><div><label for="company-logo">Logo (PNG, JPEG o WebP, hasta 500 KB)</label><input id="company-logo" type="file" accept="image/png,image/jpeg,image/webp">${p.logo?`<img class="company-logo" src="${esc(p.logo)}" alt="Logo de la empresa">`:''}<label><input type="checkbox" name="remove_logo"> Quitar logo</label></div></div><div class="form-actions"><button class="primary">Guardar datos de empresa</button></div><p id="company-profile-error" class="error" role="alert"></p></form>`)
+ return panel('Datos de la empresa activa',`<form id="company-profile-form" class="definition"><div class="form-grid">${input('name','Nombre de empresa','text',company().name,'required maxlength="200"')}${input('group_name','Grupo corporativo / Cuenta dependiente','text',company().group_name||'','maxlength="200"')}${input('tax_id','Identificación / RNC','text',p.tax_id)}${input('phone','Teléfono','text',p.phone)}${input('email','Correo electrónico','email',p.email)}${input('address','Dirección','text',p.address)}<div><label for="f-unit-preset">Tipo de negocio / Modelo operativo</label><select id="f-unit-preset">${presets.map(([v,t])=>`<option value="${esc(v)}" ${v===matched?'selected':''}>${esc(t)}</option>`).join('')}</select></div><div id="custom-unit-fields" style="${matched==='custom'?'':'display:none'}"><div class="form-grid" style="margin-top:8px">${input('unit_singular','Término en singular (ej. Finca, Sucursal, Propiedad)','text',uSingular,'maxlength="50"')}${input('unit_plural','Término en plural (ej. Fincas, Sucursales, Propiedades)','text',uPlural,'maxlength="50"')}</div></div><div><label><input type="checkbox" name="demo" ${company().demo?'checked':''}> Empresa de demostración (datos ficticios)</label></div><div><label for="company-logo">Logo (PNG, JPEG o WebP, hasta 500 KB)</label><input id="company-logo" type="file" accept="image/png,image/jpeg,image/webp">${p.logo?`<img class="company-logo" src="${esc(p.logo)}" alt="Logo de la empresa">`:''}<label><input type="checkbox" name="remove_logo"> Quitar logo</label></div></div><div class="form-actions" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><button class="primary" type="submit">Guardar datos de empresa</button><button type="button" class="secondary" id="btn-reset-company-profile">🔄 Restablecer valores predeterminados del perfil</button></div><p id="company-profile-error" class="error" role="alert"></p></form>`)
 }
 let catalogSearch='',cart={},cartCompany=null,invoiceDraft={};
 function keepInvoiceDraft(){if($('#invoice-form'))invoiceDraft=Object.fromEntries(new FormData($('#invoice-form')))}
@@ -4198,7 +4392,24 @@ function bindCommerce(){
   };
  }
 
- const form=$('#company-profile-form');if(form)form.onsubmit=async e=>{e.preventDefault();const button=form.querySelector('button');button.disabled=true;try{const d=Object.fromEntries(new FormData(form));d.logo=S.company_profile?.logo||'';if(d.remove_logo)d.logo='';const file=$('#company-logo').files[0];if(file){if(file.size>500000)throw Error('El logo supera 500 KB.');d.logo=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(Error('No se pudo leer el logo.'));reader.readAsDataURL(file)})}await api('action',{...d,company_id:cid,action:'company_profile'});me=await api('me');await refresh();toast('Empresa actualizada.')}catch(err){$('#company-profile-error').textContent=err.message;button.disabled=false}};
+ const form=$('#company-profile-form');if(form)form.onsubmit=async e=>{e.preventDefault();const button=form.querySelector('button[type=submit]')||form.querySelector('button');button.disabled=true;try{const d=Object.fromEntries(new FormData(form));d.logo=S.company_profile?.logo||'';if(d.remove_logo)d.logo='';const file=$('#company-logo').files[0];if(file){if(file.size>500000)throw Error('El logo supera 500 KB.');d.logo=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(Error('No se pudo leer el logo.'));reader.readAsDataURL(file)})}await api('action',{...d,company_id:cid,action:'company_profile'});me=await api('me');await refresh();toast('Empresa actualizada.')}catch(err){$('#company-profile-error').textContent=err.message;button.disabled=false}};
+ const btnResetProf=$('#btn-reset-company-profile');
+ if(btnResetProf){
+  btnResetProf.onclick=async()=>{
+   const compName=company().name;
+   if(!confirm(`¿Desea restablecer el perfil y apariencia de «${compName}» a sus valores predeterminados?\n\n• Se vaciarán teléfono, correo, dirección y RNC\n• Se quitará el logo personalizado\n• Se restaurará el modelo operativo estándar\n• Se restaurarán los colores de marca originales (tema Bosque)\n\n(Esta acción restablece la ficha pero NO elimina transacciones ni facturas)`))return;
+   btnResetProf.disabled=true;
+   try{
+    await api('action',{action:'reset_company_profile',company_id:cid,target_company_id:cid});
+    me=await api('me');
+    await refresh();
+    toast('Perfil y apariencia de la empresa restablecidos a valores predeterminados.');
+   }catch(err){
+    toast('Error: '+err.message);
+    btnResetProf.disabled=false;
+   }
+  };
+ }
  const search=$('#catalog-search');if(search)search.onchange=()=>{keepInvoiceDraft();catalogSearch=search.value;render()};
  document.querySelectorAll('[data-cart-add]').forEach(b=>b.onclick=()=>{keepInvoiceDraft();const id=b.dataset.cartAdd;cart[id]=(cart[id]||0)+1;render()});
  document.querySelectorAll('[data-cart-remove]').forEach(b=>b.onclick=()=>{keepInvoiceDraft();delete cart[b.dataset.cartRemove];render()});
