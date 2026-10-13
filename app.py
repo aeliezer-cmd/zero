@@ -81,6 +81,8 @@ CREATE TABLE IF NOT EXISTS attachments(id INTEGER PRIMARY KEY, company_id INTEGE
 CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY, user_id INTEGER REFERENCES users(id), company_id INTEGER REFERENCES companies(id), action TEXT NOT NULL, entity TEXT NOT NULL, entity_id INTEGER, details TEXT NOT NULL, created_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS imports(id INTEGER PRIMARY KEY, fingerprint TEXT UNIQUE NOT NULL, company_id INTEGER NOT NULL REFERENCES companies(id), created_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS member_hierarchy(user_id INTEGER NOT NULL, company_id INTEGER NOT NULL, rank INTEGER NOT NULL CHECK(rank BETWEEN 1 AND 99), PRIMARY KEY(user_id,company_id), FOREIGN KEY(user_id,company_id) REFERENCES memberships(user_id,company_id));
+CREATE TABLE IF NOT EXISTS user_sessions(token TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), csrf TEXT NOT NULL, expires REAL NOT NULL);
+CREATE INDEX IF NOT EXISTS idx_sessions_expires ON user_sessions(expires);
 CREATE INDEX IF NOT EXISTS charges_company ON charges(company_id,due_date);
 CREATE INDEX IF NOT EXISTS audit_company ON audit(company_id,id);
 '''
@@ -151,6 +153,14 @@ def initialize(seed=True):
                 c.execute('INSERT INTO expenses(company_id,description,department_id,expense_date,amount,status,created_by) VALUES(?,?,?,?,?,?,?)',(cid,'Materiales de ejemplo',dep,today().isoformat(),850000,'approved',1))
                 c.execute('INSERT INTO worklogs(company_id,employee_id,department_id,work_date,minutes,activity,method,status,created_by) VALUES(?,?,?,?,?,?,?,?,?)',(cid,eid,dep,today().isoformat(),420,'Inspección de ejemplo','Recorrido supervisado','approved',1))
             for cid in (1,2): generate(c,1,cid,today())
+            seed_path = ROOT / 'data' / 'seed_monarca.zero.json'
+            if seed_path.exists() and not one(c, "SELECT 1 FROM companies WHERE name LIKE '%Monarca%'"):
+                try:
+                    import json
+                    bundle = json.loads(seed_path.read_text(encoding='utf-8'))
+                    transfer.restore_company_for_user(sys.modules[__name__], c, 2, bundle, new_name='Grupo Monarca GM SRL')
+                except Exception as err:
+                    print('Aviso seed Monarca:', err)
         creds = ROOT / 'data' / 'ACCESOS.txt'
         creds.write_text('ZERO — Accesos iniciales\n\nDemostración (dos empresas ficticias):\nUsuario: demo\nContraseña: '+demo_password+'\n\nEmpresas reales:\nUsuario: monarca (o admin)\nContraseña: '+real_password+'\n\nCambie las contraseñas desde Configuración. Este archivo contiene secretos: no compartir.\n', encoding='utf-8')
         os.chmod(creds,0o600)
@@ -759,6 +769,14 @@ class Handler(BaseHTTPRequestHandler):
         token=cookies.get('zero_session','')
         with LOCK:
             s=SESSIONS.get(token)
+            if not s or s['expires']<time.time():
+                try:
+                    with connect() as c:
+                        row=one(c,'SELECT user_id,csrf,expires FROM user_sessions WHERE token=? AND expires>?',(token,time.time()))
+                        if row:
+                            s={'uid':row['user_id'],'csrf':row['csrf'],'expires':row['expires']}
+                            SESSIONS[token]=s
+                except Exception: pass
             if not s or s['expires']<time.time(): raise Denied('Inicie sesión para continuar.')
             return token,dict(s)
     def body(self):
@@ -849,6 +867,56 @@ class Handler(BaseHTTPRequestHandler):
                 if path=='/api/export':
                     result=transfer.export_company(sys.modules[__name__],c,s['uid'],int(q.get('company_id',['0'])[0]))
                     return self.respond(200,result,{'Content-Disposition':'attachment; filename=empresa.zero.json'})
+                if path=='/api/database/status':
+                    admin_ok = bool(one(c, 'SELECT 1 FROM memberships WHERE user_id=? AND role="admin"', (s['uid'],)))
+                    if not admin_ok: raise Denied('Solo administradores pueden consultar el estado de la base de datos.')
+                    db_size = DB.stat().st_size if DB.exists() else 0
+                    db_mtime = dt.datetime.fromtimestamp(DB.stat().st_mtime, TZ).isoformat(timespec='seconds') if DB.exists() else None
+                    companies_count = one(c, "SELECT count(*) as cnt FROM companies WHERE (deleted_at IS NULL OR deleted_at='')")['cnt']
+                    users_count = one(c, 'SELECT count(*) as cnt FROM users')['cnt']
+                    audit_count = one(c, 'SELECT count(*) as cnt FROM audit')['cnt']
+                    is_mount = os.path.ismount(str(DB.parent))
+                    is_cloud = bool(os.environ.get('RENDER') or os.environ.get('PORT') or Path('/.dockerenv').exists())
+                    gdrive_active = bool(one(c, 'SELECT 1 FROM gdrive_config WHERE enabled=1'))
+                    storage_type = 'persistent' if (is_mount or not is_cloud) else 'ephemeral'
+                    return self.respond(200, {
+                        'ok': True,
+                        'db_path': str(DB),
+                        'db_size': db_size,
+                        'db_size_formatted': f"{db_size / 1024 / 1024:.2f} MB" if db_size > 1024*1024 else f"{db_size / 1024:.1f} KB",
+                        'db_modified': db_mtime,
+                        'companies_count': companies_count,
+                        'users_count': users_count,
+                        'audit_count': audit_count,
+                        'is_mount': is_mount,
+                        'is_cloud': is_cloud,
+                        'storage_type': storage_type,
+                        'gdrive_active': gdrive_active,
+                        'server_time': now()
+                    })
+                if path=='/api/database/download':
+                    admin_ok = bool(one(c, 'SELECT 1 FROM memberships WHERE user_id=? AND role="admin"', (s['uid'],)))
+                    if not admin_ok: raise Denied('Solo administradores pueden descargar la base de datos.')
+                    c.execute('PRAGMA wal_checkpoint(TRUNCATE)')
+                    import tempfile
+                    with tempfile.NamedTemporaryFile(suffix='.sqlite3', delete=False) as tmp:
+                        tmp_path = Path(tmp.name)
+                    try:
+                        with connect() as src, sqlite3.connect(tmp_path) as dst:
+                            src.backup(dst)
+                        body = tmp_path.read_bytes()
+                        stamp = now().replace(':','').replace('-','').replace('T','_')[:15]
+                        filename = f"zero_real_{stamp}.sqlite3"
+                        self.send_response(200)
+                        self.send_header('Content-Type', 'application/vnd.sqlite3')
+                        self.send_header('Content-Disposition', f'attachment; filename="{filename}"')
+                        self.send_header('Cache-Control', 'no-store')
+                        self.send_header('Content-Length', str(len(body)))
+                        self.end_headers()
+                        self.wfile.write(body)
+                        return
+                    finally:
+                        if tmp_path.exists(): tmp_path.unlink()
                 if path=='/api/state': result=state(c,s['uid'],int(q.get('company_id',['0'])[0]))
                 elif path=='/api/dashboard': result=dashboard(c,s['uid'],date(q.get('start',[today().replace(day=1).isoformat()])[0]),date(q.get('end',[today().isoformat()])[0]))
                 else: raise Missing('Ruta no encontrada.')
@@ -885,13 +953,20 @@ class Handler(BaseHTTPRequestHandler):
                     ATTEMPTS[key]=attempts+[time.time()]
                 with connect() as c: user=one(c,'SELECT * FROM users WHERE username=? AND active=1',(username,))
                 if not user or not password_ok(str(d.get('password','')),user['password']): raise Denied('Usuario o contraseña incorrectos.')
-                token=secrets.token_urlsafe(32);csrf=secrets.token_urlsafe(32)
-                with LOCK: SESSIONS[token]={'uid':user['id'],'csrf':csrf,'expires':time.time()+8*3600};ATTEMPTS.pop(key,None)
+                token=secrets.token_urlsafe(32);csrf=secrets.token_urlsafe(32);exp=time.time()+8*3600
+                with LOCK: SESSIONS[token]={'uid':user['id'],'csrf':csrf,'expires':exp};ATTEMPTS.pop(key,None)
+                try:
+                    with connect() as c:
+                        c.execute('INSERT OR REPLACE INTO user_sessions(token,user_id,csrf,expires) VALUES(?,?,?,?)',(token,user['id'],csrf,exp))
+                except Exception: pass
                 return self.respond(200,{'ok':True},{'Set-Cookie':'zero_session='+token+'; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800'})
             token,s=self.session()
             if not hmac.compare_digest(self.headers.get('X-CSRF-Token',''),s['csrf']): raise Denied('Solicitud vencida. Recargue la página.')
             if path=='/api/logout':
                 with LOCK: SESSIONS.pop(token,None)
+                try:
+                    with connect() as c: c.execute('DELETE FROM user_sessions WHERE token=?',(token,))
+                except Exception: pass
                 return self.respond(200,{'ok':True},{'Set-Cookie':'zero_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0'})
             with connect() as c:
                 c.execute('BEGIN IMMEDIATE')
@@ -904,6 +979,8 @@ class Handler(BaseHTTPRequestHandler):
                     with LOCK:
                         for key in list(SESSIONS):
                             if key!=token and SESSIONS[key]['uid']==s['uid']: del SESSIONS[key]
+                    try: c.execute('DELETE FROM user_sessions WHERE user_id=? AND token!=?',(s['uid'],token))
+                    except Exception: pass
                 elif path=='/api/company':
                     name=text(d.get('name'),'Nombre de empresa')
                     if len(name)>200: raise ValueError('El nombre de la empresa no puede superar 200 caracteres.')
@@ -917,6 +994,94 @@ class Handler(BaseHTTPRequestHandler):
                     result={'company_id':cid_new,'name':name,'demo':demo,'group_name':group_name}
                 elif path=='/api/attachments': result=attachments.upload(sys.modules[__name__],c,s['uid'],d)
                 elif path=='/api/action': result=mutate(c,s['uid'],int(d.get('company_id',0)),d.get('action'),d)
+                elif path=='/api/database/restore':
+                    admin_ok = bool(one(c, 'SELECT 1 FROM memberships WHERE user_id=? AND role="admin"', (s['uid'],)))
+                    if not admin_ok: raise Denied('Solo administradores pueden restaurar la base de datos.')
+                    confirm = str(d.get('confirm') or '').strip().upper()
+                    if confirm != 'RESTAURAR':
+                        raise ValueError('Debe escribir exactamente RESTAURAR para autorizar el reemplazo de la base de datos.')
+                    b64_content = d.get('sqlite3_b64', '')
+                    if not b64_content:
+                        raise ValueError('No se proporcionó el contenido de la base de datos.')
+                    import tempfile
+                    try:
+                        raw_bytes = base64.b64decode(b64_content)
+                    except Exception:
+                        raise ValueError('Formato de archivo inválido.')
+                    if not raw_bytes.startswith(b'SQLite format 3\x00'):
+                        raise ValueError('El archivo no es una base de datos SQLite 3 válida.')
+                    with tempfile.NamedTemporaryFile(suffix='.sqlite3', delete=False) as tmp:
+                        tmp.write(raw_bytes)
+                        tmp_path = Path(tmp.name)
+                    try:
+                        with sqlite3.connect(tmp_path) as test_c:
+                            test_c.execute('PRAGMA integrity_check')
+                            tbls = {r[0] for r in test_c.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+                            if 'companies' not in tbls or 'users' not in tbls:
+                                raise ValueError('El archivo no contiene la estructura de tablas de Zero.')
+                        safety_name = DB.parent / f"backup_safety_pre_restore_{now().replace(':','').replace('-','')[0:15]}.sqlite3"
+                        try:
+                            with connect() as src, sqlite3.connect(safety_name) as dst:
+                                src.backup(dst)
+                        except Exception: pass
+                        with sqlite3.connect(tmp_path) as src, connect() as dst:
+                            src.backup(dst)
+                            dst.execute('PRAGMA wal_checkpoint(TRUNCATE)')
+                        initialize(seed=False)
+                        audit(c, s['uid'], int(d.get('company_id', 0)), 'restaurar base de datos completa', 'database', 0, {'size': len(raw_bytes)})
+                        result = {'ok': True, 'message': 'Base de datos restaurada exitosamente.'}
+                    finally:
+                        if tmp_path.exists(): tmp_path.unlink()
+                elif path=='/api/database/sync-pull':
+                    admin_ok = bool(one(c, 'SELECT 1 FROM memberships WHERE user_id=? AND role="admin"', (s['uid'],)))
+                    if not admin_ok: raise Denied('Solo administradores pueden sincronizar la base de datos.')
+                    remote_url = str(d.get('remote_url') or '').strip().rstrip('/')
+                    remote_user = str(d.get('username') or '').strip()
+                    remote_pass = str(d.get('password') or '').strip()
+                    if not remote_url or not remote_user or not remote_pass:
+                        raise ValueError('Debe ingresar la URL remota, usuario y contraseña.')
+                    if not remote_url.startswith(('http://', 'https://')):
+                        remote_url = 'https://' + remote_url
+                    import urllib.request, urllib.parse, tempfile
+                    login_data = json.dumps({'username': remote_user, 'password': remote_pass}).encode('utf-8')
+                    login_req = urllib.request.Request(f"{remote_url}/api/login", data=login_data, headers={'Content-Type': 'application/json'}, method='POST')
+                    try:
+                        with urllib.request.urlopen(login_req, timeout=25) as resp:
+                            cookie_header = resp.headers.get('Set-Cookie', '')
+                    except Exception as e:
+                        raise ValueError(f'No se pudo conectar ni iniciar sesión en {remote_url}: {e}')
+                    token_m = [p.split('=',1)[1].strip() for p in cookie_header.split(';') if p.strip().startswith('zero_session=')]
+                    if not token_m: raise ValueError('El servidor remoto no devolvió una cookie de sesión válida.')
+                    dl_req = urllib.request.Request(f"{remote_url}/api/database/download", headers={'Cookie': f'zero_session={token_m[0]}'}, method='GET')
+                    try:
+                        with urllib.request.urlopen(dl_req, timeout=45) as resp:
+                            raw_db = resp.read()
+                    except Exception as e:
+                        raise ValueError(f'Error al descargar la base de datos remota: {e}')
+                    if not raw_db.startswith(b'SQLite format 3\x00'):
+                        raise ValueError('La respuesta remota no es una base de datos SQLite válida.')
+                    with tempfile.NamedTemporaryFile(suffix='.sqlite3', delete=False) as tmp:
+                        tmp.write(raw_db)
+                        tmp_path = Path(tmp.name)
+                    try:
+                        with sqlite3.connect(tmp_path) as test_c:
+                            test_c.execute('PRAGMA integrity_check')
+                            tbls = {r[0] for r in test_c.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+                            if 'companies' not in tbls or 'users' not in tbls:
+                                raise ValueError('La base de datos remota no contiene la estructura requerida.')
+                        safety_name = DB.parent / f"backup_safety_pre_sync_{now().replace(':','').replace('-','')[0:15]}.sqlite3"
+                        try:
+                            with connect() as src, sqlite3.connect(safety_name) as dst:
+                                src.backup(dst)
+                        except Exception: pass
+                        with sqlite3.connect(tmp_path) as src, connect() as dst:
+                            src.backup(dst)
+                            dst.execute('PRAGMA wal_checkpoint(TRUNCATE)')
+                        initialize(seed=False)
+                        audit(c, s['uid'], int(d.get('company_id', 0)), 'sincronizar base de datos remota', 'database', 0, {'remote_url': remote_url, 'size': len(raw_db)})
+                        result = {'ok': True, 'message': f'Base de datos sincronizada exitosamente desde {remote_url}.'}
+                    finally:
+                        if tmp_path.exists(): tmp_path.unlink()
                 else: raise Missing('Ruta no encontrada.')
             self.respond(200,result)
         except Denied as e: self.respond(403,{'error':str(e)})

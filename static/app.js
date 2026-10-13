@@ -1828,11 +1828,61 @@ function backupAndExportPanel(){
     exportActions
   );
 
-  const serverBackupPanel = panel('Copia de seguridad local del servidor (SQLite)', 
-    `<div class="definition">Para crear una instantánea consistente de toda la base de datos en su computadora o servidor:<br><code>python3 app.py --backup respaldos/zero-${S.today || 'fecha'}.sqlite3</code><br><br>Los respaldos en Google Drive protegen automáticamente contra reinicios del servidor en la nube.</div>`
-  );
+  const dbMasterPanel = `
+    <div class="card" style="margin-top:20px;border:1px solid var(--border);border-radius:12px;padding:20px;background:var(--card)">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+        <div>
+          <h3 style="margin:0 0 6px;font-size:16px;display:flex;align-items:center;gap:8px">
+            <span>🛡️</span> Base de Datos Master (Soberanía y Persistencia)
+          </h3>
+          <p class="muted" style="margin:0;font-size:13px;max-width:650px">
+            Control directo del archivo de base de datos SQLite (<strong>zero.sqlite3</strong>). Descargue la base de datos real completa con todas sus empresas, restáurela con 1 clic o sincronice en paralelo entre su servidor en la nube y su computadora local.
+          </p>
+        </div>
+        <div id="db-live-badge" style="font-size:12px;font-weight:700;padding:6px 12px;border-radius:999px;background:var(--surface);border:1px solid var(--border)">
+          Consultando estado...
+        </div>
+      </div>
 
-  return gdriveHero + historyHtml + localPanel + serverBackupPanel;
+      <div id="db-status-details" style="margin-top:16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">
+        <div style="background:var(--surface);padding:10px 14px;border-radius:8px;border:1px solid var(--border)">
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:700">Ruta en Servidor</div>
+          <div id="db-status-path" style="font-size:13px;font-weight:600;margin-top:2px;word-break:break-all">...</div>
+        </div>
+        <div style="background:var(--surface);padding:10px 14px;border-radius:8px;border:1px solid var(--border)">
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:700">Tamaño en Disco</div>
+          <div id="db-status-size" style="font-size:13px;font-weight:600;margin-top:2px">...</div>
+        </div>
+        <div style="background:var(--surface);padding:10px 14px;border-radius:8px;border:1px solid var(--border)">
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:700">Entorno</div>
+          <div id="db-status-env" style="font-size:13px;font-weight:600;margin-top:2px">...</div>
+        </div>
+        <div style="background:var(--surface);padding:10px 14px;border-radius:8px;border:1px solid var(--border)">
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:700">Almacenamiento</div>
+          <div id="db-status-storage" style="font-size:13px;font-weight:600;margin-top:2px">...</div>
+        </div>
+      </div>
+
+      <div id="db-ephemeral-alert" style="display:none;margin-top:14px;padding:12px 16px;border-radius:8px;background:color-mix(in srgb, #eab308 12%, var(--card));border:1px solid #eab308;color:var(--ink);font-size:13px;line-height:1.6">
+        <strong>⚠️ Almacenamiento Efímero Detectado en la Nube:</strong> El servidor actual no tiene un disco persistente adjunto en Render. Cada vez que el contenedor se reinicie o se actualice código, el sistema revertirá al estado base. 
+        <br>👉 <strong>Solución permanente:</strong> En su panel de Render, añada un disco persistente llamado <code>zero-data</code> montado en <code>/app/data</code> (1 GB), o mantenga copias descargadas periódicamente usando los botones inferiores.
+      </div>
+
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:18px;padding-top:16px;border-top:1px solid var(--border)">
+        <a href="/api/database/download" class="button primary" download style="text-decoration:none;display:inline-flex;align-items:center;gap:6px">
+          <span>📥</span> Descargar Base de Datos Real (.sqlite3)
+        </a>
+        <button type="button" class="secondary" id="btn-open-restore-db" style="display:inline-flex;align-items:center;gap:6px">
+          <span>📤</span> Restaurar Base de Datos (.sqlite3)
+        </button>
+        <button type="button" class="secondary" id="btn-open-sync-db" style="display:inline-flex;align-items:center;gap:6px">
+          <span>🔄</span> Sincronizar en Paralelo (Nube ⇄ Local)
+        </button>
+      </div>
+    </div>
+  `;
+
+  return gdriveHero + historyHtml + localPanel + dbMasterPanel;
 }
 
 function settingsView(){
@@ -2203,6 +2253,11 @@ function bind(){
   if(btnRestoreFile) btnRestoreFile.onclick = () => openRestoreCompanyFromFileDialog();
   const btnRestoreFile2 = $('#btn-restore-company-file-2');
   if(btnRestoreFile2) btnRestoreFile2.onclick = () => openRestoreCompanyFromFileDialog();
+  const btnOpenRestoreDb = $('#btn-open-restore-db');
+  if(btnOpenRestoreDb) btnOpenRestoreDb.onclick = () => openRestoreDatabaseModal();
+  const btnOpenSyncDb = $('#btn-open-sync-db');
+  if(btnOpenSyncDb) btnOpenSyncDb.onclick = () => openSyncDatabaseModal();
+  loadLiveDatabaseStatus();
   document.querySelectorAll('[data-open-reset-company]').forEach(b => {
     b.onclick = () => showResetCompanyModal(Number(b.dataset.openResetCompany), b.dataset.name);
   });
@@ -2509,6 +2564,185 @@ function openRestoreCompanyFromFileDialog(){
       btn.textContent = 'Restaurar Empresa';
     };
     reader.readAsText(file);
+  };
+}
+
+function loadLiveDatabaseStatus(){
+  const el = $('#db-live-badge');
+  if(!el) return;
+  api('database/status').then(res => {
+    if(!res || !res.ok) return;
+    const isPersist = res.storage_type === 'persistent';
+    el.innerHTML = isPersist 
+      ? '<span style="color:#16a34a">🟢 Almacenamiento Persistente</span>'
+      : '<span style="color:#d97706">⚠️ Almacenamiento Efímero</span>';
+    el.style.borderColor = isPersist ? '#16a34a' : '#d97706';
+    
+    const pEl = $('#db-status-path'); if(pEl) pEl.textContent = res.db_path;
+    const sEl = $('#db-status-size'); if(sEl) sEl.textContent = `${res.db_size_formatted} (${res.companies_count} emp, ${res.audit_count} reg)`;
+    const eEl = $('#db-status-env'); if(eEl) eEl.textContent = res.is_cloud ? '☁️ Nube (Linux Docker)' : '💻 Servidor Local (Mac/PC)';
+    const stEl = $('#db-status-storage'); if(stEl) stEl.innerHTML = isPersist ? '<span style="color:#16a34a;font-weight:700">Disco Seguro SSD</span>' : '<span style="color:#d97706;font-weight:700">Temporal (Sin disco)</span>';
+    
+    const alertEl = $('#db-ephemeral-alert');
+    if(alertEl) alertEl.style.display = isPersist ? 'none' : 'block';
+  }).catch(() => {});
+}
+
+function openRestoreDatabaseModal(){
+  $('#modal-content').innerHTML = `
+    <div class="modal-header">
+      <h2 style="display:flex;align-items:center;gap:8px"><span>📤</span> Restaurar Base de Datos Completa (.sqlite3)</h2>
+      <button type="button" id="close-modal" aria-label="Cerrar">×</button>
+    </div>
+    <form id="restore-sqlite-form">
+      <div style="background:color-mix(in srgb, #b91c1c 8%, var(--card));border:1px solid #b91c1c;padding:12px 14px;border-radius:8px;margin-bottom:14px;font-size:13px;line-height:1.6;color:var(--ink)">
+        <strong>⚠️ Advertencia Crítica:</strong> Esta acción reemplazará la base de datos completa de todas las empresas por el archivo seleccionado. 
+        <br>El sistema creará automáticamente un respaldo de seguridad del estado actual antes de proceder.
+      </div>
+
+      <div style="margin-bottom:14px">
+        <label for="f-restore_sqlite_file" style="font-weight:700">Seleccionar archivo de base de datos (*.sqlite3):</label>
+        <input id="f-restore_sqlite_file" name="file" type="file" accept=".sqlite3,.db" required style="margin-top:6px;width:100%">
+      </div>
+
+      <div style="margin-bottom:14px">
+        <label for="f-restore_confirm" style="font-weight:700">Para autorizar, escriba <span style="color:#b91c1c">RESTAURAR</span> en mayúsculas:</label>
+        <input id="f-restore_confirm" name="confirm" type="text" placeholder="RESTAURAR" required autocomplete="off" style="margin-top:6px">
+      </div>
+
+      <div class="error" id="restore-sqlite-error" role="alert"></div>
+
+      <div class="form-actions" style="margin-top:20px">
+        <button type="button" id="cancel-modal">Cancelar</button>
+        <button class="primary" type="submit" id="btn-submit-sqlite-restore" style="background:#b91c1c;border-color:#b91c1c">Restaurar Base de Datos</button>
+      </div>
+    </form>
+  `;
+
+  if(!$('#modal').open) $('#modal').showModal();
+  $('#close-modal').onclick = $('#cancel-modal').onclick = () => $('#modal').close();
+
+  $('#restore-sqlite-form').onsubmit = async e => {
+    e.preventDefault();
+    const btn = $('#btn-submit-sqlite-restore');
+    const errEl = $('#restore-sqlite-error');
+    errEl.textContent = '';
+    const confirmVal = ($('#f-restore_confirm').value || '').trim();
+    if(confirmVal !== 'RESTAURAR'){
+      errEl.textContent = 'Debe escribir exactamente RESTAURAR en mayúsculas.';
+      return;
+    }
+    const fileInput = $('#f-restore_sqlite_file');
+    if(!fileInput.files.length){
+      errEl.textContent = 'Seleccione un archivo .sqlite3.';
+      return;
+    }
+    const file = fileInput.files[0];
+    btn.disabled = true;
+    btn.textContent = 'Leyendo archivo...';
+
+    const reader = new FileReader();
+    reader.onload = async evt => {
+      try {
+        const arrayBuf = evt.target.result;
+        const bytes = new Uint8Array(arrayBuf);
+        let binary = '';
+        const chunk = 8192;
+        for (let i = 0; i < bytes.length; i += chunk) {
+          binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+        }
+        const b64 = btoa(binary);
+        btn.textContent = 'Restaurando base de datos en servidor...';
+
+        await api('database/restore', {
+          sqlite3_b64: b64,
+          confirm: 'RESTAURAR'
+        });
+
+        $('#modal').close();
+        toast('✓ Base de datos restaurada con éxito. Recargando...');
+        setTimeout(() => window.location.reload(), 1200);
+      } catch(err){
+        errEl.textContent = 'Error: ' + err.message;
+        btn.disabled = false;
+        btn.textContent = 'Restaurar Base de Datos';
+      }
+    };
+    reader.onerror = () => {
+      errEl.textContent = 'No fue posible leer el archivo seleccionado.';
+      btn.disabled = false;
+      btn.textContent = 'Restaurar Base de Datos';
+    };
+    reader.readAsArrayBuffer(file);
+  };
+}
+
+function openSyncDatabaseModal(){
+  $('#modal-content').innerHTML = `
+    <div class="modal-header">
+      <h2 style="display:flex;align-items:center;gap:8px"><span>🔄</span> Sincronización en Paralelo (Nube ⇄ Local)</h2>
+      <button type="button" id="close-modal" aria-label="Cerrar">×</button>
+    </div>
+    <form id="sync-db-form">
+      <p style="font-size:13px;color:var(--muted,#64748b);margin-bottom:14px;line-height:1.6">
+        Esta herramienta permite mantener sincronizadas su instalación local en su computadora y su servidor en la nube sin discrepancias ni pérdida de datos.
+      </p>
+
+      <div style="margin-bottom:14px">
+        <label for="f-sync_url" style="font-weight:700">URL del Servidor Remoto:</label>
+        <input id="f-sync_url" name="remote_url" type="text" value="https://zero-28me.onrender.com" required style="margin-top:6px;width:100%">
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+        <div>
+          <label for="f-sync_user" style="font-weight:700">Usuario Administrador:</label>
+          <input id="f-sync_user" name="username" type="text" value="admin" required style="margin-top:6px;width:100%">
+        </div>
+        <div>
+          <label for="f-sync_pass" style="font-weight:700">Contraseña:</label>
+          <input id="f-sync_pass" name="password" type="password" placeholder="Contraseña de acceso" required style="margin-top:6px;width:100%">
+        </div>
+      </div>
+
+      <div style="background:var(--surface,#f8fafc);border:1px solid var(--border,#cbd5e1);padding:12px 14px;border-radius:8px;margin-bottom:14px;font-size:12.5px;line-height:1.6">
+        ℹ️ <strong>¿Qué hace esta acción?</strong> Conecta directamente vía API cifrada al servidor remoto, descarga la base de datos real completa con todas sus empresas, empleados y fincas, crea un respaldo local previo y actualiza este equipo para operar en paralelo idéntico.
+      </div>
+
+      <div class="error" id="sync-db-error" role="alert"></div>
+
+      <div class="form-actions" style="margin-top:20px">
+        <button type="button" id="cancel-modal">Cancelar</button>
+        <button class="primary" type="submit" id="btn-submit-sync-pull">⬇️ Descargar de la Nube y Sincronizar Aquí</button>
+      </div>
+    </form>
+  `;
+
+  if(!$('#modal').open) $('#modal').showModal();
+  $('#close-modal').onclick = $('#cancel-modal').onclick = () => $('#modal').close();
+
+  $('#sync-db-form').onsubmit = async e => {
+    e.preventDefault();
+    const btn = $('#btn-submit-sync-pull');
+    const errEl = $('#sync-db-error');
+    errEl.textContent = '';
+    const f = new FormData(e.target);
+    const remote_url = (f.get('remote_url') || '').trim();
+    const username = (f.get('username') || '').trim();
+    const password = (f.get('password') || '').trim();
+
+    btn.disabled = true;
+    btn.textContent = 'Conectando y descargando base de datos...';
+
+    try {
+      const res = await api('database/sync-pull', { remote_url, username, password });
+      $('#modal').close();
+      toast('✓ ' + (res.message || 'Sincronización completada con éxito.'));
+      setTimeout(() => window.location.reload(), 1500);
+    } catch(err){
+      errEl.textContent = 'Error al sincronizar: ' + err.message;
+      btn.disabled = false;
+      btn.textContent = '⬇️ Descargar de la Nube y Sincronizar Aquí';
+    }
   };
 }
 
