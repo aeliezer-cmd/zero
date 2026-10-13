@@ -71,6 +71,183 @@ class RealEstateTests(unittest.TestCase):
         st = app.state(self.c, 1, 1)
         self.assertEqual(len(st['re_properties']), 0)
 
+    def test_condo_crud_and_units(self):
+        # 1. Create Condominium
+        condo_res = self.save('create_re_condo',
+            name='Torre Vista Hermosa',
+            code='COND-VH',
+            condo_type='residential',
+            address='Av. Enriquillo #88, Los Cacicazgos',
+            city='Santo Domingo D.N.',
+            rnc_tax_id='4-30-55112-9',
+            admin_name='Lic. Roberto Morales',
+            admin_phone='809-555-9090',
+            reserve_fund='100000',
+            bank_account_info='Popular Cta #789012345'
+        )
+        self.assertTrue(condo_res['ok'])
+        condo_id = condo_res['id']
+
+        # 2. Add units to condo
+        u1_res = self.save('create_re_property',
+            title='Apto 2B Torre Vista Hermosa',
+            code='PROP-VH01',
+            property_type='apartment',
+            listing_type='both',
+            status='available',
+            condo_id=condo_id,
+            unit_number='2B',
+            aliquot_pct=5.5,
+            condo_fee='7500',
+            condo_fee_day=5,
+            owner_name='Ing. Francisco Gómez',
+            owner_document='001-0981234-5',
+            owner_phone='809-777-6655',
+            owner_email='fgomez@test.com'
+        )
+        self.assertTrue(u1_res['ok'])
+        u1_id = u1_res['id']
+
+        u2_res = self.save('create_re_property',
+            title='Penthouse 10A Vista Hermosa',
+            code='PROP-VH02',
+            property_type='penthouse',
+            listing_type='sale',
+            status='available',
+            condo_id=condo_id,
+            unit_number='PH-10A',
+            aliquot_pct=11.0,
+            condo_fee='15000',
+            condo_fee_day=5,
+            owner_name='Familia Castillo',
+            owner_document='1-30-88991-2'
+        )
+        self.assertTrue(u2_res['ok'])
+
+        # Verify state enrichment
+        st = app.state(self.c, 1, 1)
+        self.assertEqual(len(st['re_condos']), 1)
+        c_state = st['re_condos'][0]
+        self.assertEqual(c_state['name'], 'Torre Vista Hermosa')
+        self.assertEqual(c_state['units_count'], 2)
+        self.assertEqual(c_state['monthly_potential'], 2250000) # (7,500 + 15,000) * 100
+
+        # Cannot delete condo while units are attached
+        with self.assertRaises(ValueError):
+            self.save('delete_re_condo', id=condo_id)
+
+    def test_condo_month_fees_generation_and_payment(self):
+        condo_id = self.save('create_re_condo',
+            name='Residencial Palmeras del Este',
+            code='COND-PE',
+            condo_type='residential'
+        )['id']
+
+        self.save('create_re_property',
+            title='Apartamento 101 Palmeras',
+            condo_id=condo_id,
+            unit_number='101',
+            condo_fee='5000',
+            condo_fee_day=5
+        )
+        self.save('create_re_property',
+            title='Apartamento 102 Palmeras',
+            condo_id=condo_id,
+            unit_number='102',
+            condo_fee='5500',
+            condo_fee_day=5
+        )
+
+        # Generate month fees
+        gen_res = self.save('generate_condo_month_fees', condo_id=condo_id, period='2026-10')
+        self.assertTrue(gen_res['ok'])
+        self.assertEqual(gen_res['count'], 2)
+
+        # Generating again for same period should not duplicate
+        gen2 = self.save('generate_condo_month_fees', condo_id=condo_id, period='2026-10')
+        self.assertEqual(gen2['count'], 0)
+
+        st = app.state(self.c, 1, 1)
+        self.assertEqual(len(st['re_condo_charges']), 2)
+        ch_101 = next(c for c in st['re_condo_charges'] if c['amount'] == 500000)
+        self.assertEqual(ch_101['status'], 'pending')
+        self.assertEqual(ch_101['paid_amount'], 0)
+
+        # Pay charge
+        pay_res = self.save('record_condo_charge_payment',
+            id=ch_101['id'],
+            amount='5000',
+            payment_date=app.today().isoformat(),
+            payment_reference='Depósito BHD #44192'
+        )
+        self.assertTrue(pay_res['ok'])
+
+        st = app.state(self.c, 1, 1)
+        paid_ch = next(c for c in st['re_condo_charges'] if c['id'] == ch_101['id'])
+        self.assertEqual(paid_ch['status'], 'paid')
+        self.assertEqual(paid_ch['paid_amount'], 500000)
+
+        # Condo rollup verification
+        condo_st = st['re_condos'][0]
+        self.assertEqual(condo_st['total_collected'], 500000)
+        self.assertEqual(condo_st['total_pending_charges'], 550000)
+
+    def test_common_area_utility_expenses_workflow(self):
+        condo_id = self.save('create_re_condo',
+            name='Torre Metropolitana',
+            code='COND-TM'
+        )['id']
+
+        # 1. Register electricity bill (Edesur)
+        exp_res = self.save('create_re_condo_expense',
+            condo_id=condo_id,
+            service_type='electricity',
+            provider_name='Edesur Dominicana S.A.',
+            invoice_number='NIC 8899120',
+            service_period='Octubre 2026',
+            amount='16500',
+            notes='Energía eléctrica de áreas comunes y bombas'
+        )
+        self.assertTrue(exp_res['ok'])
+        exp_id = exp_res['id']
+
+        # 2. Register water bill (CAASD)
+        exp_res2 = self.save('create_re_condo_expense',
+            condo_id=condo_id,
+            service_type='water',
+            provider_name='CAASD',
+            invoice_number='FAC-99123',
+            service_period='Octubre 2026',
+            amount='3800',
+            notes='Suministro de agua para cisterna'
+        )
+        self.assertTrue(exp_res2['ok'])
+
+        st = app.state(self.c, 1, 1)
+        self.assertEqual(len(st['re_condo_expenses']), 2)
+        e1 = next(e for e in st['re_condo_expenses'] if e['id'] == exp_id)
+        self.assertEqual(e1['status'], 'pending')
+        self.assertEqual(e1['service_type'], 'electricity')
+
+        # 3. Pay electricity bill
+        pay_res = self.save('pay_re_condo_expense',
+            id=exp_id,
+            payment_date=app.today().isoformat(),
+            payment_reference='Transferencia Banreservas #9901'
+        )
+        self.assertTrue(pay_res['ok'])
+
+        st = app.state(self.c, 1, 1)
+        e1_paid = next(e for e in st['re_condo_expenses'] if e['id'] == exp_id)
+        self.assertEqual(e1_paid['status'], 'paid')
+        self.assertEqual(e1_paid['paid_amount'], 1650000)
+
+        # Rollup check on condo
+        condo_st = st['re_condos'][0]
+        self.assertEqual(condo_st['total_expenses'], 2030000) # (16500 + 3800) * 100
+        self.assertEqual(condo_st['total_paid_expenses'], 1650000)
+        self.assertEqual(condo_st['total_pending_expenses'], 380000)
+
     def test_lease_workflow_and_rent_charge(self):
         prop_id = self.save('create_re_property',
             title='Casa Residencial Alameda',
@@ -173,14 +350,17 @@ class RealEstateTests(unittest.TestCase):
         prop = next(p for p in st['re_properties'] if p['id'] == prop_id)
         self.assertEqual(prop['status'], 'sold')
         self.assertEqual(len(st['re_sales']), 1)
-        self.assertEqual(st['re_sales'][0]['commission_amount'], 49000000) # 5% of 9,800,000 * 100
+        self.assertEqual(st['re_sales'][0]['commission_amount'], 49000000)
 
     def test_demo_real_estate_seeding(self):
         res = self.save('seed_demo_real_estate')
         self.assertTrue(res['ok'])
 
         st = app.state(self.c, 1, 1)
-        self.assertGreaterEqual(len(st['re_properties']), 4)
+        self.assertGreaterEqual(len(st['re_condos']), 1)
+        self.assertGreaterEqual(len(st['re_properties']), 7) # 3 condo units + 4 independent (commercial, land, lot, villa)
+        self.assertGreaterEqual(len(st['re_condo_charges']), 3)
+        self.assertGreaterEqual(len(st['re_condo_expenses']), 5) # Electricity, water, elevator, security, fuel
         self.assertGreaterEqual(len(st['re_leases']), 1)
         self.assertGreaterEqual(len(st['re_sales']), 1)
         self.assertGreaterEqual(len(st['re_visits']), 1)
@@ -193,7 +373,8 @@ class RealEstateTests(unittest.TestCase):
         res2 = self.save('seed_demo_real_estate', force=True)
         self.assertTrue(res2['ok'])
         st2 = app.state(self.c, 1, 1)
-        self.assertEqual(len(st2['re_properties']), 4)
+        self.assertEqual(len(st2['re_condos']), 1)
+        self.assertEqual(len(st2['re_properties']), 7)
 
 if __name__ == '__main__':
     unittest.main()

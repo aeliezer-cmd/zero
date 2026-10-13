@@ -1,19 +1,30 @@
-"""Adaptive Real Estate (Bienes Raíces / Inmobiliaria) module for Zero ERP."""
+"""Adaptive Real Estate (Bienes Raíces / Inmobiliaria y Condominios) module for Zero ERP."""
 import json
 import sqlite3
 import datetime as dt
 
-TABLES = ('re_properties', 're_leases', 're_sales', 're_visits', 're_maintenances')
+TABLES = (
+    're_condos', 're_properties', 're_condo_charges', 're_condo_expenses',
+    're_leases', 're_sales', 're_visits', 're_maintenances'
+)
 
 REFS = {
-    're_properties': {'agent_id': 'employees', 'department_id': 'departments', 'project_id': 'projects'},
+    're_condos': {},
+    're_properties': {'condo_id': 're_condos', 'agent_id': 'employees', 'department_id': 'departments', 'project_id': 'projects'},
+    're_condo_charges': {'condo_id': 're_condos', 'property_id': 're_properties', 'charge_id': 'charges', 'created_by': 'users'},
+    're_condo_expenses': {'condo_id': 're_condos', 'expense_id': 'expenses', 'created_by': 'users'},
     're_leases': {'property_id': 're_properties', 'agent_id': 'employees', 'created_by': 'users'},
     're_sales': {'property_id': 're_properties', 'agent_id': 'employees', 'created_by': 'users'},
     're_visits': {'property_id': 're_properties', 'agent_id': 'employees', 'created_by': 'users'},
     're_maintenances': {'property_id': 're_properties', 'created_by': 'users'}
 }
 
-PROPERTY_TYPES = ('apartment', 'house', 'villa', 'commercial', 'office', 'land', 'industrial', 'building')
+PROPERTY_TYPES = (
+    'apartment', 'house', 'villa', 'penthouse', 'townhouse',
+    'commercial', 'office', 'industrial', 'building',
+    'land', 'lot', 'parcel',
+    'condominium', 'residential'
+)
 LISTING_TYPES = ('rent', 'sale', 'both')
 PROPERTY_STATUSES = ('available', 'rented', 'sold', 'reserved', 'maintenance')
 LEASE_STATUSES = ('active', 'expired', 'terminated')
@@ -22,13 +33,39 @@ VISIT_INTEREST_LEVELS = ('high', 'medium', 'low', 'offer_made')
 VISIT_STATUSES = ('scheduled', 'completed', 'cancelled')
 MAINTENANCE_STATUSES = ('pending', 'in_progress', 'resolved')
 
+CONDO_TYPES = ('residential', 'commercial', 'mixed', 'residential_complex')
+CONDO_CHARGE_STATUSES = ('pending', 'paid', 'partial', 'cancelled')
+CONDO_EXPENSE_TYPES = (
+    'electricity', 'water', 'elevator', 'security_cleaning',
+    'generator_fuel', 'maintenance_repairs', 'insurance', 'other'
+)
+CONDO_EXPENSE_STATUSES = ('pending', 'paid', 'cancelled')
+
 SCHEMA = '''
+CREATE TABLE IF NOT EXISTS re_condos(
+    id INTEGER PRIMARY KEY,
+    company_id INTEGER NOT NULL REFERENCES companies(id),
+    name TEXT NOT NULL,
+    code TEXT NOT NULL DEFAULT '',
+    condo_type TEXT NOT NULL DEFAULT 'residential' CHECK(condo_type IN ('residential','commercial','mixed','residential_complex')),
+    address TEXT NOT NULL DEFAULT '',
+    city TEXT NOT NULL DEFAULT '',
+    rnc_tax_id TEXT NOT NULL DEFAULT '',
+    admin_name TEXT NOT NULL DEFAULT '',
+    admin_phone TEXT NOT NULL DEFAULT '',
+    admin_email TEXT NOT NULL DEFAULT '',
+    reserve_fund INTEGER NOT NULL DEFAULT 0 CHECK(reserve_fund >= 0),
+    bank_account_info TEXT NOT NULL DEFAULT '',
+    notes TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT ''
+);
+
 CREATE TABLE IF NOT EXISTS re_properties(
     id INTEGER PRIMARY KEY,
     company_id INTEGER NOT NULL REFERENCES companies(id),
     title TEXT NOT NULL,
     code TEXT NOT NULL DEFAULT '',
-    property_type TEXT NOT NULL DEFAULT 'apartment' CHECK(property_type IN ('apartment','house','villa','commercial','office','land','industrial','building')),
+    property_type TEXT NOT NULL DEFAULT 'apartment' CHECK(property_type IN ('apartment','house','villa','penthouse','townhouse','commercial','office','industrial','building','land','lot','parcel','condominium','residential')),
     listing_type TEXT NOT NULL DEFAULT 'both' CHECK(listing_type IN ('rent','sale','both')),
     status TEXT NOT NULL DEFAULT 'available' CHECK(status IN ('available','rented','sold','reserved','maintenance')),
     address TEXT NOT NULL DEFAULT '',
@@ -41,10 +78,58 @@ CREATE TABLE IF NOT EXISTS re_properties(
     parking_spots INTEGER NOT NULL DEFAULT 0,
     owner_name TEXT NOT NULL DEFAULT '',
     owner_phone TEXT NOT NULL DEFAULT '',
+    owner_document TEXT NOT NULL DEFAULT '',
+    owner_email TEXT NOT NULL DEFAULT '',
+    condo_id INTEGER REFERENCES re_condos(id),
+    unit_number TEXT NOT NULL DEFAULT '',
+    aliquot_pct REAL NOT NULL DEFAULT 0,
+    condo_fee INTEGER NOT NULL DEFAULT 0 CHECK(condo_fee >= 0),
+    condo_fee_day INTEGER NOT NULL DEFAULT 5 CHECK(condo_fee_day BETWEEN 1 AND 31),
     agent_id INTEGER REFERENCES employees(id),
     department_id INTEGER REFERENCES departments(id),
     project_id INTEGER REFERENCES projects(id),
     notes TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS re_condo_charges(
+    id INTEGER PRIMARY KEY,
+    company_id INTEGER NOT NULL REFERENCES companies(id),
+    condo_id INTEGER NOT NULL REFERENCES re_condos(id),
+    property_id INTEGER NOT NULL REFERENCES re_properties(id),
+    concept TEXT NOT NULL DEFAULT 'Mantenimiento mensual',
+    period TEXT NOT NULL,
+    issue_date TEXT NOT NULL,
+    due_date TEXT NOT NULL,
+    amount INTEGER NOT NULL CHECK(amount > 0),
+    paid_amount INTEGER NOT NULL DEFAULT 0 CHECK(paid_amount >= 0),
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','paid','partial','cancelled')),
+    payment_date TEXT NOT NULL DEFAULT '',
+    payment_reference TEXT NOT NULL DEFAULT '',
+    charge_id INTEGER REFERENCES charges(id),
+    notes TEXT NOT NULL DEFAULT '',
+    created_by INTEGER NOT NULL REFERENCES users(id),
+    created_at TEXT NOT NULL DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS re_condo_expenses(
+    id INTEGER PRIMARY KEY,
+    company_id INTEGER NOT NULL REFERENCES companies(id),
+    condo_id INTEGER NOT NULL REFERENCES re_condos(id),
+    service_type TEXT NOT NULL DEFAULT 'electricity' CHECK(service_type IN ('electricity','water','elevator','security_cleaning','generator_fuel','maintenance_repairs','insurance','other')),
+    provider_name TEXT NOT NULL,
+    invoice_number TEXT NOT NULL DEFAULT '',
+    service_period TEXT NOT NULL DEFAULT '',
+    invoice_date TEXT NOT NULL,
+    due_date TEXT NOT NULL,
+    amount INTEGER NOT NULL CHECK(amount > 0),
+    paid_amount INTEGER NOT NULL DEFAULT 0 CHECK(paid_amount >= 0),
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','paid','cancelled')),
+    payment_date TEXT NOT NULL DEFAULT '',
+    payment_reference TEXT NOT NULL DEFAULT '',
+    expense_id INTEGER REFERENCES expenses(id),
+    notes TEXT NOT NULL DEFAULT '',
+    created_by INTEGER NOT NULL REFERENCES users(id),
     created_at TEXT NOT NULL DEFAULT ''
 );
 
@@ -113,7 +198,11 @@ CREATE TABLE IF NOT EXISTS re_maintenances(
 '''
 
 ACTIONS = (
+    'create_re_condo', 'edit_re_condo', 'delete_re_condo',
     'create_re_property', 'edit_re_property', 'delete_re_property',
+    'create_re_condo_charge', 'edit_re_condo_charge', 'delete_re_condo_charge',
+    'generate_condo_month_fees', 'record_condo_charge_payment',
+    'create_re_condo_expense', 'edit_re_condo_expense', 'pay_re_condo_expense', 'delete_re_condo_expense',
     'create_re_lease', 'edit_re_lease', 'terminate_re_lease', 'delete_re_lease',
     'create_re_sale', 'edit_re_sale', 'delete_re_sale',
     'create_re_visit', 'edit_re_visit', 'delete_re_visit',
@@ -123,27 +212,157 @@ ACTIONS = (
 
 def migrate(c):
     # Idempotent table check and column addition if needed
-    for table, ddl in [
-        ('re_properties', SCHEMA),
-        ('re_leases', SCHEMA),
-        ('re_sales', SCHEMA),
-        ('re_visits', SCHEMA),
-        ('re_maintenances', SCHEMA)
-    ]:
+    for table in ('re_condos', 're_properties', 're_condo_charges', 're_condo_expenses', 're_leases', 're_sales', 're_visits', 're_maintenances'):
         try:
             c.execute(f"SELECT 1 FROM {table} LIMIT 1")
         except sqlite3.OperationalError:
             c.executescript(SCHEMA)
             break
 
+    # Evolve re_properties schema safely if needed
+    try:
+        prop_sql = c.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='re_properties'").fetchone()
+        if prop_sql and "'penthouse'" not in prop_sql[0]:
+            c.execute("PRAGMA foreign_keys=OFF")
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS re_properties_v2(
+                    id INTEGER PRIMARY KEY,
+                    company_id INTEGER NOT NULL REFERENCES companies(id),
+                    title TEXT NOT NULL,
+                    code TEXT NOT NULL DEFAULT '',
+                    property_type TEXT NOT NULL DEFAULT 'apartment' CHECK(property_type IN ('apartment','house','villa','penthouse','townhouse','commercial','office','industrial','building','land','lot','parcel','condominium','residential')),
+                    listing_type TEXT NOT NULL DEFAULT 'both' CHECK(listing_type IN ('rent','sale','both')),
+                    status TEXT NOT NULL DEFAULT 'available' CHECK(status IN ('available','rented','sold','reserved','maintenance')),
+                    address TEXT NOT NULL DEFAULT '',
+                    city TEXT NOT NULL DEFAULT '',
+                    price_sale INTEGER NOT NULL DEFAULT 0 CHECK(price_sale >= 0),
+                    price_rent INTEGER NOT NULL DEFAULT 0 CHECK(price_rent >= 0),
+                    area_sqm REAL NOT NULL DEFAULT 0,
+                    bedrooms INTEGER NOT NULL DEFAULT 0,
+                    bathrooms REAL NOT NULL DEFAULT 0,
+                    parking_spots INTEGER NOT NULL DEFAULT 0,
+                    owner_name TEXT NOT NULL DEFAULT '',
+                    owner_phone TEXT NOT NULL DEFAULT '',
+                    owner_document TEXT NOT NULL DEFAULT '',
+                    owner_email TEXT NOT NULL DEFAULT '',
+                    condo_id INTEGER REFERENCES re_condos(id),
+                    unit_number TEXT NOT NULL DEFAULT '',
+                    aliquot_pct REAL NOT NULL DEFAULT 0,
+                    condo_fee INTEGER NOT NULL DEFAULT 0 CHECK(condo_fee >= 0),
+                    condo_fee_day INTEGER NOT NULL DEFAULT 5 CHECK(condo_fee_day BETWEEN 1 AND 31),
+                    agent_id INTEGER REFERENCES employees(id),
+                    department_id INTEGER REFERENCES departments(id),
+                    project_id INTEGER REFERENCES projects(id),
+                    notes TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL DEFAULT ''
+                )
+            """)
+            existing_cols = [r[1] for r in c.execute("PRAGMA table_info(re_properties)").fetchall()]
+            common_cols = [col for col in [
+                'id', 'company_id', 'title', 'code', 'property_type', 'listing_type', 'status', 'address', 'city',
+                'price_sale', 'price_rent', 'area_sqm', 'bedrooms', 'bathrooms', 'parking_spots',
+                'owner_name', 'owner_phone', 'agent_id', 'department_id', 'project_id', 'notes', 'created_at',
+                'condo_id', 'unit_number', 'aliquot_pct', 'condo_fee', 'condo_fee_day', 'owner_document', 'owner_email'
+            ] if col in existing_cols]
+            col_str = ', '.join(common_cols)
+            c.execute(f"INSERT INTO re_properties_v2({col_str}) SELECT {col_str} FROM re_properties")
+            c.execute("DROP TABLE re_properties")
+            c.execute("ALTER TABLE re_properties_v2 RENAME TO re_properties")
+            c.execute("PRAGMA foreign_keys=ON")
+        else:
+            prop_cols = {row[1] for row in c.execute("PRAGMA table_info(re_properties)").fetchall()}
+            for col, col_type, default in [
+                ('condo_id', 'INTEGER', 'NULL'),
+                ('unit_number', 'TEXT', "''"),
+                ('aliquot_pct', 'REAL', '0'),
+                ('condo_fee', 'INTEGER', '0'),
+                ('condo_fee_day', 'INTEGER', '5'),
+                ('owner_document', 'TEXT', "''"),
+                ('owner_email', 'TEXT', "''")
+            ]:
+                if col not in prop_cols:
+                    try:
+                        c.execute(f"ALTER TABLE re_properties ADD COLUMN {col} {col_type} DEFAULT {default}")
+                    except sqlite3.OperationalError:
+                        pass
+    except Exception:
+        pass
+
 def state(core, c, uid, cid, m):
-    properties = core.rows(c, 'SELECT * FROM re_properties WHERE company_id=? ORDER BY id DESC', (cid,))
-    leases = core.rows(c, 'SELECT * FROM re_leases WHERE company_id=? ORDER BY id DESC', (cid,))
-    sales = core.rows(c, 'SELECT * FROM re_sales WHERE company_id=? ORDER BY id DESC', (cid,))
-    visits = core.rows(c, 'SELECT * FROM re_visits WHERE company_id=? ORDER BY visit_date DESC, id DESC', (cid,))
-    maintenances = core.rows(c, 'SELECT * FROM re_maintenances WHERE company_id=? ORDER BY reported_date DESC, id DESC', (cid,))
+    condos = core.rows(c, 'SELECT * FROM re_condos WHERE company_id=? ORDER BY name', (cid,))
+    properties = core.rows(c, '''
+        SELECT p.*, co.name AS condo_name, co.code AS condo_code
+        FROM re_properties p
+        LEFT JOIN re_condos co ON co.id = p.condo_id
+        WHERE p.company_id=?
+        ORDER BY p.id DESC
+    ''', (cid,))
+    condo_charges = core.rows(c, '''
+        SELECT ch.*, co.name AS condo_name, p.title AS property_title, p.unit_number, p.owner_name, p.owner_phone
+        FROM re_condo_charges ch
+        JOIN re_condos co ON co.id = ch.condo_id
+        JOIN re_properties p ON p.id = ch.property_id
+        WHERE ch.company_id=?
+        ORDER BY ch.period DESC, ch.due_date DESC, ch.id DESC
+    ''', (cid,))
+    condo_expenses = core.rows(c, '''
+        SELECT ex.*, co.name AS condo_name
+        FROM re_condo_expenses ex
+        JOIN re_condos co ON co.id = ex.condo_id
+        WHERE ex.company_id=?
+        ORDER BY ex.invoice_date DESC, ex.id DESC
+    ''', (cid,))
+    leases = core.rows(c, '''
+        SELECT l.*, p.title AS property_title, p.code AS property_code
+        FROM re_leases l
+        JOIN re_properties p ON p.id = l.property_id
+        WHERE l.company_id=?
+        ORDER BY l.id DESC
+    ''', (cid,))
+    sales = core.rows(c, '''
+        SELECT s.*, p.title AS property_title, p.code AS property_code
+        FROM re_sales s
+        JOIN re_properties p ON p.id = s.property_id
+        WHERE s.company_id=?
+        ORDER BY s.id DESC
+    ''', (cid,))
+    visits = core.rows(c, '''
+        SELECT v.*, p.title AS property_title, p.code AS property_code
+        FROM re_visits v
+        JOIN re_properties p ON p.id = v.property_id
+        WHERE v.company_id=?
+        ORDER BY v.visit_date DESC, v.id DESC
+    ''', (cid,))
+    maintenances = core.rows(c, '''
+        SELECT m.*, p.title AS property_title, p.code AS property_code
+        FROM re_maintenances m
+        JOIN re_properties p ON p.id = m.property_id
+        WHERE m.company_id=?
+        ORDER BY m.reported_date DESC, m.id DESC
+    ''', (cid,))
+
+    # Compute rollup metrics for condos
+    for condo in condos:
+        c_id = condo['id']
+        c_props = [p for p in properties if p.get('condo_id') == c_id]
+        c_charges = [ch for ch in condo_charges if ch.get('condo_id') == c_id and ch.get('status') != 'cancelled']
+        c_expenses = [ex for ex in condo_expenses if ex.get('condo_id') == c_id and ex.get('status') != 'cancelled']
+
+        condo['units_count'] = len(c_props)
+        condo['monthly_potential'] = sum(p.get('condo_fee', 0) for p in c_props)
+        condo['total_billed'] = sum(ch.get('amount', 0) for ch in c_charges)
+        condo['total_collected'] = sum(ch.get('paid_amount', 0) for ch in c_charges)
+        condo['total_pending_charges'] = condo['total_billed'] - condo['total_collected']
+        condo['total_expenses'] = sum(ex.get('amount', 0) for ex in c_expenses)
+        condo['total_paid_expenses'] = sum(ex.get('paid_amount', 0) for ex in c_expenses)
+        condo['total_pending_expenses'] = condo['total_expenses'] - condo['total_paid_expenses']
+        condo['operating_balance'] = condo['total_collected'] - condo['total_paid_expenses']
+
     return {
+        're_condos': condos,
         're_properties': properties,
+        're_condo_charges': condo_charges,
+        're_condo_expenses': condo_expenses,
         're_leases': leases,
         're_sales': sales,
         're_visits': visits,
@@ -151,8 +370,78 @@ def state(core, c, uid, cid, m):
     }
 
 def mutate(core, c, uid, cid, action, d):
-    m = core.membership(c, uid, cid, 2 if action not in ('delete_re_property', 'delete_re_lease', 'delete_re_sale') else 2, True)
+    m = core.membership(c, uid, cid, 2 if action not in ('delete_re_property', 'delete_re_lease', 'delete_re_sale', 'delete_re_condo') else 2, True)
 
+    # ---------------- CONDOMINIUMS CRUD ----------------
+    if action == 'create_re_condo':
+        name = core.text(d.get('name'), 'Nombre del condominio o torre', 200)
+        code = str(d.get('code') or '').strip()[:50]
+        condo_type = str(d.get('condo_type') or 'residential').strip().lower()
+        if condo_type not in CONDO_TYPES: condo_type = 'residential'
+        address = str(d.get('address') or '').strip()[:500]
+        city = str(d.get('city') or '').strip()[:200]
+        rnc_tax_id = str(d.get('rnc_tax_id') or '').strip()[:50]
+        admin_name = str(d.get('admin_name') or '').strip()[:200]
+        admin_phone = str(d.get('admin_phone') or '').strip()[:100]
+        admin_email = str(d.get('admin_email') or '').strip()[:200]
+        reserve_fund = int(round(float(d.get('reserve_fund') or 0) * 100))
+        if reserve_fund < 0: reserve_fund = 0
+        bank_account_info = str(d.get('bank_account_info') or '').strip()[:300]
+        notes = str(d.get('notes') or '').strip()[:2000]
+        created_at = core.today().isoformat()
+
+        condo_id = c.execute('''
+            INSERT INTO re_condos(company_id, name, code, condo_type, address, city, rnc_tax_id,
+                                  admin_name, admin_phone, admin_email, reserve_fund, bank_account_info, notes, created_at)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        ''', (cid, name, code, condo_type, address, city, rnc_tax_id,
+              admin_name, admin_phone, admin_email, reserve_fund, bank_account_info, notes, created_at)).lastrowid
+
+        core.audit(c, uid, cid, 'crear condominio', 're_condos', condo_id, {'name': name, 'code': code})
+        return {'ok': True, 'id': condo_id, 'message': 'Condominio / Torre registrado con éxito.'}
+
+    if action == 'edit_re_condo':
+        condo_id = int(d.get('id') or 0)
+        condo = core.ref(c, 're_condos', condo_id, cid)
+        name = core.text(d.get('name'), 'Nombre del condominio o torre', 200)
+        code = str(d.get('code') or '').strip()[:50]
+        condo_type = str(d.get('condo_type') or condo['condo_type']).strip().lower()
+        if condo_type not in CONDO_TYPES: condo_type = condo['condo_type']
+        address = str(d.get('address') or '').strip()[:500]
+        city = str(d.get('city') or '').strip()[:200]
+        rnc_tax_id = str(d.get('rnc_tax_id') or '').strip()[:50]
+        admin_name = str(d.get('admin_name') or '').strip()[:200]
+        admin_phone = str(d.get('admin_phone') or '').strip()[:100]
+        admin_email = str(d.get('admin_email') or '').strip()[:200]
+        reserve_fund = int(round(float(d.get('reserve_fund') or 0) * 100))
+        if reserve_fund < 0: reserve_fund = 0
+        bank_account_info = str(d.get('bank_account_info') or '').strip()[:300]
+        notes = str(d.get('notes') or '').strip()[:2000]
+
+        c.execute('''
+            UPDATE re_condos SET
+                name=?, code=?, condo_type=?, address=?, city=?, rnc_tax_id=?,
+                admin_name=?, admin_phone=?, admin_email=?, reserve_fund=?, bank_account_info=?, notes=?
+            WHERE id=? AND company_id=?
+        ''', (name, code, condo_type, address, city, rnc_tax_id,
+              admin_name, admin_phone, admin_email, reserve_fund, bank_account_info, notes, condo_id, cid))
+
+        core.audit(c, uid, cid, 'editar condominio', 're_condos', condo_id, {'name': name})
+        return {'ok': True, 'id': condo_id, 'message': 'Ficha de condominio actualizada.'}
+
+    if action == 'delete_re_condo':
+        condo_id = int(d.get('id') or 0)
+        condo = core.ref(c, 're_condos', condo_id, cid)
+        unit_count = c.execute('SELECT COUNT(*) FROM re_properties WHERE condo_id=? AND company_id=?', (condo_id, cid)).fetchone()[0]
+        if unit_count > 0:
+            raise ValueError(f'No se puede eliminar el condominio «{condo["name"]}» porque tiene {unit_count} unidades asignadas. Desvincule o reasigne los inmuebles primero.')
+        c.execute('DELETE FROM re_condo_charges WHERE condo_id=? AND company_id=?', (condo_id, cid))
+        c.execute('DELETE FROM re_condo_expenses WHERE condo_id=? AND company_id=?', (condo_id, cid))
+        c.execute('DELETE FROM re_condos WHERE id=? AND company_id=?', (condo_id, cid))
+        core.audit(c, uid, cid, 'eliminar condominio', 're_condos', condo_id, {'name': condo['name']})
+        return {'ok': True, 'id': condo_id, 'message': 'Condominio eliminado correctamente.'}
+
+    # ---------------- PROPERTY CRUD ----------------
     if action == 'create_re_property':
         title = core.text(d.get('title'), 'Título de la propiedad', 200)
         code = str(d.get('code') or '').strip()[:50]
@@ -172,6 +461,17 @@ def mutate(core, c, uid, cid, action, d):
         parking_spots = int(d.get('parking_spots') or 0)
         owner_name = str(d.get('owner_name') or '').strip()[:200]
         owner_phone = str(d.get('owner_phone') or '').strip()[:100]
+        owner_document = str(d.get('owner_document') or '').strip()[:50]
+        owner_email = str(d.get('owner_email') or '').strip()[:200]
+
+        condo_id = int(d['condo_id']) if d.get('condo_id') else None
+        if condo_id:
+            core.ref(c, 're_condos', condo_id, cid)
+        unit_number = str(d.get('unit_number') or '').strip()[:50]
+        aliquot_pct = float(d.get('aliquot_pct') or 0)
+        condo_fee = int(round(float(d.get('condo_fee') or 0) * 100))
+        condo_fee_day = max(1, min(31, int(d.get('condo_fee_day') or 5)))
+
         agent_id = int(d['agent_id']) if d.get('agent_id') else None
         dept_id = int(d['department_id']) if d.get('department_id') else None
         proj_id = int(d['project_id']) if d.get('project_id') else None
@@ -181,13 +481,17 @@ def mutate(core, c, uid, cid, action, d):
         row_id = c.execute('''
             INSERT INTO re_properties(company_id,title,code,property_type,listing_type,status,address,city,
                                       price_sale,price_rent,area_sqm,bedrooms,bathrooms,parking_spots,
-                                      owner_name,owner_phone,agent_id,department_id,project_id,notes,created_at)
-            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                                      owner_name,owner_phone,owner_document,owner_email,
+                                      condo_id,unit_number,aliquot_pct,condo_fee,condo_fee_day,
+                                      agent_id,department_id,project_id,notes,created_at)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ''', (cid, title, code, prop_type, listing_type, status, address, city,
               price_sale, price_rent, area_sqm, bedrooms, bathrooms, parking_spots,
-              owner_name, owner_phone, agent_id, dept_id, proj_id, notes, created_at)).lastrowid
+              owner_name, owner_phone, owner_document, owner_email,
+              condo_id, unit_number, aliquot_pct, condo_fee, condo_fee_day,
+              agent_id, dept_id, proj_id, notes, created_at)).lastrowid
 
-        core.audit(c, uid, cid, 'crear inmueble', 're_properties', row_id, {'title': title, 'code': code})
+        core.audit(c, uid, cid, 'crear inmueble', 're_properties', row_id, {'title': title, 'code': code, 'condo_id': condo_id})
         return {'ok': True, 'id': row_id, 'message': 'Inmueble registrado con éxito.'}
 
     if action == 'edit_re_property':
@@ -211,6 +515,17 @@ def mutate(core, c, uid, cid, action, d):
         parking_spots = int(d.get('parking_spots') or 0)
         owner_name = str(d.get('owner_name') or '').strip()[:200]
         owner_phone = str(d.get('owner_phone') or '').strip()[:100]
+        owner_document = str(d.get('owner_document') or '').strip()[:50]
+        owner_email = str(d.get('owner_email') or '').strip()[:200]
+
+        condo_id = int(d['condo_id']) if d.get('condo_id') else None
+        if condo_id:
+            core.ref(c, 're_condos', condo_id, cid)
+        unit_number = str(d.get('unit_number') or '').strip()[:50]
+        aliquot_pct = float(d.get('aliquot_pct') or 0)
+        condo_fee = int(round(float(d.get('condo_fee') or 0) * 100))
+        condo_fee_day = max(1, min(31, int(d.get('condo_fee_day') or 5)))
+
         agent_id = int(d['agent_id']) if d.get('agent_id') else None
         dept_id = int(d['department_id']) if d.get('department_id') else None
         proj_id = int(d['project_id']) if d.get('project_id') else None
@@ -220,11 +535,15 @@ def mutate(core, c, uid, cid, action, d):
             UPDATE re_properties SET
                 title=?, code=?, property_type=?, listing_type=?, status=?, address=?, city=?,
                 price_sale=?, price_rent=?, area_sqm=?, bedrooms=?, bathrooms=?, parking_spots=?,
-                owner_name=?, owner_phone=?, agent_id=?, department_id=?, project_id=?, notes=?
+                owner_name=?, owner_phone=?, owner_document=?, owner_email=?,
+                condo_id=?, unit_number=?, aliquot_pct=?, condo_fee=?, condo_fee_day=?,
+                agent_id=?, department_id=?, project_id=?, notes=?
             WHERE id=? AND company_id=?
         ''', (title, code, prop_type, listing_type, status, address, city,
               price_sale, price_rent, area_sqm, bedrooms, bathrooms, parking_spots,
-              owner_name, owner_phone, agent_id, dept_id, proj_id, notes, prop_id, cid))
+              owner_name, owner_phone, owner_document, owner_email,
+              condo_id, unit_number, aliquot_pct, condo_fee, condo_fee_day,
+              agent_id, dept_id, proj_id, notes, prop_id, cid))
 
         core.audit(c, uid, cid, 'editar inmueble', 're_properties', prop_id, {'title': title})
         return {'ok': True, 'id': prop_id, 'message': 'Ficha de inmueble actualizada.'}
@@ -232,10 +551,10 @@ def mutate(core, c, uid, cid, action, d):
     if action == 'delete_re_property':
         prop_id = int(d.get('id') or 0)
         item = core.ref(c, 're_properties', prop_id, cid)
-        # Check active leases
         active_leases = c.execute('SELECT COUNT(*) FROM re_leases WHERE property_id=? AND company_id=? AND status="active"', (prop_id, cid)).fetchone()[0]
         if active_leases > 0:
             raise ValueError('No se puede eliminar un inmueble con contratos de arrendamiento activos. Finalice o rescinda los contratos primero.')
+        c.execute('DELETE FROM re_condo_charges WHERE property_id=? AND company_id=?', (prop_id, cid))
         c.execute('DELETE FROM re_visits WHERE property_id=? AND company_id=?', (prop_id, cid))
         c.execute('DELETE FROM re_maintenances WHERE property_id=? AND company_id=?', (prop_id, cid))
         c.execute('DELETE FROM re_leases WHERE property_id=? AND company_id=?', (prop_id, cid))
@@ -245,6 +564,221 @@ def mutate(core, c, uid, cid, action, d):
         core.audit(c, uid, cid, 'eliminar inmueble', 're_properties', prop_id, {'title': item['title']})
         return {'ok': True, 'id': prop_id, 'message': 'Inmueble eliminado correctamente.'}
 
+    # ---------------- CONDO CHARGES & COLLECTIONS ----------------
+    if action == 'create_re_condo_charge':
+        condo_id = int(d.get('condo_id') or 0)
+        condo = core.ref(c, 're_condos', condo_id, cid)
+        prop_id = int(d.get('property_id') or 0)
+        prop = core.ref(c, 're_properties', prop_id, cid)
+        concept = core.text(d.get('concept'), 'Concepto del cobro', 200)
+        period = str(d.get('period') or core.today().strftime('%Y-%m')).strip()[:20]
+        issue_date = core.date(d.get('issue_date', core.today().isoformat())).isoformat()
+        due_date = core.date(d.get('due_date', (core.today() + dt.timedelta(days=15)).isoformat())).isoformat()
+        amount = int(round(float(d.get('amount') or 0) * 100))
+        if amount <= 0: raise ValueError('El monto de la cuota debe ser mayor que cero.')
+        notes = str(d.get('notes') or '').strip()[:2000]
+
+        row_id = c.execute('''
+            INSERT INTO re_condo_charges(company_id, condo_id, property_id, concept, period,
+                                         issue_date, due_date, amount, paid_amount, status, notes, created_by, created_at)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
+        ''', (cid, condo_id, prop_id, concept, period,
+              issue_date, due_date, amount, 0, 'pending', notes, uid, core.today().isoformat())).lastrowid
+
+        core.audit(c, uid, cid, 'crear cobro condómino', 're_condo_charges', row_id, {'condo_id': condo_id, 'property_id': prop_id, 'amount': amount})
+        return {'ok': True, 'id': row_id, 'message': 'Cobro a condómino generado con éxito.'}
+
+    if action == 'edit_re_condo_charge':
+        charge_id = int(d.get('id') or 0)
+        charge = core.ref(c, 're_condo_charges', charge_id, cid)
+        concept = core.text(d.get('concept'), 'Concepto del cobro', 200)
+        period = str(d.get('period') or charge['period']).strip()[:20]
+        issue_date = core.date(d.get('issue_date', charge['issue_date'])).isoformat()
+        due_date = core.date(d.get('due_date', charge['due_date'])).isoformat()
+        amount = int(round(float(d.get('amount') or 0) * 100))
+        if amount < charge['paid_amount']:
+            raise ValueError('El monto no puede ser inferior a lo ya cobrado.')
+        notes = str(d.get('notes') or '').strip()[:2000]
+
+        status = 'paid' if charge['paid_amount'] >= amount else 'partial' if charge['paid_amount'] > 0 else 'pending'
+
+        c.execute('''
+            UPDATE re_condo_charges SET
+                concept=?, period=?, issue_date=?, due_date=?, amount=?, status=?, notes=?
+            WHERE id=? AND company_id=?
+        ''', (concept, period, issue_date, due_date, amount, status, notes, charge_id, cid))
+
+        core.audit(c, uid, cid, 'editar cobro condómino', 're_condo_charges', charge_id, {'amount': amount})
+        return {'ok': True, 'id': charge_id, 'message': 'Cobro a condómino actualizado.'}
+
+    if action == 'generate_condo_month_fees':
+        condo_id = int(d.get('condo_id') or 0)
+        condo = core.ref(c, 're_condos', condo_id, cid)
+        period = str(d.get('period') or core.today().strftime('%Y-%m')).strip()[:20]
+        if len(period) < 7: raise ValueError('Formato de período inválido. Use AAAA-MM.')
+
+        props = c.execute('SELECT * FROM re_properties WHERE condo_id=? AND company_id=? AND condo_fee > 0', (condo_id, cid)).fetchall()
+        if not props:
+            raise ValueError(f'No hay unidades con cuota de mantenimiento configurada en «{condo["name"]}». Configure el monto de cuota en las fichas de las propiedades.')
+
+        generated_count = 0
+        today_iso = core.today().isoformat()
+        # Parse period year and month for due date
+        try:
+            pyear, pmonth = int(period[:4]), int(period[5:7])
+        except Exception:
+            pyear, pmonth = core.today().year, core.today().month
+
+        for p in props:
+            existing = c.execute('''
+                SELECT id FROM re_condo_charges
+                WHERE condo_id=? AND property_id=? AND period=? AND company_id=? AND status != 'cancelled'
+            ''', (condo_id, p['id'], period, cid)).fetchone()
+            if existing:
+                continue
+
+            due_day = p['condo_fee_day'] or 5
+            try:
+                due_dt = dt.date(pyear, pmonth, min(due_day, 28)).isoformat()
+            except Exception:
+                due_dt = today_iso
+
+            c.execute('''
+                INSERT INTO re_condo_charges(company_id, condo_id, property_id, concept, period,
+                                             issue_date, due_date, amount, paid_amount, status, notes, created_by, created_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ''', (cid, condo_id, p['id'], f'Cuota de Mantenimiento {period}', period,
+                  today_iso, due_dt, p['condo_fee'], 0, 'pending', f'Unidad {p["unit_number"] or p["code"]}', uid, today_iso))
+            generated_count += 1
+
+        core.audit(c, uid, cid, 'generar cuotas condominio lote', 're_condos', condo_id, {'period': period, 'count': generated_count})
+        return {'ok': True, 'count': generated_count, 'message': f'Se generaron {generated_count} cuota(s) de mantenimiento para {condo["name"]} en el período {period}.'}
+
+    if action == 'record_condo_charge_payment':
+        charge_id = int(d.get('id') or d.get('charge_id') or 0)
+        charge = core.ref(c, 're_condo_charges', charge_id, cid)
+        remaining = charge['amount'] - charge['paid_amount']
+        if remaining <= 0: raise ValueError('Esta cuota ya se encuentra totalmente pagada.')
+
+        pay_amount = int(round(float(d.get('amount') or (remaining / 100)) * 100))
+        if pay_amount <= 0: raise ValueError('El monto del pago debe ser mayor que cero.')
+        if pay_amount > remaining: raise ValueError(f'El importe excede el balance pendiente de {remaining/100:,.2f} DOP.')
+
+        paid_date = core.date(d.get('payment_date', core.today().isoformat())).isoformat()
+        reference = str(d.get('payment_reference') or d.get('reference') or '').strip()[:200]
+        notes = str(d.get('notes') or '').strip()[:2000]
+
+        new_paid = charge['paid_amount'] + pay_amount
+        new_status = 'paid' if new_paid >= charge['amount'] else 'partial'
+
+        c.execute('''
+            UPDATE re_condo_charges SET
+                paid_amount=?, status=?, payment_date=?, payment_reference=?, notes=CASE WHEN ? != '' THEN ? ELSE notes END
+            WHERE id=? AND company_id=?
+        ''', (new_paid, new_status, paid_date, reference, notes, notes, charge_id, cid))
+
+        core.audit(c, uid, cid, 'cobrar cuota condómino', 're_condo_charges', charge_id, {'paid_amount': pay_amount, 'reference': reference, 'status': new_status})
+        return {'ok': True, 'id': charge_id, 'message': f'Pago de {pay_amount/100:,.2f} DOP registrado con éxito.'}
+
+    if action == 'delete_re_condo_charge':
+        charge_id = int(d.get('id') or 0)
+        charge = core.ref(c, 're_condo_charges', charge_id, cid)
+        if charge['paid_amount'] > 0:
+            raise ValueError('No se puede eliminar un cobro con pagos registrados. Para anularlo edite el estado o elimine primero el cobro.')
+        c.execute('DELETE FROM re_condo_charges WHERE id=? AND company_id=?', (charge_id, cid))
+        core.audit(c, uid, cid, 'eliminar cobro condómino', 're_condo_charges', charge_id, {})
+        return {'ok': True, 'id': charge_id, 'message': 'Cobro a condómino eliminado.'}
+
+    # ---------------- COMMON AREA SERVICES & EXPENSES ----------------
+    if action == 'create_re_condo_expense':
+        condo_id = int(d.get('condo_id') or 0)
+        condo = core.ref(c, 're_condos', condo_id, cid)
+        service_type = str(d.get('service_type') or 'electricity').strip().lower()
+        if service_type not in CONDO_EXPENSE_TYPES: service_type = 'electricity'
+        provider_name = core.text(d.get('provider_name'), 'Proveedor del servicio', 200)
+        invoice_number = str(d.get('invoice_number') or '').strip()[:100]
+        service_period = str(d.get('service_period') or '').strip()[:100]
+        invoice_date = core.date(d.get('invoice_date', core.today().isoformat())).isoformat()
+        due_date = core.date(d.get('due_date', (core.today() + dt.timedelta(days=15)).isoformat())).isoformat()
+        amount = int(round(float(d.get('amount') or 0) * 100))
+        if amount <= 0: raise ValueError('El monto de la factura debe ser mayor que cero.')
+        notes = str(d.get('notes') or '').strip()[:2000]
+
+        row_id = c.execute('''
+            INSERT INTO re_condo_expenses(company_id, condo_id, service_type, provider_name, invoice_number,
+                                          service_period, invoice_date, due_date, amount, paid_amount, status, notes, created_by, created_at)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        ''', (cid, condo_id, service_type, provider_name, invoice_number,
+              service_period, invoice_date, due_date, amount, 0, 'pending', notes, uid, core.today().isoformat())).lastrowid
+
+        core.audit(c, uid, cid, 'registrar factura area comun', 're_condo_expenses', row_id, {'condo_id': condo_id, 'provider': provider_name, 'amount': amount})
+        return {'ok': True, 'id': row_id, 'message': 'Factura de servicio de área común registrada.'}
+
+    if action == 'edit_re_condo_expense':
+        expense_id = int(d.get('id') or 0)
+        exp = core.ref(c, 're_condo_expenses', expense_id, cid)
+        condo_id = int(d.get('condo_id') or exp['condo_id'])
+        core.ref(c, 're_condos', condo_id, cid)
+        service_type = str(d.get('service_type') or exp['service_type']).strip().lower()
+        if service_type not in CONDO_EXPENSE_TYPES: service_type = exp['service_type']
+        provider_name = core.text(d.get('provider_name'), 'Proveedor del servicio', 200)
+        invoice_number = str(d.get('invoice_number') or '').strip()[:100]
+        service_period = str(d.get('service_period') or '').strip()[:100]
+        invoice_date = core.date(d.get('invoice_date', exp['invoice_date'])).isoformat()
+        due_date = core.date(d.get('due_date', exp['due_date'])).isoformat()
+        amount = int(round(float(d.get('amount') or 0) * 100))
+        if amount < exp['paid_amount']: raise ValueError('El monto no puede ser menor a lo ya pagado.')
+        notes = str(d.get('notes') or '').strip()[:2000]
+
+        status = 'paid' if exp['paid_amount'] >= amount else 'pending'
+
+        c.execute('''
+            UPDATE re_condo_expenses SET
+                condo_id=?, service_type=?, provider_name=?, invoice_number=?,
+                service_period=?, invoice_date=?, due_date=?, amount=?, status=?, notes=?
+            WHERE id=? AND company_id=?
+        ''', (condo_id, service_type, provider_name, invoice_number,
+              service_period, invoice_date, due_date, amount, status, notes, expense_id, cid))
+
+        core.audit(c, uid, cid, 'editar factura area comun', 're_condo_expenses', expense_id, {'amount': amount})
+        return {'ok': True, 'id': expense_id, 'message': 'Factura de servicio de área común actualizada.'}
+
+    if action == 'pay_re_condo_expense':
+        expense_id = int(d.get('id') or d.get('expense_id') or 0)
+        exp = core.ref(c, 're_condo_expenses', expense_id, cid)
+        remaining = exp['amount'] - exp['paid_amount']
+        if remaining <= 0: raise ValueError('Esta factura ya se encuentra totalmente saldada.')
+
+        pay_amount = int(round(float(d.get('amount') or (remaining / 100)) * 100))
+        if pay_amount <= 0: raise ValueError('El importe a pagar debe ser mayor que cero.')
+        if pay_amount > remaining: raise ValueError(f'El importe excede el saldo pendiente de {remaining/100:,.2f} DOP.')
+
+        paid_date = core.date(d.get('payment_date', core.today().isoformat())).isoformat()
+        reference = str(d.get('payment_reference') or d.get('reference') or '').strip()[:200]
+        notes = str(d.get('notes') or '').strip()[:2000]
+
+        new_paid = exp['paid_amount'] + pay_amount
+        new_status = 'paid' if new_paid >= exp['amount'] else 'pending'
+
+        c.execute('''
+            UPDATE re_condo_expenses SET
+                paid_amount=?, status=?, payment_date=?, payment_reference=?, notes=CASE WHEN ? != '' THEN ? ELSE notes END
+            WHERE id=? AND company_id=?
+        ''', (new_paid, new_status, paid_date, reference, notes, notes, expense_id, cid))
+
+        core.audit(c, uid, cid, 'pagar factura area comun', 're_condo_expenses', expense_id, {'paid_amount': pay_amount, 'reference': reference})
+        return {'ok': True, 'id': expense_id, 'message': f'Pago de {pay_amount/100:,.2f} DOP registrado con éxito para {exp["provider_name"]}.'}
+
+    if action == 'delete_re_condo_expense':
+        expense_id = int(d.get('id') or 0)
+        exp = core.ref(c, 're_condo_expenses', expense_id, cid)
+        if exp['paid_amount'] > 0:
+            raise ValueError('No se puede eliminar una factura con pagos registrados. Anule el pago primero.')
+        c.execute('DELETE FROM re_condo_expenses WHERE id=? AND company_id=?', (expense_id, cid))
+        core.audit(c, uid, cid, 'eliminar factura area comun', 're_condo_expenses', expense_id, {})
+        return {'ok': True, 'id': expense_id, 'message': 'Factura de área común eliminada.'}
+
+    # ---------------- LEASES, SALES, VISITS, MAINTENANCES ----------------
     if action == 'create_re_lease':
         prop_id = int(d.get('property_id') or 0)
         prop = core.ref(c, 're_properties', prop_id, cid)
@@ -327,7 +861,6 @@ def mutate(core, c, uid, cid, action, d):
         lease = core.ref(c, 're_leases', lease_id, cid)
         c.execute('DELETE FROM attachments WHERE entity="re_leases" AND entity_id=? AND company_id=?', (lease_id, cid))
         c.execute('DELETE FROM re_leases WHERE id=? AND company_id=?', (lease_id, cid))
-        # If no other active lease, mark property available
         active = c.execute('SELECT COUNT(*) FROM re_leases WHERE property_id=? AND company_id=? AND status="active"', (lease['property_id'], cid)).fetchone()[0]
         if active == 0:
             c.execute('UPDATE re_properties SET status="available" WHERE id=? AND company_id=? AND status="rented"', (lease['property_id'], cid))
@@ -477,6 +1010,7 @@ def mutate(core, c, uid, cid, action, d):
         core.audit(c, uid, cid, 'emitir cobro renta alquiler', 'charges', ch_id, {'lease_id': lease_id, 'amount': lease['monthly_rent']})
         return {'ok': True, 'charge_id': ch_id, 'message': f'Cuenta por cobrar generada para {lease["tenant_name"]} por {lease["monthly_rent"]/100:,.2f} DOP.'}
 
+    # ---------------- SEED DEMO REAL ESTATE DATA ----------------
     if action == 'seed_demo_real_estate':
         core.membership(c, uid, cid, 2)
         prof = c.execute('SELECT * FROM company_profiles WHERE company_id=?', (cid,)).fetchone()
@@ -499,60 +1033,221 @@ def mutate(core, c, uid, cid, action, d):
         existing = c.execute('SELECT COUNT(*) FROM re_properties WHERE company_id=?', (cid,)).fetchone()[0]
 
         if force and existing > 0:
-            demo_prop_ids = [r[0] for r in c.execute('SELECT id FROM re_properties WHERE company_id=? AND code IN ("PROP-BV01","PROP-PT02","PROP-LC03","PROP-PC04")', (cid,)).fetchall()]
+            demo_prop_ids = [r[0] for r in c.execute('SELECT id FROM re_properties WHERE company_id=? AND code IN ("PROP-BV01","PROP-PT02","PROP-BV02","PROP-LC03","PROP-SL04","PROP-TC05","PROP-PC06")', (cid,)).fetchall()]
             if demo_prop_ids:
                 for pid in demo_prop_ids:
+                    c.execute('DELETE FROM re_condo_charges WHERE property_id=? AND company_id=?', (pid, cid))
                     c.execute('DELETE FROM re_visits WHERE property_id=? AND company_id=?', (pid, cid))
                     c.execute('DELETE FROM re_maintenances WHERE property_id=? AND company_id=?', (pid, cid))
                     c.execute('DELETE FROM re_leases WHERE property_id=? AND company_id=?', (pid, cid))
                     c.execute('DELETE FROM re_sales WHERE property_id=? AND company_id=?', (pid, cid))
                     c.execute('DELETE FROM re_properties WHERE id=? AND company_id=?', (pid, cid))
+                demo_condos = [r[0] for r in c.execute('SELECT id FROM re_condos WHERE company_id=? AND code="COND-BVR"', (cid,)).fetchall()]
+                for co_id in demo_condos:
+                    c.execute('DELETE FROM re_condo_expenses WHERE condo_id=? AND company_id=?', (co_id, cid))
+                    c.execute('DELETE FROM re_condos WHERE id=? AND company_id=?', (co_id, cid))
             else:
+                c.execute('DELETE FROM re_condo_charges WHERE company_id=?', (cid,))
+                c.execute('DELETE FROM re_condo_expenses WHERE company_id=?', (cid,))
                 c.execute('DELETE FROM re_visits WHERE company_id=?', (cid,))
                 c.execute('DELETE FROM re_maintenances WHERE company_id=?', (cid,))
                 c.execute('DELETE FROM re_leases WHERE company_id=?', (cid,))
                 c.execute('DELETE FROM re_sales WHERE company_id=?', (cid,))
                 c.execute('DELETE FROM re_properties WHERE company_id=?', (cid,))
+                c.execute('DELETE FROM re_condos WHERE company_id=?', (cid,))
             existing = c.execute('SELECT COUNT(*) FROM re_properties WHERE company_id=?', (cid,)).fetchone()[0]
 
         if existing == 0:
+            today_iso = core.today().isoformat()
+            cur_period = core.today().strftime('%Y-%m')
+
+            # 1. Condominium: Torre Bella Vista Real
+            condo_id = c.execute('''
+                INSERT INTO re_condos(company_id, name, code, condo_type, address, city, rnc_tax_id,
+                                      admin_name, admin_phone, admin_email, reserve_fund, bank_account_info, notes, created_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ''', (cid, 'Torre Bella Vista Real', 'COND-BVR', 'residential',
+                  'Av. Sarasota #45, Bella Vista', 'Santo Domingo D.N.', '4-30-19283-1',
+                  'Lic. Alejandro Peña (Administrador General)', '809-555-8822', 'administracion@bellavistareal.do',
+                  15000000, 'Banreservas Cta. Corriente #960-123456-7',
+                  'Torre de 12 niveles con 24 apartamentos, 2 elevadores Otis de alta velocidad, planta eléctrica Cummins 250kVA y cisterna de 35,000 galones.', today_iso)).lastrowid
+
+            # 2. Units in Torre Bella Vista Real
             p1 = c.execute('''
                 INSERT INTO re_properties(company_id,title,code,property_type,listing_type,status,address,city,
                                           price_sale,price_rent,area_sqm,bedrooms,bathrooms,parking_spots,
-                                          owner_name,owner_phone,notes,created_at)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                                          owner_name,owner_phone,owner_document,owner_email,
+                                          condo_id,unit_number,aliquot_pct,condo_fee,condo_fee_day,
+                                          notes,created_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ''', (cid, 'Apartamento 3B Torre Bella Vista', 'PROP-BV01', 'apartment', 'rent', 'rented',
                   'Av. Sarasota #45, Bella Vista', 'Santo Domingo D.N.', 0, 4500000, 120.0, 2, 2.5, 2,
-                  'Inversiones Los Robles SRL', '809-222-1100', 'Lobby climatizado, planta eléctrica full, área social con piscina en el rooftop.', core.today().isoformat())).lastrowid
+                  'Inversiones Los Robles SRL', '809-222-1100', '1-31-98765-4', 'admin@losrobles.com.do',
+                  condo_id, 'Apto 3B', 4.16, 650000, 5,
+                  'Lobby climatizado, vista al mar, área social con piscina y gimnasio en rooftop.', today_iso)).lastrowid
 
             p2 = c.execute('''
                 INSERT INTO re_properties(company_id,title,code,property_type,listing_type,status,address,city,
                                           price_sale,price_rent,area_sqm,bedrooms,bathrooms,parking_spots,
-                                          owner_name,owner_phone,notes,created_at)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-            ''', (cid, 'Penthouse Piantini Luxury', 'PROP-PT02', 'apartment', 'sale', 'available',
-                  'Calle Federico Geraldino #12, Piantini', 'Santo Domingo D.N.', 2250000000, 0, 340.0, 4, 4.5, 3,
-                  'Constructora Horizon', '809-333-2200', '2 niveles con terraza privada, jacuzzi, ascensor directo y acabados en mármol.', core.today().isoformat())).lastrowid
+                                          owner_name,owner_phone,owner_document,owner_email,
+                                          condo_id,unit_number,aliquot_pct,condo_fee,condo_fee_day,
+                                          notes,created_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ''', (cid, 'Penthouse 12A Torre Bella Vista', 'PROP-PT02', 'penthouse', 'sale', 'available',
+                  'Av. Sarasota #45, Bella Vista', 'Santo Domingo D.N.', 2250000000, 0, 340.0, 4, 4.5, 3,
+                  'Constructora Horizon SRL', '809-333-2200', '1-30-55443-2', 'ventas@horizon.do',
+                  condo_id, 'PH-12A', 8.33, 1200000, 5,
+                  'Penthouse de dos niveles con terraza privada, jacuzzi, ascensor directo con llave y 3 estacionamientos techados.', today_iso)).lastrowid
 
             p3 = c.execute('''
                 INSERT INTO re_properties(company_id,title,code,property_type,listing_type,status,address,city,
                                           price_sale,price_rent,area_sqm,bedrooms,bathrooms,parking_spots,
-                                          owner_name,owner_phone,notes,created_at)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-            ''', (cid, 'Local Comercial Plaza Central', 'PROP-LC03', 'commercial', 'rent', 'available',
-                  'Av. 27 de Febrero esq. Churchill', 'Santo Domingo D.N.', 0, 8500000, 95.0, 0, 1.0, 4,
-                  'Grupo Metropolitano', '809-444-3300', 'Excelente visibilidad sobre avenida principal, frente de cristal, ideal para franquicia o sucursal.', core.today().isoformat())).lastrowid
+                                          owner_name,owner_phone,owner_document,owner_email,
+                                          condo_id,unit_number,aliquot_pct,condo_fee,condo_fee_day,
+                                          notes,created_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ''', (cid, 'Apartamento 4A Torre Bella Vista', 'PROP-BV02', 'apartment', 'both', 'available',
+                  'Av. Sarasota #45, Bella Vista', 'Santo Domingo D.N.', 1250000000, 5500000, 135.0, 3, 2.5, 2,
+                  'Dra. Patricia Reyes', '809-888-9900', '001-1122334-5', 'dra.reyes@medicos.do',
+                  condo_id, 'Apto 4A', 4.16, 650000, 5,
+                  'Excelente iluminación natural, balcón integrado, cocina modular y cuarto de servicio.', today_iso)).lastrowid
 
+            # 3. Independent Properties: Commercial, Land/Lots, Villas
             p4 = c.execute('''
                 INSERT INTO re_properties(company_id,title,code,property_type,listing_type,status,address,city,
                                           price_sale,price_rent,area_sqm,bedrooms,bathrooms,parking_spots,
-                                          owner_name,owner_phone,notes,created_at)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-            ''', (cid, 'Villa Palmera Punta Cana', 'PROP-PC04', 'villa', 'both', 'reserved',
-                  'Cocotal Golf & Country Club', 'Punta Cana, La Altagracia', 2800000000, 18000000, 520.0, 5, 5.5, 4,
-                  'Familia Morales', '809-555-4400', 'Vista directa al campo de golf, piscina privada, gazebo y acceso a playa privada.', core.today().isoformat())).lastrowid
+                                          owner_name,owner_phone,owner_document,owner_email,
+                                          notes,created_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ''', (cid, 'Local Comercial Plaza Central', 'PROP-LC03', 'commercial', 'rent', 'available',
+                  'Av. 27 de Febrero esq. Winston Churchill', 'Santo Domingo D.N.', 0, 8500000, 95.0, 0, 1.0, 4,
+                  'Grupo Metropolitano', '809-444-3300', '1-01-23456-7', 'arrendamientos@metropolitano.do',
+                  'Excelente visibilidad comercial en avenida principal, frente de cristal, ideal para franquicias o sucursales bancarias.', today_iso)).lastrowid
 
-            # Sample Lease for p1
+            p5 = c.execute('''
+                INSERT INTO re_properties(company_id,title,code,property_type,listing_type,status,address,city,
+                                          price_sale,price_rent,area_sqm,bedrooms,bathrooms,parking_spots,
+                                          owner_name,owner_phone,owner_document,owner_email,
+                                          notes,created_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ''', (cid, 'Solar Urbano Los Prados', 'PROP-SL04', 'land', 'sale', 'available',
+                  'Calle Lorenzo Despradel #45, Los Prados', 'Santo Domingo D.N.', 1450000000, 0, 680.0, 0, 0, 0,
+                  'Agrimensor Rafael Batista', '809-555-3311', '001-0456789-1', 'rafael.batista@agrimensura.do',
+                  'Solar deslindado con título al día, apto para desarrollo de proyecto residencial de 4 niveles.', today_iso)).lastrowid
+
+            p6 = c.execute('''
+                INSERT INTO re_properties(company_id,title,code,property_type,listing_type,status,address,city,
+                                          price_sale,price_rent,area_sqm,bedrooms,bathrooms,parking_spots,
+                                          owner_name,owner_phone,owner_document,owner_email,
+                                          notes,created_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ''', (cid, 'Terreno Campestre Vista a la Montaña', 'PROP-TC05', 'lot', 'sale', 'available',
+                  'Carretera Jarabacoa-Manabao Km 4', 'Jarabacoa, La Vega', 780000000, 0, 3200.0, 0, 0, 0,
+                  'Ing. Manuel Fernández', '809-666-4422', '047-0012345-6', 'manuel.fernandez@ecoturismo.do',
+                  'Terreno de vocación turística y ecológica, acceso a río, árboles frutales y servicio de electricidad a bordo de vía.', today_iso)).lastrowid
+
+            p7 = c.execute('''
+                INSERT INTO re_properties(company_id,title,code,property_type,listing_type,status,address,city,
+                                          price_sale,price_rent,area_sqm,bedrooms,bathrooms,parking_spots,
+                                          owner_name,owner_phone,owner_document,owner_email,
+                                          notes,created_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ''', (cid, 'Villa Palmera Punta Cana Resort', 'PROP-PC06', 'villa', 'both', 'reserved',
+                  'Cocotal Golf & Country Club', 'Punta Cana, La Altagracia', 2800000000, 18000000, 520.0, 5, 5.5, 4,
+                  'Familia Morales', '809-555-4400', '001-1827364-5', 'familia.morales@resort.do',
+                  'Vista directa al campo de golf, piscina privada, gazebo y acceso a playa privada.', today_iso)).lastrowid
+
+            # 4. Common Area Utility Invoices for Torre Bella Vista Real
+            # ⚡ Luz Común (Edesur)
+            c.execute('''
+                INSERT INTO re_condo_expenses(company_id, condo_id, service_type, provider_name, invoice_number,
+                                              service_period, invoice_date, due_date, amount, paid_amount, status,
+                                              payment_date, payment_reference, notes, created_by, created_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ''', (cid, condo_id, 'electricity', 'Edesur Dominicana S.A.', 'NIC 2098412 / B0100021482',
+                  f'Octubre {core.today().year}', today_iso, (core.today() + dt.timedelta(days=10)).isoformat(),
+                  1845000, 1845000, 'paid', today_iso, 'Transferencia BHD #77412',
+                  'Energía eléctrica de áreas comunes: sistema dúplex de bombeo de agua, iluminación pasillos y áreas sociales.', uid, today_iso))
+
+            # 💧 Agua Común (CAASD)
+            c.execute('''
+                INSERT INTO re_condo_expenses(company_id, condo_id, service_type, provider_name, invoice_number,
+                                              service_period, invoice_date, due_date, amount, paid_amount, status,
+                                              payment_date, payment_reference, notes, created_by, created_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ''', (cid, condo_id, 'water', 'CAASD (Corporación del Acueducto)', 'CTA-5544921 / B0100005431',
+                  f'Octubre {core.today().year}', today_iso, (core.today() + dt.timedelta(days=12)).isoformat(),
+                  420000, 420000, 'paid', today_iso, 'Pago en línea CAASD #4410',
+                  'Suministro de agua potable para cisterna central de 35,000 galones.', uid, today_iso))
+
+            # 🛗 Ascensores (Otis)
+            c.execute('''
+                INSERT INTO re_condo_expenses(company_id, condo_id, service_type, provider_name, invoice_number,
+                                              service_period, invoice_date, due_date, amount, paid_amount, status,
+                                              payment_date, payment_reference, notes, created_by, created_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ''', (cid, condo_id, 'elevator', 'Ascensores Otis Dominicana SRL', 'B0100033410',
+                  f'Octubre {core.today().year}', today_iso, (core.today() + dt.timedelta(days=15)).isoformat(),
+                  980000, 980000, 'paid', today_iso, 'Cheque Banreservas #1042',
+                  'Póliza de mantenimiento preventivo y correctivo mensual para 2 elevadores de 12 niveles.', uid, today_iso))
+
+            # 🛡️ Seguridad y Conserjería
+            c.execute('''
+                INSERT INTO re_condo_expenses(company_id, condo_id, service_type, provider_name, invoice_number,
+                                              service_period, invoice_date, due_date, amount, paid_amount, status,
+                                              notes, created_by, created_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ''', (cid, condo_id, 'security_cleaning', 'Seguridad & Conserjería Élite SRL', 'B0100088192',
+                  f'Octubre {core.today().year}', today_iso, (core.today() + dt.timedelta(days=18)).isoformat(),
+                  2200000, 0, 'pending',
+                  'Servicio de conserjería 24/7 y supervisor de seguridad en lobby y garita de acceso.', uid, today_iso))
+
+            # ⛽ Combustible para Planta Eléctrica
+            c.execute('''
+                INSERT INTO re_condo_expenses(company_id, condo_id, service_type, provider_name, invoice_number,
+                                              service_period, invoice_date, due_date, amount, paid_amount, status,
+                                              notes, created_by, created_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ''', (cid, condo_id, 'generator_fuel', 'Combustibles TotalEnergies', 'B0100019283',
+                  f'Octubre {core.today().year}', today_iso, (core.today() + dt.timedelta(days=20)).isoformat(),
+                  750000, 0, 'pending',
+                  'Suministro de 150 galones de gasoil óptimo para generador eléctrico de emergencia Cummins 250kVA.', uid, today_iso))
+
+            # 5. Condo Fee Charges for October
+            # Unit 1 (3B) - Paid
+            c.execute('''
+                INSERT INTO re_condo_charges(company_id, condo_id, property_id, concept, period,
+                                             issue_date, due_date, amount, paid_amount, status,
+                                             payment_date, payment_reference, notes, created_by, created_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ''', (cid, condo_id, p1, f'Cuota de Mantenimiento {cur_period}', cur_period,
+                  today_iso, (core.today() + dt.timedelta(days=5)).isoformat(),
+                  650000, 650000, 'paid', today_iso, 'Depósito Banreservas #8812',
+                  'Apto 3B al día con la administración.', uid, today_iso))
+
+            # Unit 2 (PH-12A) - Pending
+            c.execute('''
+                INSERT INTO re_condo_charges(company_id, condo_id, property_id, concept, period,
+                                             issue_date, due_date, amount, paid_amount, status,
+                                             notes, created_by, created_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ''', (cid, condo_id, p2, f'Cuota de Mantenimiento {cur_period}', cur_period,
+                  today_iso, (core.today() + dt.timedelta(days=5)).isoformat(),
+                  1200000, 0, 'pending',
+                  'PH-12A pendiente de liquidación por la constructora.', uid, today_iso))
+
+            # Unit 3 (4A) - Paid
+            c.execute('''
+                INSERT INTO re_condo_charges(company_id, condo_id, property_id, concept, period,
+                                             issue_date, due_date, amount, paid_amount, status,
+                                             payment_date, payment_reference, notes, created_by, created_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ''', (cid, condo_id, p3, f'Cuota de Mantenimiento {cur_period}', cur_period,
+                  today_iso, (core.today() + dt.timedelta(days=5)).isoformat(),
+                  650000, 650000, 'paid', today_iso, 'Transferencia Banco Popular #3391',
+                  'Apto 4A pagado puntualmente.', uid, today_iso))
+
+            # 6. Sample Lease for p1
             start_l = (core.today() - dt.timedelta(days=60)).isoformat()
             end_l = (core.today() + dt.timedelta(days=305)).isoformat()
             c.execute('''
@@ -562,27 +1257,27 @@ def mutate(core, c, uid, cid, action, d):
             ''', (cid, p1, 'Ing. Carlos Mendoza', '001-0987654-3', '809-777-8899', 'carlos.mendoza@email.com',
                   start_l, end_l, 4500000, 9000000, 5, 'active', 'Contrato a 1 año con 2 meses de depósito en garantía.', uid))
 
-            # Sample Sale for p2
+            # 7. Sample Sale for p2
             c.execute('''
                 INSERT INTO re_sales(company_id,property_id,buyer_name,buyer_document,buyer_phone,
                                      sale_price,commission_rate,commission_amount,closing_date,status,notes,created_by)
                 VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
             ''', (cid, p2, 'Dra. Patricia Reyes', '001-1122334-5', '809-888-9900',
-                  2250000000, 5.0, 112500000, core.today().isoformat(), 'closed', 'Cierre notariado con pago mediante cheque certificado.', uid))
+                  2250000000, 5.0, 112500000, today_iso, 'closed', 'Cierre notariado con pago mediante cheque certificado.', uid))
 
-            # Sample Visits for p3
+            # 8. Sample Visit for p4
             c.execute('''
                 INSERT INTO re_visits(company_id,property_id,client_name,client_phone,visit_date,interest_level,feedback,status,created_by)
                 VALUES(?,?,?,?,?,?,?,?,?)
-            ''', (cid, p3, 'Lic. Marcos Soto', '809-666-5544', core.today().isoformat(), 'high', 'Interesado para instalar una agencia de seguros. Solicitó borrador de contrato.', 'completed', uid))
+            ''', (cid, p4, 'Lic. Marcos Soto', '809-666-5544', today_iso, 'high', 'Interesado para instalar una agencia de seguros. Solicitó borrador de contrato.', 'completed', uid))
 
-            # Sample Maintenance for p1
+            # 9. Sample Maintenance for p1
             c.execute('''
                 INSERT INTO re_maintenances(company_id,property_id,title,cost_estimate,reported_date,status,contractor_technician,notes,created_by)
                 VALUES(?,?,?,?,?,?,?,?,?)
-            ''', (cid, p1, 'Mantenimiento preventivo aires inverter', 850000, core.today().isoformat(), 'resolved', 'Climatización Dominicana SRL', 'Limpieza profunda de filtros y recarga de gas R410A.', uid))
+            ''', (cid, p1, 'Mantenimiento preventivo aires inverter', 850000, today_iso, 'resolved', 'Climatización Dominicana SRL', 'Limpieza profunda de filtros y recarga de gas R410A.', uid))
 
-        core.audit(c, uid, cid, 'cargar demo bienes raices', 'companies', cid, {'force': force})
-        return {'ok': True, 'message': 'Portafolio de prueba de Bienes Raíces cargado con éxito.'}
+        core.audit(c, uid, cid, 'cargar demo bienes raices y condominios', 'companies', cid, {'force': force})
+        return {'ok': True, 'message': 'Portafolio de prueba de Bienes Raíces, Condominios y Servicios Comunes cargado con éxito.'}
 
     raise ValueError(f'Acción de bienes raíces desconocida: {action}')

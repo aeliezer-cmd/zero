@@ -82,6 +82,18 @@ function getSavedCompanyId(user){
 }
 let currentCategory = 'rrhh';
 let reTab = 'properties';
+let reCategoryFilter = 'all';
+let reCondoFilter = '';
+let reSearch = '';
+let reTypeFilter = '';
+let reStatusFilter = '';
+let reOpFilter = '';
+let reChargeCondoFilter = '';
+let reChargeStatusFilter = '';
+let reChargePeriodFilter = '';
+let reExpenseCondoFilter = '';
+let reExpenseServiceFilter = '';
+let reExpenseStatusFilter = '';
 function getCategoryForView(v){
   if(v==='departments') return currentCategory === 'administracion' ? 'administracion' : 'rrhh';
   if(['team','payroll','tasks','agriculture'].includes(v)) return 'rrhh';
@@ -2291,10 +2303,18 @@ function bind(){
   document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{setActiveView(b.dataset.view);render()});
   document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{tab=b.dataset.tab;render()});
   document.querySelectorAll('[data-re-tab]').forEach(b=>b.onclick=()=>{reTab=b.dataset.reTab;render()});
+  document.querySelectorAll('[data-re-cat-filter]').forEach(b=>b.onclick=()=>{reCategoryFilter=b.dataset.reCatFilter;render()});
   const reSearchEl=$('#re-search');if(reSearchEl)reSearchEl.oninput=e=>{reSearch=e.target.value;render()};
   const reTypeEl=$('#re-type-filter');if(reTypeEl)reTypeEl.onchange=e=>{reTypeFilter=e.target.value;render()};
+  const reCondoEl=$('#re-condo-filter');if(reCondoEl)reCondoEl.onchange=e=>{reCondoFilter=e.target.value;render()};
   const reStatusEl=$('#re-status-filter');if(reStatusEl)reStatusEl.onchange=e=>{reStatusFilter=e.target.value;render()};
   const reOpEl=$('#re-op-filter');if(reOpEl)reOpEl.onchange=e=>{reOpFilter=e.target.value;render()};
+  const reChCondoEl=$('#re-charge-condo-filter');if(reChCondoEl)reChCondoEl.onchange=e=>{reChargeCondoFilter=e.target.value;render()};
+  const reChStatusEl=$('#re-charge-status-filter');if(reChStatusEl)reChStatusEl.onchange=e=>{reChargeStatusFilter=e.target.value;render()};
+  const reChPeriodEl=$('#re-charge-period-filter');if(reChPeriodEl)reChPeriodEl.oninput=e=>{reChargePeriodFilter=e.target.value;render()};
+  const reExCondoEl=$('#re-exp-condo-filter');if(reExCondoEl)reExCondoEl.onchange=e=>{reExpenseCondoFilter=e.target.value;render()};
+  const reExServiceEl=$('#re-exp-service-filter');if(reExServiceEl)reExServiceEl.onchange=e=>{reExpenseServiceFilter=e.target.value;render()};
+  const reExStatusEl=$('#re-exp-status-filter');if(reExStatusEl)reExStatusEl.onchange=e=>{reExpenseStatusFilter=e.target.value;render()};
   document.querySelectorAll('[data-team-filter]').forEach(b=>b.onclick=()=>{teamFilter=b.dataset.teamFilter;render()});
   if($('#f-team-farm-filter')) $('#f-team-farm-filter').onchange = e => { teamFarmFilter = e.target.value; render(); };
   document.querySelectorAll('[data-queue-filter]').forEach(b=>b.onclick=()=>{queueFilter=b.dataset.queueFilter;render()});
@@ -3593,7 +3613,18 @@ function openHelpModal(){
   renderHelpModal();
 }
 async function save(actionName,data){const result=await api('action',{company_id:Number(cid),action:actionName,...data});await refresh();return result}
-async function handleAction(b){const a=b.dataset.action,id=Number(b.dataset.id);if(a==='view_employee_account'){showEmployeeAccountModal(id);return}if(a==='assign_queue_job'){showAssignQueueJobModal(id||null);return}if(a==='add_labor_to_farm'){showAddLaborToFarmModal(id||null);return}if(a==='add_employee_to_farm'){openForm('employee',null,{farm_id:id});return}if(a==='report_queue_job'){showReportQueueJobModal(id);return}if(a==='approve_queue_job'){b.disabled=true;try{const res=await save('approve_queue_job',{id});toast(`Trabajo aprobado. Se acreditaron ${money(res.job?.earned_amount||0)} a la cuenta del colaborador.`);}catch(err){toast(err.message);b.disabled=false;}return;}if(payrollKinds.includes(a)){payrollDialog(a,id);return}if(a==='payroll_single'){payrollDialog('payroll',{employee_id:id,cadence:b.dataset.cadence});return}if(a==='payroll_deduction'){payrollDialog('payroll_adjustment',{employee_id:id||'',kind:'deduction'});return}if(a==='assign_custom_days'){openForm('farm_job',id);return}if(a==='reset-branding'){await save('branding',{accent_color:'#185b4d',surface_color:'#f4f6f3',card_color:'#ffffff',text_color:'#172f2d',font_scale:'100'});return}if(a==='files'){await openFiles(b.dataset.entity,id);return}if(a==='approve_all_worklogs'){b.disabled=true;try{const work_date=b.dataset.date||null;const res=await save('approve_all_worklogs',{work_date});toast(`${res.approved_count||'Todas las'} hora(s) aprobada(s) correctamente.`);}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='approve_all_farm_jobs'){b.disabled=true;try{const work_date=b.dataset.date||null;const res=await save('approve_all_farm_jobs',{work_date});toast(`${res.approved_count||'Todas las'} labore(s) aprobada(s) correctamente.`);}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='create_default_cash_account'){b.disabled=true;try{await save('create_default_cash_account',{});toast('Caja General (DOP) creada y lista para operar.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='export'){b.disabled=true;try{const archive=await api('export?company_id='+cid);const link=document.createElement('a');link.href='/api/export?company_id='+cid;link.download=company().name.replace(/[^a-zA-Z0-9_-]/g,'_')+'-'+S.today+'.zero.json';document.body.appendChild(link);link.click();link.remove();toast('Archivo de empresa preparado para descargar.')}catch(err){toast(err.message)}finally{b.disabled=false}return;}if(a==='extend_contract'){const co=S.farm_contracts?.find(c=>c.id===id);if(co){const d=new Date(co.end_date+'T12:00:00');d.setDate(d.getDate()+7);const newEnd=d.toISOString().slice(0,10);b.disabled=true;try{await save('edit_farm_contract',{id:co.id,farm_id:co.farm_id,employee_id:co.employee_id,kind:co.kind,basis:co.basis,rate:co.rate/100,description:co.description,start_date:co.start_date,end_date:newEnd,status:'active'});toast(`Continuidad extendida hasta el ${displayDate(newEnd)}.`);}catch(err){toast(err.message);b.disabled=false;}return;}}if(a==='approve_job_direct'){b.disabled=true;try{await save('job_status',{id,status:'approved'});toast('Labor / horas aprobadas para nómina.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='discard_payroll'){if(!confirm('¿Desea descartar esta nómina pendiente? Los reportes y deducciones asociados quedarán liberados.'))return;b.disabled=true;try{await save('discard_payroll',{id});toast('Nómina descartada.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='discard_farm_payroll'){if(!confirm('¿Desea descartar esta nómina de labores? Los trabajos volverán a quedar pendientes en la cola.'))return;b.disabled=true;try{await save('discard_farm_payroll',{id});toast('Nómina descartada.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='archive_cash_account'){const acc=S.cash_accounts?.find(c=>c.id===id);const isArch=Boolean(acc?.archived);if(!confirm(`¿Desea ${isArch?'reactivar':'archivar'} la cuenta «${acc?.name||'seleccionada'}»?`))return;b.disabled=true;try{await save('archive_cash_account',{id,archived:isArch?0:1});toast(`Cuenta ${isArch?'reactivada':'archivada'}.`);}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='seed_demo_real_estate'){b.disabled=true;const orig=b.innerHTML;b.innerHTML='⏳ Cargando demo...';try{const res=await save('seed_demo_real_estate',{force:true});setActiveView('real_estate');reTab='properties';render();toast(res?.message||'✓ Portafolio de prueba de Bienes Raíces cargado con éxito.');}catch(err){toast(err.message);b.disabled=false;b.innerHTML=orig;}return;}if(a==='charge_lease_rent'){b.disabled=true;try{const res=await save('generate_re_lease_charge',{lease_id:id});toast(res.message||'Cuenta por cobrar generada para el inquilino.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='terminate_re_lease'){if(!confirm('¿Desea rescindir / finalizar este contrato de alquiler? La propiedad quedará disponible nuevamente para alquiler o venta.'))return;b.disabled=true;try{await save('terminate_re_lease',{id});toast('Contrato finalizado y propiedad liberada como disponible.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='resolve_re_maintenance'){b.disabled=true;try{await save('resolve_re_maintenance',{id});toast('Incidencia marcada como resuelta.');}catch(err){toast(err.message);b.disabled=false;}return;}if(['payment','expense_payment','edit_member','edit_expense','edit_employee','terminate_employee','view_termination','contract_status','pay_payroll','edit_department','edit_project','edit_task','edit_farm','edit_farm_contract','edit_farm_job','edit_company','edit_product','edit_customer','edit_worklog','edit_subscription','edit_farm_sale','edit_ncf_sequence','edit_re_property','edit_re_lease','edit_re_sale','edit_re_visit','edit_re_maintenance'].includes(a)){openForm(a,id);return}if(a==='reactivate_employee'){const emp=S.employees?.find(e=>e.id===id);if(!confirm(`¿Desea reactivar a «${emp?.name||'este colaborador'}» como personal activo? Volverá a estar disponible para asignaciones y nómina.`))return;b.disabled=true;try{await save('reactivate_employee',{id});toast('Colaborador reactivado con éxito.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='delete_employee'){const emp=S.employees?.find(e=>e.id===id);if(!confirm(`¿Está seguro de que desea eliminar la ficha de «${emp?.name||'este colaborador'}»? Solo es posible si no posee historial contable ni tareas asociadas.`))return;b.disabled=true;try{await save('delete_employee',{id});toast('Ficha de personal eliminada.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='cancel_subscription'){openForm('cancel_subscription',id);return}if(a.startsWith('delete_')){if(!confirm('¿Está seguro de que desea eliminar este registro permanentemente?'))return}b.disabled=true;try{if(a==='refresh')await refresh();else{const result=await save(a,{id});toast(a==='generate'?`${result.generated} cargo(s) nuevo(s). Los existentes se conservaron.`:'Operación guardada.')}}catch(err){toast(err.message);b.disabled=false}}
+async function handleAction(b){const a=b.dataset.action,id=Number(b.dataset.id);if(a==='view_employee_account'){showEmployeeAccountModal(id);return}if(a==='assign_queue_job'){showAssignQueueJobModal(id||null);return}if(a==='add_labor_to_farm'){showAddLaborToFarmModal(id||null);return}if(a==='add_employee_to_farm'){openForm('employee',null,{farm_id:id});return}if(a==='report_queue_job'){showReportQueueJobModal(id);return}if(a==='approve_queue_job'){b.disabled=true;try{const res=await save('approve_queue_job',{id});toast(`Trabajo aprobado. Se acreditaron ${money(res.job?.earned_amount||0)} a la cuenta del colaborador.`);}catch(err){toast(err.message);b.disabled=false;}return;}if(payrollKinds.includes(a)){payrollDialog(a,id);return}if(a==='payroll_single'){payrollDialog('payroll',{employee_id:id,cadence:b.dataset.cadence});return}if(a==='payroll_deduction'){payrollDialog('payroll_adjustment',{employee_id:id||'',kind:'deduction'});return}if(a==='assign_custom_days'){openForm('farm_job',id);return}if(a==='reset-branding'){await save('branding',{accent_color:'#185b4d',surface_color:'#f4f6f3',card_color:'#ffffff',text_color:'#172f2d',font_scale:'100'});return}if(a==='files'){await openFiles(b.dataset.entity,id);return}if(a==='approve_all_worklogs'){b.disabled=true;try{const work_date=b.dataset.date||null;const res=await save('approve_all_worklogs',{work_date});toast(`${res.approved_count||'Todas las'} hora(s) aprobada(s) correctamente.`);}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='approve_all_farm_jobs'){b.disabled=true;try{const work_date=b.dataset.date||null;const res=await save('approve_all_farm_jobs',{work_date});toast(`${res.approved_count||'Todas las'} labore(s) aprobada(s) correctamente.`);}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='create_default_cash_account'){b.disabled=true;try{await save('create_default_cash_account',{});toast('Caja General (DOP) creada y lista para operar.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='export'){b.disabled=true;try{const archive=await api('export?company_id='+cid);const link=document.createElement('a');link.href='/api/export?company_id='+cid;link.download=company().name.replace(/[^a-zA-Z0-9_-]/g,'_')+'-'+S.today+'.zero.json';document.body.appendChild(link);link.click();link.remove();toast('Archivo de empresa preparado para descargar.')}catch(err){toast(err.message)}finally{b.disabled=false}return;}if(a==='extend_contract'){const co=S.farm_contracts?.find(c=>c.id===id);if(co){const d=new Date(co.end_date+'T12:00:00');d.setDate(d.getDate()+7);const newEnd=d.toISOString().slice(0,10);b.disabled=true;try{await save('edit_farm_contract',{id:co.id,farm_id:co.farm_id,employee_id:co.employee_id,kind:co.kind,basis:co.basis,rate:co.rate/100,description:co.description,start_date:co.start_date,end_date:newEnd,status:'active'});toast(`Continuidad extendida hasta el ${displayDate(newEnd)}.`);}catch(err){toast(err.message);b.disabled=false;}return;}}if(a==='approve_job_direct'){b.disabled=true;try{await save('job_status',{id,status:'approved'});toast('Labor / horas aprobadas para nómina.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='discard_payroll'){if(!confirm('¿Desea descartar esta nómina pendiente? Los reportes y deducciones asociados quedarán liberados.'))return;b.disabled=true;try{await save('discard_payroll',{id});toast('Nómina descartada.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='discard_farm_payroll'){if(!confirm('¿Desea descartar esta nómina de labores? Los trabajos volverán a quedar pendientes en la cola.'))return;b.disabled=true;try{await save('discard_farm_payroll',{id});toast('Nómina descartada.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='archive_cash_account'){const acc=S.cash_accounts?.find(c=>c.id===id);const isArch=Boolean(acc?.archived);if(!confirm(`¿Desea ${isArch?'reactivar':'archivar'} la cuenta «${acc?.name||'seleccionada'}»?`))return;b.disabled=true;try{await save('archive_cash_account',{id,archived:isArch?0:1});toast(`Cuenta ${isArch?'reactivada':'archivada'}.`);}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='seed_demo_real_estate'){b.disabled=true;const orig=b.innerHTML;b.innerHTML='⏳ Cargando demo...';try{const res=await save('seed_demo_real_estate',{force:true});setActiveView('real_estate');reTab='properties';render();toast(res?.message||'✓ Portafolio de prueba de Bienes Raíces cargado con éxito.');}catch(err){toast(err.message);b.disabled=false;b.innerHTML=orig;}return;}if(a==='generate_condo_month_fees'){openForm('generate_condo_fees',null,{condo_id:id});return}if(a==='pay_condo_charge'){openForm('pay_condo_charge',id);return}if(a==='pay_condo_expense'){openForm('pay_condo_expense',id);return}if(a==='view_condo_receipt'){showCondoReceiptModal(id);return}if(a==='open_condo_charge'){const propId=Number(b.dataset.propertyId);const condoId=Number(b.dataset.condoId);openForm('re_condo_charge',null,{property_id:propId,condo_id:condoId});return}if(a==='charge_lease_rent'){b.disabled=true;try{const res=await save('generate_re_lease_charge',{lease_id:id});toast(res.message||'Cuenta por cobrar generada para el inquilino.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='terminate_re_lease'){if(!confirm('¿Desea rescindir / finalizar este contrato de alquiler? La propiedad quedará disponible nuevamente para alquiler o venta.'))return;b.disabled=true;try{await save('terminate_re_lease',{id});toast('Contrato finalizado y propiedad liberada como disponible.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='resolve_re_maintenance'){b.disabled=true;try{await save('resolve_re_maintenance',{id});toast('Incidencia marcada como resuelta.');}catch(err){toast(err.message);b.disabled=false;}return;}if(['payment','expense_payment','edit_member','edit_expense','edit_employee','terminate_employee','view_termination','contract_status','pay_payroll','edit_department','edit_project','edit_task','edit_farm','edit_farm_contract','edit_farm_job','edit_company','edit_product','edit_customer','edit_worklog','edit_subscription','edit_farm_sale','edit_ncf_sequence','edit_re_property','edit_re_condo','edit_re_condo_charge','edit_re_condo_expense','edit_re_lease','edit_re_sale','edit_re_visit','edit_re_maintenance'].includes(a)){openForm(a,id);return}if(a==='reactivate_employee'){const emp=S.employees?.find(e=>e.id===id);if(!confirm(`¿Desea reactivar a «${emp?.name||'este colaborador'}» como personal activo? Volverá a estar disponible para asignaciones y nómina.`))return;b.disabled=true;try{await save('reactivate_employee',{id});toast('Colaborador reactivado con éxito.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='delete_employee'){const emp=S.employees?.find(e=>e.id===id);if(!confirm(`¿Está seguro de que desea eliminar la ficha de «${emp?.name||'este colaborador'}»? Solo es posible si no posee historial contable ni tareas asociadas.`))return;b.disabled=true;try{await save('delete_employee',{id});toast('Ficha de personal eliminada.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='cancel_subscription'){openForm('cancel_subscription',id);return}if(a.startsWith('delete_')){if(!confirm('¿Está seguro de que desea eliminar este registro permanentemente?'))return}b.disabled=true;try{if(a==='refresh')await refresh();else{const result=await save(a,{id});toast(a==='generate'?`${result.generated} cargo(s) nuevo(s). Los existentes se conservaron.`:'Operación guardada.')}}catch(err){toast(err.message);b.disabled=false}}
+function showCondoReceiptModal(chargeId){
+  const ch=(S.re_condo_charges||[]).find(x=>x.id===chargeId);
+  if(!ch)return;
+  const condo=(S.re_condos||[]).find(c=>c.id===ch.condo_id);
+  const prop=(S.re_properties||[]).find(p=>p.id===ch.property_id);
+  const receiptHtml=`<div class="modal-header"><h2>📄 Recibo Oficial de Cuota de Condominio</h2><button type="button" id="close-modal" aria-label="Cerrar">×</button></div><div id="printable-condo-receipt" style="padding:20px;background:#fff;color:#0f172a;border-radius:8px;border:1px solid #e2e8f0;font-family:-apple-system,BlinkMacSystemFont,sans-serif"><div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #0f766e;padding-bottom:14px;margin-bottom:14px"><div><h2 style="margin:0;color:#0f766e;font-size:20px">${esc(condo?.name||'Administración de Condominio')}</h2><div style="font-size:13px;color:#64748b;margin-top:4px">📍 ${esc(condo?.address||'')}${condo?.city?' · '+esc(condo.city):''}${condo?.rnc_tax_id?'<br>RNC Condominio: <strong>'+esc(condo.rnc_tax_id)+'</strong> (Ley 5038)':''}</div></div><div style="text-align:right"><div style="font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase">Recibo de Mantenimiento</div><div style="font-size:18px;font-weight:800;color:#0f766e">REC-COND-${String(ch.id).padStart(5,'0')}</div><div style="font-size:12px;color:#64748b">Fecha: ${displayDate(ch.payment_date||ch.issue_date)}</div></div></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;background:#f8fafc;padding:12px;border-radius:8px"><div><span style="font-size:11px;color:#64748b;text-transform:uppercase;font-weight:700">Condómino / Propietario</span><div style="font-size:15px;font-weight:700;color:#1e293b;margin-top:2px">${esc(ch.owner_name||prop?.owner_name||'Propietario')}</div><div style="font-size:12px;color:#64748b">${prop?.owner_document?'Doc/RNC: '+esc(prop.owner_document)+' · ':''}${prop?.owner_phone?'Tel: '+esc(prop.owner_phone):''}</div></div><div><span style="font-size:11px;color:#64748b;text-transform:uppercase;font-weight:700">Inmueble / Unidad</span><div style="font-size:15px;font-weight:700;color:#1e293b;margin-top:2px">${esc(ch.property_title)}</div><div style="font-size:12px;color:#64748b">${ch.unit_number?'Unidad: <strong>'+esc(ch.unit_number)+'</strong> · ':''}${prop?.aliquot_pct?'Alícuota: '+prop.aliquot_pct+'%':''}</div></div></div><table style="width:100%;border-collapse:collapse;margin-bottom:16px;font-size:14px"><thead><tr style="background:#f1f5f9;border-bottom:1px solid #cbd5e1;text-align:left"><th style="padding:10px">Concepto</th><th style="padding:10px">Período</th><th style="padding:10px;text-align:right">Monto Cuota</th><th style="padding:10px;text-align:right">Monto Pagado</th></tr></thead><tbody><tr style="border-bottom:1px solid #e2e8f0"><td style="padding:10px"><strong>${esc(ch.concept)}</strong></td><td style="padding:10px">${esc(ch.period)}</td><td style="padding:10px;text-align:right">${money(ch.amount)}</td><td style="padding:10px;text-align:right;color:#0f766e;font-weight:700">${money(ch.paid_amount||ch.amount)}</td></tr></tbody></table><div style="display:flex;justify-content:space-between;align-items:center;background:#ecfdf5;border:1px solid #a7f3d0;padding:12px 16px;border-radius:8px;margin-bottom:16px"><div><span style="font-size:12px;color:#065f46;font-weight:700">ESTADO DEL PAGO</span><div style="font-size:14px;color:#065f46">✓ Totalmente Pagado · Al día</div>${ch.payment_reference?`<div style="font-size:12px;color:#047857;margin-top:2px">Ref: ${esc(ch.payment_reference)}</div>`:''}</div><div style="text-align:right"><div style="font-size:11px;color:#065f46;text-transform:uppercase">Total Percibido</div><div style="font-size:22px;font-weight:800;color:#065f46">${money(ch.paid_amount||ch.amount)}</div></div></div><div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:24px;padding-top:16px;border-top:1px dashed #cbd5e1"><div style="font-size:11px;color:#94a3b8">Emitido por Zero ERP · Plataforma de Gestión Inmobiliaria y Condominios<br>${condo?.admin_phone?'Contacto Administración: '+esc(condo.admin_phone):''}</div><div style="text-align:center;width:200px;border-top:1px solid #475569;padding-top:4px;font-size:12px;color:#475569">Firma y Sello de Administración</div></div></div><div class="form-actions" style="margin-top:14px"><button type="button" id="close-receipt-btn">Cerrar</button><button type="button" class="primary" id="print-receipt-btn">🖨️ Imprimir Recibo</button></div>`;
+  $('#modal-content').innerHTML=receiptHtml;
+  $('#modal').showModal();
+  $('#close-modal').onclick=$('#close-receipt-btn').onclick=()=>$('#modal').close();
+  $('#print-receipt-btn').onclick=()=>window.print();
+}
 function input(name,label,type='text',value='',extra=''){return `<div><label for="f-${name}">${label}</label><input id="f-${name}" name="${name}" type="${type}" value="${esc(value)}" ${extra}></div>`}
 function select(name,label,options,value='',extra=''){return `<div><label for="f-${name}">${label}</label><select id="f-${name}" name="${name}" ${extra}>${options.map(([v,t])=>`<option value="${esc(v)}" ${String(v)===String(value)?'selected':''}>${esc(t)}</option>`).join('')}</select></div>`}
 function area(name,label,value=''){return `<div class="wide"><label for="f-${name}">${label}</label><textarea id="f-${name}" name="${name}">${esc(value)}</textarea></div>`}
@@ -3627,16 +3658,47 @@ if(['payment','expense_payment','farm_sale'].includes(kind)&&S.cash_accounts?.le
 if(kind==='cancel_subscription'){title='Cancelar servicio';initial={id};fields='<div class="wide"><p>Se conservarán los cargos y pagos existentes. Se generan los períodos ya iniciados hasta hoy antes de detener los futuros. Los saldos pendientes siguen siendo cobrables.</p></div>';submit='Cancelar servicio';help='Esta cancelación queda registrada en el historial.'}
 if(kind==='password'){title='Cambiar mi contraseña';fields=input('current','Contraseña actual','password','','required autocomplete="current-password"')+input('password','Nueva contraseña','password','','required minlength="12" autocomplete="new-password"');help='Mínimo 12 caracteres. Se cerrarán sus otras sesiones.'}
 if(['member','edit_member'].includes(kind)){const member=S.members?.find(m=>m.id===id);title=member?'Editar permisos':'Nuevo usuario';fields=input('username','Usuario','text',member?.username||'',`required ${member?'readonly':''}`)+input('name','Nombre','text',member?.name||'','required')+(member?'':input('password','Contraseña inicial','password','','required minlength="12" autocomplete="new-password"'))+input('role_name','Puesto (gerente, supervisor, auxiliar…)','text',member?.role_name||'Colaborador','required')+input('hierarchy_rank','Orden jerárquico (1 = más alto)','number',member?.hierarchy_rank||3,'required min="1" max="99"')+select('role','Nivel acumulativo',[['register','Básico: registra'],['review','Revisor: registra y aprueba'],['admin','Administrador: todos los permisos de empresa']],member?.role||'register')+`<div><label><input type="checkbox" name="collections" ${member?.collections?'checked':''}> Permiso de cobros (toda la empresa)</label></div>`;for(const [table,label] of [['departments','Departamentos autorizados'],['projects','Proyectos autorizados']]){const selected=JSON.parse(member?.[table]||'[]');fields+=`<div><label>${label}</label><div class="check-list">${S[table].map(x=>`<label><input type="checkbox" name="${table}" value="${x.id}" ${selected.includes(x.id)?'checked':''}> ${esc(x.name)}</label>`).join('')}</div></div>`}help='La jerarquía ordena los puestos; los permisos dependen del nivel de acceso y las áreas seleccionadas. Sin selecciones = todos. Cuando se eligen departamentos y proyectos, ambos límites aplican. Administradores abarcan toda la empresa. Cobros tiene alcance empresarial independiente. Para editar un usuario existente, conserve su nombre de usuario.'}
+if(kind==='re_condo'||kind==='edit_re_condo'){
+  const c=kind==='edit_re_condo'?(S.re_condos||[]).find(x=>x.id===id):null;
+  title=c?`Editar condominio: «${c.name}»`:'Nuevo Condominio o Torre';
+  if(c) initial={id};
+  const condoTypes=[['residential','Residencial / Torre de apartamentos'],['commercial','Comercial / Plaza o Torre corporativa'],['mixed','Mixto (Comercial y Residencial)'],['residential_complex','Complejo o Urbanización cerrada']];
+  fields=input('name','Nombre del condominio / torre','text',c?.name||'','required maxlength="200" placeholder="ej. Torre Bella Vista Real"')+
+         input('code','Código de referencia','text',c?.code||'','placeholder="ej. COND-BVR"')+
+         select('condo_type','Tipo de condominio',condoTypes,c?.condo_type||'residential')+
+         input('address','Dirección física','text',c?.address||'','required maxlength="500"')+
+         input('city','Ciudad / Sector','text',c?.city||'Santo Domingo D.N.','maxlength="200"')+
+         input('rnc_tax_id','RNC del Condominio (Ley 5038)','text',c?.rnc_tax_id||'','placeholder="ej. 4-30-19283-1"')+
+         input('admin_name','Administrador / Presidente de junta','text',c?.admin_name||'','placeholder="Nombre del gestor o empresa"')+
+         input('admin_phone','Teléfono de administración','text',c?.admin_phone||'')+
+         input('admin_email','Correo de administración','email',c?.admin_email||'')+
+         input('reserve_fund','Fondo de reserva acumulado (RD$)','number',c?.reserve_fund?(c.reserve_fund/100):0,'min="0" step="0.01"')+
+         input('bank_account_info','Cuenta bancaria para cuotas','text',c?.bank_account_info||'','placeholder="ej. Banreservas Cta Corriente #960-123456-7"')+
+         area('notes','Características de áreas comunes (elevadores, planta eléctrica, cisterna, bombas)',c?.notes||'');
+  help='Gestione condominios y torres residenciales o comerciales para cobro de cuotas a condóminos y gastos de áreas comunes.';
+}
 if(kind==='re_property'||kind==='edit_re_property'){
   const p=kind==='edit_re_property'?(S.re_properties||[]).find(x=>x.id===id):null;
   title=p?`Editar inmueble: «${p.title}»`:'Nuevo inmueble en cartera';
   if(p) initial={id};
-  const propTypes=[['apartment','Apartamento'],['house','Casa'],['villa','Villa'],['commercial','Local comercial'],['office','Oficina'],['land','Solar / Terreno'],['industrial','Nave industrial'],['building','Edificio completo']];
+  const propTypes=[
+    ['apartment','🏠 Apartamento'],['penthouse','⭐ Penthouse'],['house','🏡 Casa'],['villa','🌴 Villa'],['townhouse','🏘️ Townhouse'],
+    ['commercial','🏬 Local comercial'],['office','🏢 Oficina'],['industrial','🏭 Nave industrial'],['building','🏛️ Edificio completo'],
+    ['land','🌾 Solar urbano'],['lot','🌄 Terreno campestre'],['parcel','🚜 Parcela / Finca rústica'],
+    ['condominium','🏛️ Condominio / Torre'],['residential','🏘️ Residencial cerrado']
+  ];
   const listTypes=[['both','Alquiler y Venta'],['rent','Solo Alquiler'],['sale','Solo Venta']];
   const statuses=[['available','Disponible'],['rented','Alquilado'],['sold','Vendido'],['reserved','Reservado'],['maintenance','En mantenimiento']];
+  const condoOpts=[['','— Inmueble independiente / Fuera de condominio —'],...(S.re_condos||[]).map(co=>[co.id,`🏛️ ${co.name}${co.code?' ('+co.code+')':''}`])];
+
   fields=input('title','Título / Nombre del inmueble','text',p?.title||'','required maxlength="200" placeholder="ej. Apartamento Torre Vista Bella"')+
          input('code','Código de referencia','text',p?.code||'','placeholder="ej. PROP-101"')+
-         select('property_type','Tipo de inmueble',propTypes,p?.property_type||'apartment')+
+         select('property_type','Tipo de inmueble / Clasificación',propTypes,p?.property_type||'apartment')+
+         select('condo_id','Condominio o Torre matriz (si pertenece a un condominio)',condoOpts,p?.condo_id||extraData?.condo_id||'')+
+         input('unit_number','No. de Unidad / Apto / Local (en condominio)','text',p?.unit_number||'','placeholder="ej. 3B, PH-12A, Local 102"')+
+         input('aliquot_pct','Porcentaje de alícuota indivisa (%)','number',p?.aliquot_pct||'','min="0" max="100" step="0.01" placeholder="ej. 4.16"')+
+         input('condo_fee','Cuota de mantenimiento mensual (RD$)','number',p?.condo_fee?(p.condo_fee/100):'','min="0" step="0.01" placeholder="ej. 6500.00"')+
+         input('condo_fee_day','Día límite de pago mensual (1-31)','number',p?.condo_fee_day||5,'min="1" max="31"')+
          select('listing_type','Modalidad de oferta',listTypes,p?.listing_type||'both')+
          select('status','Estado del inmueble',statuses,p?.status||'available')+
          input('address','Dirección / Calle y número','text',p?.address||'','required maxlength="500"')+
@@ -3647,12 +3709,88 @@ if(kind==='re_property'||kind==='edit_re_property'){
          input('bedrooms','Habitaciones', 'number', p?.bedrooms||0, 'min="0"')+
          input('bathrooms','Baños', 'number', p?.bathrooms||0, 'min="0" step="0.5"')+
          input('parking_spots','Estacionamientos / Parqueos', 'number', p?.parking_spots||0, 'min="0"')+
-         input('owner_name','Propietario / Consignatario', 'text', p?.owner_name||'')+
+         input('owner_name','Propietario / Condómino', 'text', p?.owner_name||'')+
+         input('owner_document','Cédula / RNC del Propietario / Condómino', 'text', p?.owner_document||'')+
          input('owner_phone','Teléfono del propietario', 'text', p?.owner_phone||'')+
+         input('owner_email','Correo del propietario / condómino', 'email', p?.owner_email||'')+
          select('agent_id','Agente responsable',options('employees',true,true),p?.agent_id||'')+
          dims(p?.department_id||'',p?.project_id||'')+
          area('notes','Características, amenidades y notas adicionales',p?.notes||'');
-  help='Gestione el catálogo inmobiliario con precios de venta y renta en RD$.';
+  help='Gestione viviendas, comerciales, solares, terrenos o unidades de condominio con cuotas de mantenimiento en RD$.';
+}
+if(kind==='re_condo_charge'||kind==='edit_re_condo_charge'){
+  const ch=kind==='edit_re_condo_charge'?(S.re_condo_charges||[]).find(x=>x.id===id):null;
+  title=ch?`Editar cobro a condómino · #${id}`:'Nuevo Cobro a Condómino';
+  if(ch) initial={id};
+  const condoOpts=(S.re_condos||[]).map(c=>[c.id,c.name]);
+  const propOpts=(S.re_properties||[]).filter(p=>p.condo_id).map(p=>[p.id,`${p.condo_name?p.condo_name+' · ':''}${p.unit_number?p.unit_number+' - ':''}${p.title} (${p.owner_name||'Condómino'})`]);
+  fields=select('condo_id','Condominio / Torre',condoOpts,ch?.condo_id||extraData?.condo_id||'','required')+
+         select('property_id','Unidad / Condómino',propOpts,ch?.property_id||extraData?.property_id||'','required')+
+         input('concept','Concepto del cobro','text',ch?.concept||`Cuota de Mantenimiento ${(S.today||'').slice(0,7)}`,'required maxlength="200"')+
+         input('period','Período (AAAA-MM)','text',ch?.period||(S.today||'').slice(0,7),'required placeholder="ej. 2026-10"')+
+         input('issue_date','Fecha de emisión','date',ch?.issue_date||S.today,'required')+
+         input('due_date','Fecha límite de vencimiento','date',ch?.due_date||S.today,'required')+
+         input('amount','Monto de la cuota (RD$)','number',ch?.amount?(ch.amount/100):'','required min="0.01" step="0.01"')+
+         area('notes','Observaciones / Notas del cobro',ch?.notes||'');
+  help='Emita cuotas ordinarias o extraordinarias de mantenimiento a condóminos.';
+}
+if(kind==='generate_condo_fees'){
+  title='⚡ Generar Cuotas de Mantenimiento del Mes';
+  const condoOpts=(S.re_condos||[]).map(c=>[c.id,`${c.name} (${c.units_count||0} unidades registradas)`]);
+  fields=select('condo_id','Condominio a facturar',condoOpts,extraData?.condo_id||'','required')+
+         input('period','Período a facturar (AAAA-MM)','text',(S.today||'').slice(0,7),'required placeholder="ej. 2026-10"');
+  help='Genera en 1 clic las cuotas de mantenimiento para todas las unidades del condominio con cuota mensual configurada. Si una unidad ya tiene cobro para este período no se duplicará.';
+  submit='⚡ Generar cuotas ahora';
+}
+if(kind==='pay_condo_charge'){
+  const ch=(S.re_condo_charges||[]).find(x=>x.id===id);
+  title=`Cobrar cuota: ${ch?.property_title||''} (${ch?.period||''})`;
+  initial={id};
+  const remaining=ch?(ch.amount-(ch.paid_amount||0)):0;
+  fields=input('amount','Importe a cobrar (RD$)','number',(remaining/100),`required min="0.01" max="${remaining/100}" step="0.01"`)+
+         input('payment_date','Fecha del pago recibido','date',S.today,`required max="${S.today}"`)+
+         input('payment_reference','No. Depósito / Transferencia / Cheque','text','',`required placeholder="ej. Transferencia Banreservas #8812"`)+
+         area('notes','Observaciones','');
+  help=`Balance pendiente: ${money(remaining)}. Registre la constancia bancaria del cobro de cuota.`;
+  submit='Confirmar cobro';
+}
+if(kind==='re_condo_expense'||kind==='edit_re_condo_expense'){
+  const ex=kind==='edit_re_condo_expense'?(S.re_condo_expenses||[]).find(x=>x.id===id):null;
+  title=ex?`Editar factura de área común · #${id}`:'Registrar Factura de Servicio de Área Común';
+  if(ex) initial={id};
+  const condoOpts=(S.re_condos||[]).map(c=>[c.id,c.name]);
+  const serviceTypes=[
+    ['electricity','⚡ Energía Eléctrica Área Común (Edesur / EdeEste / Edenorte)'],
+    ['water','💧 Agua Potable y Cisterna (CAASD / Coraasan / Camiones)'],
+    ['elevator','🛗 Mantenimiento de Ascensores (Otis, Schindler, Kone, etc.)'],
+    ['security_cleaning','🛡️ Conserjería, Seguridad y Limpieza'],
+    ['generator_fuel','⛽ Combustible para Planta Eléctrica (Gasoil)'],
+    ['maintenance_repairs','🛠️ Mantenimiento y Reparaciones (Bombas, Portón, Pintura)'],
+    ['insurance','📑 Póliza de Seguro de Áreas Comunes'],
+    ['other','📦 Otros Servicios y Suministros Comunes']
+  ];
+  fields=select('condo_id','Condominio / Torre',condoOpts,ex?.condo_id||extraData?.condo_id||'','required')+
+         select('service_type','Tipo de servicio de área común',serviceTypes,ex?.service_type||'electricity')+
+         input('provider_name','Empresa proveedora / Contratista','text',ex?.provider_name||'','required maxlength="200" placeholder="ej. Edesur Dominicana, CAASD, Ascensores Otis"')+
+         input('invoice_number','No. Factura / NIC / NCF / Contrato','text',ex?.invoice_number||'','placeholder="ej. NIC 2098412 / B0100021482"')+
+         input('service_period','Mes o período facturado','text',ex?.service_period||`Octubre ${(S.today||'').slice(0,4)}`,'placeholder="ej. Octubre 2026"')+
+         input('invoice_date','Fecha de la factura','date',ex?.invoice_date||S.today,'required')+
+         input('due_date','Fecha de vencimiento','date',ex?.due_date||S.today,'required')+
+         input('amount','Monto de la factura (RD$)','number',ex?.amount?(ex.amount/100):'','required min="0.01" step="0.01"')+
+         area('notes','Detalles del servicio, lectura de medidor o piezas','');
+  help='Registre facturas de servicios comunes (luz de bombas y elevadores, agua cisterna, seguridad) para conciliar con los ingresos del condominio.';
+}
+if(kind==='pay_condo_expense'){
+  const ex=(S.re_condo_expenses||[]).find(x=>x.id===id);
+  title=`Pagar factura: ${ex?.provider_name||''} (${money(ex?.amount||0)})`;
+  initial={id};
+  const remaining=ex?(ex.amount-(ex.paid_amount||0)):0;
+  fields=input('amount','Importe a pagar (RD$)','number',(remaining/100),`required min="0.01" max="${remaining/100}" step="0.01"`)+
+         input('payment_date','Fecha efectiva del pago','date',S.today,`required max="${S.today}"`)+
+         input('payment_reference','Referencia / Cheque / Transferencia de egreso','text','',`required placeholder="ej. Transferencia BHD #77412"`)+
+         area('notes','Observaciones','');
+  help=`Saldo pendiente de la factura: ${money(remaining)}. Registre el pago realizado con cargo a los fondos del condominio.`;
+  submit='Confirmar pago de factura';
 }
 if(kind==='re_lease'||kind==='edit_re_lease'){
   const l=kind==='edit_re_lease'?(S.re_leases||[]).find(x=>x.id===id):null;
@@ -3726,7 +3864,7 @@ $('#modal').querySelectorAll('input,textarea,select').forEach(el=>{el.setAttribu
 $('#modal').showModal();
 $('#close-modal').onclick=$('#cancel-modal').onclick=()=>$('#modal').close();
 if(kind==='subscription')$('#f-product_id').onchange=e=>{$('#f-amount').value=S.products.find(p=>p.id===Number(e.target.value)).amount/100};
-$('#record-form').onsubmit=async e=>{e.preventDefault();const btn=e.target.querySelector('[type=submit]');btn.disabled=true;const form=new FormData(e.target),data={...Object.fromEntries(form),...initial};if(form.has('allow_early_close'))data.allow_early_close=true;if(form.has('close_contracts'))data.close_contracts=true;if(kind==='view_termination'){$('#modal').close();return;}if(['member','edit_member'].includes(kind)){data.departments=form.getAll('departments').map(Number);data.projects=form.getAll('projects').map(Number);data.collections=form.has('collections')}try{if(['expense_payment','pay_payroll'].includes(kind)){const accId=data.account_id;const acc=S.cash_accounts?.find(a=>String(a.id)===String(accId));if(acc){let payAmount=0;if(kind==='expense_payment')payAmount=Math.round(Number(data.amount||0)*100);else if(kind==='pay_payroll'){const p=(S.farm_payrolls||[]).find(x=>x.id===Number(data.id));if(p)payAmount=p.amount;}if(payAmount>acc.balance){throw Error(`Saldo insuficiente en «${acc.name}». Saldo disponible: ${accountMoney(acc.balance,acc.currency)}.`);}}}if(kind==='password')await api('password',data);else if(kind==='company'){data.company_id=cid;const created=await api('company',data);$('#modal').close();await boot();setActiveCompany(created.company_id);await refresh();toast('Empresa creada correctamente.')}else if(kind==='edit_company'){const targetId=Number(initial.id||data.id||cid);data.id=targetId;data.target_company_id=targetId;data.demo=form.has('demo');const targetComp=me?.companies?.find(x=>x.id===targetId)||{};data.logo=targetComp.logo||(targetId===Number(cid)?S.company_profile?.logo:'')||'';if(data.remove_logo)data.logo='';const file=$('#company-logo-modal')?.files?.[0];if(file){if(file.size>500000)throw Error('El logo supera 500 KB.');data.logo=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(Error('No se pudo leer el logo.'));reader.readAsDataURL(file)})}await save('edit_company',data);me=await api('me');$('#modal').close();await refresh();toast('Ficha de empresa actualizada correctamente.')}else if(kind==='terminate_employee'){await save('terminate_employee',data);$('#modal').close();toast('Colaborador dado de baja correctamente.');}else{const reActionMap={re_property:'create_re_property',re_lease:'create_re_lease',re_sale:'create_re_sale',re_visit:'create_re_visit',re_maintenance:'create_re_maintenance',edit_member:'member'};const actionName=reActionMap[kind]||kind;await save(actionName,data);$('#modal').close();toast('Guardado correctamente.')}}catch(err){$('#form-error').textContent=err.message;btn.disabled=false}}}
+$('#record-form').onsubmit=async e=>{e.preventDefault();const btn=e.target.querySelector('[type=submit]');btn.disabled=true;const form=new FormData(e.target),data={...Object.fromEntries(form),...initial};if(form.has('allow_early_close'))data.allow_early_close=true;if(form.has('close_contracts'))data.close_contracts=true;if(kind==='view_termination'){$('#modal').close();return;}if(['member','edit_member'].includes(kind)){data.departments=form.getAll('departments').map(Number);data.projects=form.getAll('projects').map(Number);data.collections=form.has('collections')}try{if(['expense_payment','pay_payroll'].includes(kind)){const accId=data.account_id;const acc=S.cash_accounts?.find(a=>String(a.id)===String(accId));if(acc){let payAmount=0;if(kind==='expense_payment')payAmount=Math.round(Number(data.amount||0)*100);else if(kind==='pay_payroll'){const p=(S.farm_payrolls||[]).find(x=>x.id===Number(data.id));if(p)payAmount=p.amount;}if(payAmount>acc.balance){throw Error(`Saldo insuficiente en «${acc.name}». Saldo disponible: ${accountMoney(acc.balance,acc.currency)}.`);}}}if(kind==='password')await api('password',data);else if(kind==='company'){data.company_id=cid;const created=await api('company',data);$('#modal').close();await boot();setActiveCompany(created.company_id);await refresh();toast('Empresa creada correctamente.')}else if(kind==='edit_company'){const targetId=Number(initial.id||data.id||cid);data.id=targetId;data.target_company_id=targetId;data.demo=form.has('demo');const targetComp=me?.companies?.find(x=>x.id===targetId)||{};data.logo=targetComp.logo||(targetId===Number(cid)?S.company_profile?.logo:'')||'';if(data.remove_logo)data.logo='';const file=$('#company-logo-modal')?.files?.[0];if(file){if(file.size>500000)throw Error('El logo supera 500 KB.');data.logo=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(Error('No se pudo leer el logo.'));reader.readAsDataURL(file)})}await save('edit_company',data);me=await api('me');$('#modal').close();await refresh();toast('Ficha de empresa actualizada correctamente.')}else if(kind==='terminate_employee'){await save('terminate_employee',data);$('#modal').close();toast('Colaborador dado de baja correctamente.');}else{const reActionMap={re_property:'create_re_property',re_condo:'create_re_condo',edit_re_condo:'edit_re_condo',re_condo_charge:'create_re_condo_charge',edit_re_condo_charge:'edit_re_condo_charge',generate_condo_fees:'generate_condo_month_fees',pay_condo_charge:'record_condo_charge_payment',re_condo_expense:'create_re_condo_expense',edit_re_condo_expense:'edit_re_condo_expense',pay_condo_expense:'pay_re_condo_expense',re_lease:'create_re_lease',re_sale:'create_re_sale',re_visit:'create_re_visit',re_maintenance:'create_re_maintenance',edit_member:'member'};const actionName=reActionMap[kind]||kind;await save(actionName,data);$('#modal').close();toast('Guardado correctamente.')}}catch(err){$('#form-error').textContent=err.message;btn.disabled=false}}}
 let reportFilters={type:'expenses',start:'',end:'',department:'',project:'',person:'',status:'',search:''};
 let currentReport=null;
 function reportColumns(result){const type=reportFilters.type,op=result.definition.operational;const headers=['Fecha','Registro','Concepto',...(op?['Departamento','Proyecto']:['Cliente']),...(result.definition.person?['Persona']:[]),'Estado',...(type==='worklogs'?['Horas']:type==='tasks'?[]:['Importe RD$','Pagado RD$','Saldo RD$']),'Referencia / observaciones'];const values=r=>[r.date,r.id,r.concept,...(op?[r.department,r.project]:[r.customer]),...(result.definition.person?[r.person]:[]),statuses[r.status]||r.status,...(type==='worklogs'?[(r.minutes/60).toFixed(2)]:type==='tasks'?[]:[(r.amount/100).toFixed(2),(r.paid/100).toFixed(2),(r.balance/100).toFixed(2)]),r.reference||r.notes];return {headers,rows:result.records.map(values)}}
@@ -4820,6 +4958,9 @@ function showReportQueueJobModal(jobId){
 
 function realEstateView(){
   const properties = S.re_properties || [];
+  const condos = S.re_condos || [];
+  const condoCharges = S.re_condo_charges || [];
+  const condoExpenses = S.re_condo_expenses || [];
   const leases = S.re_leases || [];
   const sales = S.re_sales || [];
   const visits = S.re_visits || [];
@@ -4827,14 +4968,39 @@ function realEstateView(){
 
   const propTypeLabels = {
     apartment: 'Apartamento',
+    penthouse: 'Penthouse',
     house: 'Casa',
     villa: 'Villa',
+    townhouse: 'Townhouse',
     commercial: 'Local comercial',
     office: 'Oficina',
-    land: 'Solar / Terreno',
     industrial: 'Nave industrial',
-    building: 'Edificio completo'
+    building: 'Edificio completo',
+    land: 'Solar urbano',
+    lot: 'Terreno campestre',
+    parcel: 'Parcela / Finca rústica',
+    condominium: 'Condominio matriz',
+    residential: 'Residencial cerrado'
   };
+
+  const condoTypeLabels = {
+    residential: 'Residencial / Torre',
+    commercial: 'Comercial / Plaza',
+    mixed: 'Mixto',
+    residential_complex: 'Complejo cerrado'
+  };
+
+  const serviceTypeLabels = {
+    electricity: '⚡ Luz Común (Bombas y Pasillos)',
+    water: '💧 Agua Común (Cisterna y CAASD)',
+    elevator: '🛗 Ascensores (Mantenimiento)',
+    security_cleaning: '🛡️ Seguridad y Limpieza 24/7',
+    generator_fuel: '⛽ Combustible Planta Eléctrica',
+    maintenance_repairs: '🛠️ Reparaciones y Bombas',
+    insurance: '📑 Póliza de Seguro Común',
+    other: '📦 Otros Servicios Comunes'
+  };
+
   const propStatusBadges = {
     available: '<span class="badge green">Disponible</span>',
     rented: '<span class="badge" style="background:#0284c7;color:#fff">Alquilado</span>',
@@ -4874,10 +5040,43 @@ function realEstateView(){
     resolved: '<span class="badge green">Resuelto ✓</span>'
   };
 
+  const condoChargeStatusBadges = {
+    paid: '<span class="badge green">Pagada ✓</span>',
+    pending: '<span class="badge orange">Pendiente</span>',
+    partial: '<span class="badge blue">Abono parcial</span>',
+    cancelled: '<span class="badge gray">Anulada</span>'
+  };
+
+  const condoExpenseStatusBadges = {
+    paid: '<span class="badge green">Pagada ✓</span>',
+    pending: '<span class="badge orange">Por pagar</span>',
+    cancelled: '<span class="badge gray">Anulada</span>'
+  };
+
+  // Property categorization
+  const isResidential = p => ['apartment','penthouse','house','villa','townhouse'].includes(p.property_type);
+  const isCommercial = p => ['commercial','office','industrial','building'].includes(p.property_type);
+  const isLand = p => ['land','lot','parcel'].includes(p.property_type);
+  const isInCondo = p => Boolean(p.condo_id);
+
   const totalProps = properties.length;
   const availProps = properties.filter(p => p.status === 'available').length;
   const rentedProps = properties.filter(p => p.status === 'rented').length;
   const soldProps = properties.filter(p => p.status === 'sold').length;
+  const residentialCount = properties.filter(isResidential).length;
+  const commercialCount = properties.filter(isCommercial).length;
+  const landCount = properties.filter(isLand).length;
+  const inCondoCount = properties.filter(isInCondo).length;
+
+  const totalReserveFund = condos.reduce((sum, c) => sum + (c.reserve_fund || 0), 0);
+  const totalCondoBilled = condoCharges.filter(c => c.status !== 'cancelled').reduce((sum, c) => sum + (c.amount || 0), 0);
+  const totalCondoCollected = condoCharges.filter(c => c.status !== 'cancelled').reduce((sum, c) => sum + (c.paid_amount || 0), 0);
+  const totalCondoPending = totalCondoBilled - totalCondoCollected;
+
+  const totalCommonExpenses = condoExpenses.filter(e => e.status !== 'cancelled').reduce((sum, e) => sum + (e.amount || 0), 0);
+  const totalCommonPaid = condoExpenses.filter(e => e.status !== 'cancelled').reduce((sum, e) => sum + (e.paid_amount || 0), 0);
+  const totalCommonPending = totalCommonExpenses - totalCommonPaid;
+  const netCondoOperatingBalance = totalCondoCollected - totalCommonPaid;
 
   const activeLeases = leases.filter(l => l.status === 'active');
   const totalMonthlyRent = activeLeases.reduce((sum, l) => sum + (l.monthly_rent || 0), 0);
@@ -4889,9 +5088,13 @@ function realEstateView(){
   const headerActions = `
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
       ${openButton('+ Nuevo inmueble', 're_property')}
-      ${openButton('+ Contrato de alquiler', 're_lease')}
-      ${openButton('+ Registrar venta', 're_sale')}
-      <button type="button" class="small" data-open="re_visit">+ Agendar visita</button>
+      <button type="button" class="small" data-open="re_condo">+ Condominio / Torre</button>
+      <button type="button" class="small primary" data-open="generate_condo_fees" title="Generar cuotas mensuales en 1 clic">⚡ Generar cuotas del mes</button>
+      <button type="button" class="small" data-open="re_condo_expense">+ Factura área común</button>
+      <button type="button" class="small" data-open="re_condo_charge">+ Cobro condómino</button>
+      ${openButton('+ Alquiler', 're_lease')}
+      ${openButton('+ Venta', 're_sale')}
+      <button type="button" class="small" data-open="re_visit">+ Visita</button>
       <button type="button" class="small" data-open="re_maintenance">+ Mantenimiento</button>
       ${totalProps === 0 ? `<button type="button" class="primary small" data-action="seed_demo_real_estate">⚡ Cargar datos de prueba</button>` : ''}
     </div>
@@ -4900,24 +5103,29 @@ function realEstateView(){
   const kpis = `
     <div class="cards" style="margin-bottom:16px">
       <article class="card highlight">
-        <div class="card-title">Inmuebles en Cartera <span>🏢</span></div>
+        <div class="card-title">Cartera Inmobiliaria <span>🏢</span></div>
         <div class="card-value">${totalProps}</div>
-        <div class="card-note">${availProps} disponibles · ${rentedProps} alquilados · ${soldProps} vendidos</div>
+        <div class="card-note">${residentialCount} viviendas · ${commercialCount} comerciales · ${landCount} terrenos/solares · ${inCondoCount} en condominio</div>
       </article>
       <article class="card">
-        <div class="card-title">Renta Mensual en Contratos <span>📑</span></div>
-        <div class="card-value">${money(totalMonthlyRent)}</div>
-        <div class="card-note">${activeLeases.length} contrato(s) activos de arrendamiento</div>
+        <div class="card-title">Condominios y Torres <span>🏛️</span></div>
+        <div class="card-value">${condos.length}</div>
+        <div class="card-note">${inCondoCount} unidades administradas · Fondo reserva: ${money(totalReserveFund)}</div>
       </article>
       <article class="card">
-        <div class="card-title">Comisiones de Ventas <span>🤝</span></div>
-        <div class="card-value">${money(totalCommissions)}</div>
-        <div class="card-note">${closedSales.length} cierre(s) sobre ${money(totalSalesVolume)} en ventas</div>
+        <div class="card-title">Mantenimiento Cobrado <span>💵</span></div>
+        <div class="card-value">${money(totalCondoCollected)}</div>
+        <div class="card-note">${money(totalCondoPending)} pendiente de cobro (${condoCharges.length} cuotas emitidas)</div>
       </article>
       <article class="card">
-        <div class="card-title">Incidencias y Visitas <span>🛠️</span></div>
-        <div class="card-value">${pendingMaints}</div>
-        <div class="card-note">${pendingMaints} mantenimiento(s) pendientes · ${visits.length} visitas</div>
+        <div class="card-title">Servicios de Área Común <span>⚡💧</span></div>
+        <div class="card-value">${money(totalCommonExpenses)}</div>
+        <div class="card-note">${money(totalCommonPaid)} pagado · ${money(totalCommonPending)} por pagar en luz, agua, elevadores</div>
+      </article>
+      <article class="card">
+        <div class="card-title">Balance Operativo Condominios <span>⚖️</span></div>
+        <div class="card-value" style="color:${netCondoOperatingBalance >= 0 ? 'var(--brand-accent,#0f766e)' : 'var(--danger,#b91c1c)'}">${money(netCondoOperatingBalance)}</div>
+        <div class="card-note">${netCondoOperatingBalance >= 0 ? '✓ Superávit acumulado' : '⚠️ Déficit operativo'} (Cobros vs. Servicios comunes)</div>
       </article>
     </div>
   `;
@@ -4927,62 +5135,109 @@ function realEstateView(){
       <div style="flex:1;min-width:260px">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
           <span style="font-size:24px">🏢</span>
-          <strong style="font-size:16px;color:var(--brand-accent,#0f766e)">¿Desea probar el módulo de Bienes Raíces con datos de ejemplo?</strong>
+          <strong style="font-size:16px;color:var(--brand-accent,#0f766e)">¿Desea probar el módulo de Bienes Raíces y Administración de Condominios con datos de ejemplo?</strong>
         </div>
         <div style="font-size:13.5px;line-height:1.5;color:var(--ink,#1e293b)">
-          Cargue en 1 clic <strong>4 inmuebles completos</strong> (Apartamento de lujo en Bella Vista, Penthouse en Piantini, Local comercial en 27 de Febrero, Villa de golf en Punta Cana) con <strong>contratos de alquiler</strong> enlazados a cobros contables, <strong>cierres de venta</strong> con comisión, <strong>visitas agendadas</strong> y <strong>mantenimientos</strong>.
+          Cargue en 1 clic <strong>Torre Bella Vista Real</strong> (condominio con apartamentos, cuotas de mantenimiento mensual, facturas de área común de <strong>Edesur luz de bombas</strong>, <strong>CAASD agua cisterna</strong>, <strong>Otis elevadores</strong>, seguridad y gasoil de planta), más <strong>viviendas</strong>, <strong>locales comerciales</strong>, <strong>solares urbanos</strong> y <strong>terrenos campestres</strong>.
         </div>
       </div>
       <button type="button" class="primary" data-action="seed_demo_real_estate" style="white-space:nowrap;padding:10px 20px;font-weight:700;font-size:14px;display:inline-flex;align-items:center;gap:6px">
-        <span>⚡</span> Cargar y probar Bienes Raíces
+        <span>⚡</span> Cargar datos completos de Bienes Raíces
       </button>
     </div>
   ` : '';
 
   const subnav = `
     <div class="sub-nav" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;align-items:center">
-      <button type="button" class="${reTab==='properties'?'primary':''}" data-re-tab="properties">🏢 Catálogo de Inmuebles (${properties.length})</button>
-      <button type="button" class="${reTab==='leases'?'primary':''}" data-re-tab="leases">📑 Alquileres y Contratos (${leases.length})</button>
-      <button type="button" class="${reTab==='sales'?'primary':''}" data-re-tab="sales">🤝 Ventas y Cierres (${sales.length})</button>
-      <button type="button" class="${reTab==='visits'?'primary':''}" data-re-tab="visits">🗓️ Visitas e Interesados (${visits.length})</button>
+      <button type="button" class="${reTab==='properties'?'primary':''}" data-re-tab="properties">🏢 Inmuebles (${properties.length})</button>
+      <button type="button" class="${reTab==='condos'?'primary':''}" data-re-tab="condos">🏛️ Condominios y Torres (${condos.length})</button>
+      <button type="button" class="${reTab==='condo_charges'?'primary':''}" data-re-tab="condo_charges">💵 Cobros a Condóminos (${condoCharges.length})</button>
+      <button type="button" class="${reTab==='common_services'?'primary':''}" data-re-tab="common_services">⚡ Servicios de Área Común (${condoExpenses.length})</button>
+      <button type="button" class="${reTab==='leases'?'primary':''}" data-re-tab="leases">📑 Alquileres (${leases.length})</button>
+      <button type="button" class="${reTab==='sales'?'primary':''}" data-re-tab="sales">🤝 Ventas (${sales.length})</button>
+      <button type="button" class="${reTab==='visits'?'primary':''}" data-re-tab="visits">🗓️ Visitas (${visits.length})</button>
       <button type="button" class="${reTab==='maintenance'?'primary':''}" data-re-tab="maintenance">🛠️ Mantenimiento (${maintenances.length})</button>
-      ${totalProps > 0 ? `<button type="button" class="small secondary" data-action="seed_demo_real_estate" title="Recargar o restaurar las 4 propiedades demo" style="margin-left:auto">🔄 Recargar demo inmobiliario</button>` : ''}
+      ${totalProps > 0 ? `<button type="button" class="small secondary" data-action="seed_demo_real_estate" title="Recargar o restaurar las propiedades y condominios demo" style="margin-left:auto">🔄 Recargar demo inmobiliario</button>` : ''}
     </div>
   `;
 
   let body = '';
 
+  // ---------------- TAB: INMUEBLES ----------------
   if(reTab === 'properties'){
     let filtered = properties;
+
+    // Category filter
+    if(reCategoryFilter === 'residential') filtered = filtered.filter(isResidential);
+    else if(reCategoryFilter === 'commercial') filtered = filtered.filter(isCommercial);
+    else if(reCategoryFilter === 'land') filtered = filtered.filter(isLand);
+    else if(reCategoryFilter === 'condo') filtered = filtered.filter(isInCondo);
+
     if(reSearch){
       const q = reSearch.toLowerCase();
-      filtered = filtered.filter(p => (p.title||'').toLowerCase().includes(q) || (p.code||'').toLowerCase().includes(q) || (p.address||'').toLowerCase().includes(q) || (p.city||'').toLowerCase().includes(q));
+      filtered = filtered.filter(p => (p.title||'').toLowerCase().includes(q) || (p.code||'').toLowerCase().includes(q) || (p.address||'').toLowerCase().includes(q) || (p.city||'').toLowerCase().includes(q) || (p.owner_name||'').toLowerCase().includes(q) || (p.unit_number||'').toLowerCase().includes(q));
     }
     if(reTypeFilter) filtered = filtered.filter(p => p.property_type === reTypeFilter);
+    if(reCondoFilter) filtered = filtered.filter(p => String(p.condo_id) === String(reCondoFilter));
     if(reStatusFilter) filtered = filtered.filter(p => p.status === reStatusFilter);
     if(reOpFilter) filtered = filtered.filter(p => p.listing_type === reOpFilter || p.listing_type === 'both');
+
+    const categoryPillsHtml = `
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
+        <button type="button" class="small ${(!reCategoryFilter || reCategoryFilter==='all') ? 'primary' : 'secondary'}" data-re-cat-filter="all">
+          Todos (${properties.length})
+        </button>
+        <button type="button" class="small ${reCategoryFilter==='residential' ? 'primary' : 'secondary'}" data-re-cat-filter="residential">
+          🏠 Viviendas (${residentialCount})
+        </button>
+        <button type="button" class="small ${reCategoryFilter==='commercial' ? 'primary' : 'secondary'}" data-re-cat-filter="commercial">
+          🏬 Comerciales (${commercialCount})
+        </button>
+        <button type="button" class="small ${reCategoryFilter==='land' ? 'primary' : 'secondary'}" data-re-cat-filter="land">
+          🌾 Terrenos y Solares (${landCount})
+        </button>
+        <button type="button" class="small ${reCategoryFilter==='condo' ? 'primary' : 'secondary'}" data-re-cat-filter="condo">
+          🏛️ En Condominio (${inCondoCount})
+        </button>
+      </div>
+    `;
+
+    const condoOptions = (condos||[]).map(c => `<option value="${c.id}" ${String(reCondoFilter)===String(c.id)?'selected':''}>${esc(c.name)}</option>`).join('');
 
     const filterToolbar = `
       <div class="toolbar" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
         <div class="field" style="flex:2;min-width:180px">
-          <label for="re-search">Buscar inmueble</label>
-          <input type="search" id="re-search" value="${esc(reSearch)}" placeholder="Título, código, sector, calle...">
+          <label for="re-search">Buscar inmueble o condómino</label>
+          <input type="search" id="re-search" value="${esc(reSearch)}" placeholder="Título, código, sector, unidad, propietario...">
         </div>
         <div class="field" style="flex:1;min-width:140px">
-          <label for="re-type-filter">Tipo</label>
-          <select id="re-type-filter">
-            <option value="">Todos los tipos</option>
-            <option value="apartment" ${reTypeFilter==='apartment'?'selected':''}>Apartamento</option>
-            <option value="house" ${reTypeFilter==='house'?'selected':''}>Casa</option>
-            <option value="villa" ${reTypeFilter==='villa'?'selected':''}>Villa</option>
-            <option value="commercial" ${reTypeFilter==='commercial'?'selected':''}>Local comercial</option>
-            <option value="office" ${reTypeFilter==='office'?'selected':''}>Oficina</option>
-            <option value="land" ${reTypeFilter==='land'?'selected':''}>Solar / Terreno</option>
-            <option value="industrial" ${reTypeFilter==='industrial'?'selected':''}>Nave industrial</option>
-            <option value="building" ${reTypeFilter==='building'?'selected':''}>Edificio</option>
+          <label for="re-condo-filter">Condominio</label>
+          <select id="re-condo-filter">
+            <option value="">Todos los condominios</option>
+            ${condoOptions}
           </select>
         </div>
         <div class="field" style="flex:1;min-width:140px">
+          <label for="re-type-filter">Tipo específico</label>
+          <select id="re-type-filter">
+            <option value="">Todos los tipos</option>
+            <option value="apartment" ${reTypeFilter==='apartment'?'selected':''}>Apartamento</option>
+            <option value="penthouse" ${reTypeFilter==='penthouse'?'selected':''}>Penthouse</option>
+            <option value="house" ${reTypeFilter==='house'?'selected':''}>Casa</option>
+            <option value="villa" ${reTypeFilter==='villa'?'selected':''}>Villa</option>
+            <option value="townhouse" ${reTypeFilter==='townhouse'?'selected':''}>Townhouse</option>
+            <option value="commercial" ${reTypeFilter==='commercial'?'selected':''}>Local comercial</option>
+            <option value="office" ${reTypeFilter==='office'?'selected':''}>Oficina</option>
+            <option value="industrial" ${reTypeFilter==='industrial'?'selected':''}>Nave industrial</option>
+            <option value="building" ${reTypeFilter==='building'?'selected':''}>Edificio</option>
+            <option value="land" ${reTypeFilter==='land'?'selected':''}>Solar urbano</option>
+            <option value="lot" ${reTypeFilter==='lot'?'selected':''}>Terreno campestre</option>
+            <option value="parcel" ${reTypeFilter==='parcel'?'selected':''}>Parcela rural</option>
+            <option value="condominium" ${reTypeFilter==='condominium'?'selected':''}>Condominio matriz</option>
+            <option value="residential" ${reTypeFilter==='residential'?'selected':''}>Residencial cerrado</option>
+          </select>
+        </div>
+        <div class="field" style="flex:1;min-width:120px">
           <label for="re-op-filter">Modalidad</label>
           <select id="re-op-filter">
             <option value="">Todas</option>
@@ -4990,10 +5245,10 @@ function realEstateView(){
             <option value="sale" ${reOpFilter==='sale'?'selected':''}>Venta</option>
           </select>
         </div>
-        <div class="field" style="flex:1;min-width:140px">
+        <div class="field" style="flex:1;min-width:130px">
           <label for="re-status-filter">Estado</label>
           <select id="re-status-filter">
-            <option value="">Todos los estados</option>
+            <option value="">Todos</option>
             <option value="available" ${reStatusFilter==='available'?'selected':''}>Disponible</option>
             <option value="rented" ${reStatusFilter==='rented'?'selected':''}>Alquilado</option>
             <option value="sold" ${reStatusFilter==='sold'?'selected':''}>Vendido</option>
@@ -5005,7 +5260,7 @@ function realEstateView(){
     `;
 
     const cardsHtml = filtered.length ? `
-      <div class="property-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px">
+      <div class="property-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px">
         ${filtered.map(p => {
           const specs = [];
           if(p.bedrooms) specs.push(`🛏️ ${p.bedrooms} hab`);
@@ -5014,10 +5269,18 @@ function realEstateView(){
           if(p.area_sqm) specs.push(`📐 ${p.area_sqm} m²`);
           const agentName = lookup('employees', p.agent_id);
 
+          const categoryBadge = isResidential(p) ? '<span class="badge blue">🏠 Vivienda</span>' :
+                                isCommercial(p) ? '<span class="badge orange">🏬 Comercial</span>' :
+                                isLand(p) ? '<span class="badge green">🌾 Solar/Terreno</span>' :
+                                '<span class="badge gray">🏛️ Inmueble</span>';
+
           return `
             <article class="property-card" style="border:1px solid var(--border);border-radius:12px;padding:16px;background:var(--card);display:flex;flex-direction:column;gap:10px;box-shadow:0 2px 5px rgba(0,0,0,0.03)">
               <div style="display:flex;justify-content:space-between;align-items:center;gap:6px">
-                <span style="font-weight:700;font-size:13px;color:var(--brand-accent,#0f766e)">${esc(p.code||'PROP-'+p.id)}</span>
+                <div style="display:flex;align-items:center;gap:6px">
+                  <span style="font-weight:700;font-size:13px;color:var(--brand-accent,#0f766e)">${esc(p.code||'PROP-'+p.id)}</span>
+                  ${categoryBadge}
+                </div>
                 <div style="display:flex;gap:4px">${propStatusBadges[p.status]||badge(p.status)}</div>
               </div>
               <h3 style="margin:0;font-size:16px;line-height:1.3">${esc(p.title)}</h3>
@@ -5027,7 +5290,29 @@ function realEstateView(){
               <div style="font-size:12px;font-weight:600;color:var(--muted)">
                 ${propTypeLabels[p.property_type]||p.property_type} · ${propOpLabels[p.listing_type]||p.listing_type}
               </div>
+
+              ${p.condo_id ? `
+                <div style="background:color-mix(in srgb, var(--brand-accent,#0f766e) 8%, var(--card));border:1px solid color-mix(in srgb, var(--brand-accent,#0f766e) 20%, var(--border));padding:8px 10px;border-radius:8px;font-size:12.5px;display:flex;flex-direction:column;gap:4px">
+                  <div style="display:flex;justify-content:space-between;align-items:center">
+                    <span style="font-weight:700;color:var(--brand-accent,#0f766e)">🏛️ ${esc(p.condo_name||'Condominio')}</span>
+                    ${p.unit_number ? `<span class="badge" style="background:#e0f2fe;color:#0369a1">Unidad: ${esc(p.unit_number)}</span>` : ''}
+                  </div>
+                  <div style="display:flex;justify-content:space-between;color:var(--text);font-size:12px">
+                    <span>Cuota condómino: <strong>${money(p.condo_fee)}/mes</strong> (Día ${p.condo_fee_day||5})</span>
+                    ${p.aliquot_pct ? `<span>Alícuota: <strong>${p.aliquot_pct}%</strong></span>` : ''}
+                  </div>
+                  <div style="font-size:11.5px;color:var(--muted)">
+                    👤 Condómino: <strong>${esc(p.owner_name||'Propietario registrado')}</strong> ${p.owner_document ? '· '+esc(p.owner_document) : ''} ${p.owner_phone ? '· '+esc(p.owner_phone) : ''}
+                  </div>
+                </div>
+              ` : (p.owner_name ? `
+                <div style="font-size:12px;color:var(--muted)">
+                  👤 Propietario: <strong>${esc(p.owner_name)}</strong> ${p.owner_phone ? '· '+esc(p.owner_phone) : ''}
+                </div>
+              ` : '')}
+
               ${specs.length ? `<div style="display:flex;gap:8px;flex-wrap:wrap;font-size:12px;background:var(--surface,#f8fafc);padding:6px 10px;border-radius:6px;color:var(--text,#334155)">${specs.join(' · ')}</div>` : ''}
+              
               <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:auto;padding-top:6px;border-top:1px solid var(--border)">
                 <div>
                   ${p.price_rent > 0 ? `<div><span style="font-size:11px;color:var(--muted)">Renta:</span> <strong style="color:var(--brand-accent,#0f766e)">${money(p.price_rent)}/m</strong></div>` : ''}
@@ -5037,8 +5322,9 @@ function realEstateView(){
               </div>
               <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">
                 <button type="button" class="small" data-action="edit_re_property" data-id="${p.id}">✏️ Editar</button>
+                ${p.condo_id ? `<button type="button" class="small" data-action="open_condo_charge" data-property-id="${p.id}" data-condo-id="${p.condo_id}" title="Emitir cuota de mantenimiento a esta unidad">💵 Emitir cobro</button>` : ''}
                 ${p.status==='available' && ['rent','both'].includes(p.listing_type) ? `<button type="button" class="small primary" data-open="re_lease" data-property-id="${p.id}">📑 Alquilar</button>` : ''}
-                ${p.status==='available' && ['sale','both'].includes(p.listing_type) ? `<button type="button" class="small" data-open="re_sale" data-property-id="${p.id}">🤝 Vender</button>` : ''}
+                ${p.status==='available' && ['sale','both'].includes(p.listing_type) ? `<button type="button" class="small primary" data-open="re_sale" data-property-id="${p.id}">🤝 Vender</button>` : ''}
                 <button type="button" class="small" data-open="re_visit" data-property-id="${p.id}">🗓️ Visita</button>
                 <button type="button" class="small" data-open="re_maintenance" data-property-id="${p.id}">🛠️</button>
                 ${filesButton('re_properties', p.id)}
@@ -5048,11 +5334,295 @@ function realEstateView(){
           `;
         }).join('')}
       </div>
-    ` : '<div class="empty">No hay inmuebles que coincidan con la búsqueda. Haga clic en «+ Nuevo inmueble» o en «Cargar datos de prueba».</div>';
+    ` : '<div class="empty">No hay inmuebles que coincidan con los filtros seleccionados. Haga clic en «+ Nuevo inmueble» o en «Cargar datos completos de Bienes Raíces».</div>';
 
-    body = panel('Catálogo de Inmuebles', filterToolbar + cardsHtml, openButton('+ Nuevo inmueble', 're_property'));
+    body = panel('Catálogo de Inmuebles (Viviendas, Comerciales, Terrenos y Condominios)', categoryPillsHtml + filterToolbar + cardsHtml, openButton('+ Nuevo inmueble', 're_property'));
   }
 
+  // ---------------- TAB: CONDOMINIOS Y TORRES ----------------
+  else if(reTab === 'condos'){
+    const condoCardsHtml = condos.length ? `
+      <div style="display:flex;flex-direction:column;gap:20px">
+        ${condos.map(c => {
+          const cProps = properties.filter(p => p.condo_id === c.id);
+          const cUnitsRows = cProps.map(p => `
+            <tr>
+              <td><strong>${esc(p.unit_number||'S/N')}</strong></td>
+              <td>${esc(p.title)}</td>
+              <td>${p.aliquot_pct ? p.aliquot_pct+'%' : '0%'}</td>
+              <td><strong>${money(p.condo_fee)}</strong></td>
+              <td>Día ${p.condo_fee_day||5}</td>
+              <td>${esc(p.owner_name||'Sin asignar')}<div class="muted">${esc(p.owner_document||'')} ${p.owner_phone ? '· '+esc(p.owner_phone) : ''}</div></td>
+              <td>${propStatusBadges[p.status]||badge(p.status)}</td>
+              <td>
+                <div style="display:flex;gap:4px">
+                  <button type="button" class="small" data-action="open_condo_charge" data-property-id="${p.id}" data-condo-id="${c.id}">💵 Cobro</button>
+                  <button type="button" class="small" data-action="edit_re_property" data-id="${p.id}">✏️</button>
+                </div>
+              </td>
+            </tr>
+          `).join('');
+
+          return `
+            <article class="condo-card" style="border:1px solid var(--border);border-radius:12px;background:var(--card);padding:18px;box-shadow:0 2px 6px rgba(0,0,0,0.03)">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;border-bottom:1px solid var(--border);padding-bottom:12px;margin-bottom:14px">
+                <div>
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <span style="font-size:22px">🏛️</span>
+                    <h3 style="margin:0;font-size:18px;color:var(--brand-accent,#0f766e)">${esc(c.name)}</h3>
+                    <span class="badge gray">${esc(c.code||'COND-'+c.id)}</span>
+                    <span class="badge blue">${condoTypeLabels[c.condo_type]||c.condo_type}</span>
+                  </div>
+                  <div style="font-size:13px;color:var(--muted);margin-top:4px">
+                    📍 ${esc(c.address)}${c.city ? ' · '+esc(c.city) : ''}
+                    ${c.rnc_tax_id ? ' · RNC Condominio (Ley 5038): <strong>'+esc(c.rnc_tax_id)+'</strong>' : ''}
+                  </div>
+                  <div style="font-size:12.5px;color:var(--text);margin-top:2px">
+                    👤 Administración: <strong>${esc(c.admin_name||'Administración interna')}</strong> ${c.admin_phone ? '· Tel: '+esc(c.admin_phone) : ''} ${c.admin_email ? '· '+esc(c.admin_email) : ''}
+                  </div>
+                </div>
+                <div style="display:flex;gap:6px;flex-wrap:wrap">
+                  <button type="button" class="small primary" data-action="generate_condo_month_fees" data-id="${c.id}">⚡ Generar cuotas mes</button>
+                  <button type="button" class="small" data-open="re_condo_expense" data-condo-id="${c.id}">+ Factura área común</button>
+                  <button type="button" class="small" data-open="re_property" data-condo-id="${c.id}">+ Agregar unidad</button>
+                  <button type="button" class="small" data-action="edit_re_condo" data-id="${c.id}">✏️ Editar</button>
+                  <button type="button" class="small danger" data-action="delete_re_condo" data-id="${c.id}">🗑️</button>
+                </div>
+              </div>
+
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:14px;background:var(--surface,#f8fafc);padding:12px;border-radius:8px">
+                <div>
+                  <div style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:700">Unidades Registradas</div>
+                  <div style="font-size:16px;font-weight:700">${c.units_count||0} unidades</div>
+                  <div style="font-size:11.5px;color:var(--muted)">${money(c.monthly_potential||0)}/mes potencial</div>
+                </div>
+                <div>
+                  <div style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:700">Mantenimiento Cobrado</div>
+                  <div style="font-size:16px;font-weight:700;color:var(--brand-accent,#0f766e)">${money(c.total_collected||0)}</div>
+                  <div style="font-size:11.5px;color:var(--muted)">${money(c.total_pending_charges||0)} pendiente</div>
+                </div>
+                <div>
+                  <div style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:700">Servicios Comunes Pagados</div>
+                  <div style="font-size:16px;font-weight:700;color:var(--text,#1e293b)">${money(c.total_paid_expenses||0)}</div>
+                  <div style="font-size:11.5px;color:var(--muted)">${money(c.total_pending_expenses||0)} por pagar en facturas</div>
+                </div>
+                <div>
+                  <div style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:700">Balance Operativo Neto</div>
+                  <div style="font-size:16px;font-weight:800;color:${(c.operating_balance||0)>=0?'var(--brand-accent,#0f766e)':'var(--danger,#b91c1c)'}">
+                    ${money(c.operating_balance||0)}
+                  </div>
+                  <div style="font-size:11.5px;color:var(--muted)">Cobros menos gastos comunes</div>
+                </div>
+                <div>
+                  <div style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:700">Fondo de Reserva</div>
+                  <div style="font-size:16px;font-weight:700;color:#0369a1">${money(c.reserve_fund||0)}</div>
+                  <div style="font-size:11.5px;color:var(--muted)">Fondo legal para emergencias</div>
+                </div>
+              </div>
+
+              ${c.bank_account_info ? `
+                <div style="font-size:12px;color:var(--muted);margin-bottom:12px">
+                  🏦 Cuenta bancaria para depósitos de condóminos: <strong>${esc(c.bank_account_info)}</strong>
+                </div>
+              ` : ''}
+
+              ${c.notes ? `<div style="font-size:12.5px;color:var(--text);margin-bottom:14px;line-height:1.4"><strong>Áreas comunes:</strong> ${esc(c.notes)}</div>` : ''}
+
+              <div style="margin-top:10px">
+                <h4 style="margin:0 0 8px;font-size:14px;color:var(--text)">Unidades y Condóminos del Edificio (${cProps.length})</h4>
+                ${cProps.length ? `
+                  <div style="overflow-x:auto">
+                    <table style="width:100%;font-size:12.5px">
+                      <thead>
+                        <tr>
+                          <th>Unidad</th>
+                          <th>Inmueble</th>
+                          <th>Alícuota</th>
+                          <th>Cuota Mensual</th>
+                          <th>Día Límite</th>
+                          <th>Condómino (Propietario)</th>
+                          <th>Estado</th>
+                          <th>Acciones</th>
+                        </tr>
+                      </thead>
+                      <tbody>${cUnitsRows}</tbody>
+                    </table>
+                  </div>
+                ` : `<div style="font-size:12px;color:var(--muted);padding:8px;background:var(--surface,#f8fafc);border-radius:6px">No hay unidades asignadas a este condominio aún. Haga clic en «+ Agregar unidad».</div>`}
+              </div>
+            </article>
+          `;
+        }).join('')}
+      </div>
+    ` : '<div class="empty">No hay condominios registrados. Haga clic en «+ Condominio / Torre» para crear una torre residencial o comercial.</div>';
+
+    body = panel('Condominios, Torres y Edificios Residenciales', condoCardsHtml, '<button type="button" class="primary" data-open="re_condo">+ Condominio / Torre</button>');
+  }
+
+  // ---------------- TAB: COBROS A CONDÓMINOS ----------------
+  else if(reTab === 'condo_charges'){
+    let filteredCharges = condoCharges;
+    if(reChargeCondoFilter) filteredCharges = filteredCharges.filter(c => String(c.condo_id) === String(reChargeCondoFilter));
+    if(reChargeStatusFilter) filteredCharges = filteredCharges.filter(c => c.status === reChargeStatusFilter);
+    if(reChargePeriodFilter) filteredCharges = filteredCharges.filter(c => (c.period||'').includes(reChargePeriodFilter));
+
+    const totalPeriodBilled = filteredCharges.filter(c => c.status !== 'cancelled').reduce((sum, c) => sum + c.amount, 0);
+    const totalPeriodCollected = filteredCharges.filter(c => c.status !== 'cancelled').reduce((sum, c) => sum + (c.paid_amount||0), 0);
+    const totalPeriodPending = totalPeriodBilled - totalPeriodCollected;
+
+    const condoOpts = (condos||[]).map(c => `<option value="${c.id}" ${String(reChargeCondoFilter)===String(c.id)?'selected':''}>${esc(c.name)}</option>`).join('');
+
+    const toolbar = `
+      <div class="toolbar" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
+        <div class="field" style="flex:1;min-width:160px">
+          <label for="re-charge-condo-filter">Condominio</label>
+          <select id="re-charge-condo-filter">
+            <option value="">Todos los condominios</option>
+            ${condoOpts}
+          </select>
+        </div>
+        <div class="field" style="flex:1;min-width:130px">
+          <label for="re-charge-period-filter">Período (AAAA-MM)</label>
+          <input type="text" id="re-charge-period-filter" value="${esc(reChargePeriodFilter)}" placeholder="ej. 2026-10">
+        </div>
+        <div class="field" style="flex:1;min-width:130px">
+          <label for="re-charge-status-filter">Estado</label>
+          <select id="re-charge-status-filter">
+            <option value="">Todos los estados</option>
+            <option value="pending" ${reChargeStatusFilter==='pending'?'selected':''}>Pendiente</option>
+            <option value="paid" ${reChargeStatusFilter==='paid'?'selected':''}>Pagado</option>
+            <option value="partial" ${reChargeStatusFilter==='partial'?'selected':''}>Abono parcial</option>
+          </select>
+        </div>
+        <div style="margin-left:auto;display:flex;gap:6px">
+          <button type="button" class="primary small" data-open="generate_condo_fees">⚡ Generar cuotas mes</button>
+          <button type="button" class="small" data-open="re_condo_charge">+ Nuevo cobro manual</button>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:12px;margin-bottom:16px;background:var(--surface,#f8fafc);padding:12px 16px;border-radius:8px;align-items:center;flex-wrap:wrap">
+        <div>Total Cuotas: <strong>${money(totalPeriodBilled)}</strong></div>
+        <div>Total Cobrado: <strong style="color:var(--brand-accent,#0f766e)">${money(totalPeriodCollected)}</strong></div>
+        <div>Pendiente de Cobro: <strong style="color:var(--danger,#b91c1c)">${money(totalPeriodPending)}</strong></div>
+      </div>
+    `;
+
+    const rows = filteredCharges.map(ch => {
+      const remaining = ch.amount - (ch.paid_amount || 0);
+      return `
+        <tr>
+          <td><strong>${esc(ch.condo_name)}</strong><div class="muted">${esc(ch.unit_number ? 'Unidad: '+ch.unit_number : ch.property_title)}</div></td>
+          <td><strong>${esc(ch.owner_name||'Condómino')}</strong><div class="muted">${esc(ch.owner_phone||'')}</div></td>
+          <td>${esc(ch.concept)}</td>
+          <td>${esc(ch.period)}<div class="muted">Vence: ${displayDate(ch.due_date)}</div></td>
+          <td><strong>${money(ch.amount)}</strong></td>
+          <td style="color:var(--brand-accent,#0f766e)">${money(ch.paid_amount||0)}</td>
+          <td style="color:${remaining > 0 ? 'var(--danger,#b91c1c)' : 'var(--muted)'}">${money(remaining)}</td>
+          <td>${condoChargeStatusBadges[ch.status]||badge(ch.status)}</td>
+          <td>
+            <div style="display:flex;gap:4px;flex-wrap:wrap">
+              ${remaining > 0 ? `<button type="button" class="small primary" data-action="pay_condo_charge" data-id="${ch.id}">💵 Cobrar</button>` : ''}
+              ${ch.paid_amount > 0 ? `<button type="button" class="small secondary" data-action="view_condo_receipt" data-id="${ch.id}" title="Ver o imprimir recibo oficial">📄 Recibo</button>` : ''}
+              <button type="button" class="small" data-action="edit_re_condo_charge" data-id="${ch.id}">✏️</button>
+              ${ch.paid_amount === 0 ? `<button type="button" class="small danger" data-action="delete_re_condo_charge" data-id="${ch.id}">🗑️</button>` : ''}
+            </div>
+          </td>
+        </tr>
+      `;
+    });
+
+    body = panel('Gestión de Cobros a Condóminos (Cuotas de Mantenimiento)', toolbar + table(['Condominio / Unidad','Condómino','Concepto','Período / Vencimiento','Cuota','Cobrado','Balance','Estado','Acciones'], rows, 'No hay cobros de condominio emitidos.'), '<button type="button" class="primary" data-open="generate_condo_fees">⚡ Generar cuotas mes</button>');
+  }
+
+  // ---------------- TAB: SERVICIOS DE ÁREA COMÚN ----------------
+  else if(reTab === 'common_services'){
+    let filteredExpenses = condoExpenses;
+    if(reExpenseCondoFilter) filteredExpenses = filteredExpenses.filter(e => String(e.condo_id) === String(reExpenseCondoFilter));
+    if(reExpenseServiceFilter) filteredExpenses = filteredExpenses.filter(e => e.service_type === reExpenseServiceFilter);
+    if(reExpenseStatusFilter) filteredExpenses = filteredExpenses.filter(e => e.status === reExpenseStatusFilter);
+
+    const totalElec = filteredExpenses.filter(e => e.service_type === 'electricity' && e.status !== 'cancelled').reduce((sum, e) => sum + e.amount, 0);
+    const totalWater = filteredExpenses.filter(e => e.service_type === 'water' && e.status !== 'cancelled').reduce((sum, e) => sum + e.amount, 0);
+    const totalElev = filteredExpenses.filter(e => e.service_type === 'elevator' && e.status !== 'cancelled').reduce((sum, e) => sum + e.amount, 0);
+    const totalSec = filteredExpenses.filter(e => e.service_type === 'security_cleaning' && e.status !== 'cancelled').reduce((sum, e) => sum + e.amount, 0);
+    const totalFuel = filteredExpenses.filter(e => e.service_type === 'generator_fuel' && e.status !== 'cancelled').reduce((sum, e) => sum + e.amount, 0);
+    const totalRep = filteredExpenses.filter(e => e.service_type === 'maintenance_repairs' && e.status !== 'cancelled').reduce((sum, e) => sum + e.amount, 0);
+
+    const condoOpts = (condos||[]).map(c => `<option value="${c.id}" ${String(reExpenseCondoFilter)===String(c.id)?'selected':''}>${esc(c.name)}</option>`).join('');
+
+    const toolbar = `
+      <div class="toolbar" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
+        <div class="field" style="flex:1;min-width:160px">
+          <label for="re-exp-condo-filter">Condominio</label>
+          <select id="re-exp-condo-filter">
+            <option value="">Todos los condominios</option>
+            ${condoOpts}
+          </select>
+        </div>
+        <div class="field" style="flex:1;min-width:160px">
+          <label for="re-exp-service-filter">Tipo de servicio</label>
+          <select id="re-exp-service-filter">
+            <option value="">Todos los servicios</option>
+            <option value="electricity" ${reExpenseServiceFilter==='electricity'?'selected':''}>⚡ Electricidad Común (Edesur/EdeEste/Edenorte)</option>
+            <option value="water" ${reExpenseServiceFilter==='water'?'selected':''}>💧 Agua Potable y Cisterna (CAASD/Coraasan)</option>
+            <option value="elevator" ${reExpenseServiceFilter==='elevator'?'selected':''}>🛗 Ascensores (Mantenimiento)</option>
+            <option value="security_cleaning" ${reExpenseServiceFilter==='security_cleaning'?'selected':''}>🛡️ Conserjería y Seguridad</option>
+            <option value="generator_fuel" ${reExpenseServiceFilter==='generator_fuel'?'selected':''}>⛽ Combustible Planta Eléctrica</option>
+            <option value="maintenance_repairs" ${reExpenseServiceFilter==='maintenance_repairs'?'selected':''}>🛠️ Mantenimiento y Reparaciones</option>
+            <option value="insurance" ${reExpenseServiceFilter==='insurance'?'selected':''}>📑 Póliza de Seguro</option>
+            <option value="other" ${reExpenseServiceFilter==='other'?'selected':''}>📦 Otros Servicios</option>
+          </select>
+        </div>
+        <div class="field" style="flex:1;min-width:120px">
+          <label for="re-exp-status-filter">Estado</label>
+          <select id="re-exp-status-filter">
+            <option value="">Todos</option>
+            <option value="pending" ${reExpenseStatusFilter==='pending'?'selected':''}>Por pagar</option>
+            <option value="paid" ${reExpenseStatusFilter==='paid'?'selected':''}>Pagada</option>
+          </select>
+        </div>
+        <div style="margin-left:auto">
+          <button type="button" class="primary small" data-open="re_condo_expense">+ Factura área común</button>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;font-size:12px">
+        <span class="badge" style="background:#fef08a;color:#854d0e">⚡ Luz: ${money(totalElec)}</span>
+        <span class="badge" style="background:#bae6fd;color:#0369a1">💧 Agua: ${money(totalWater)}</span>
+        <span class="badge" style="background:#e0e7ff;color:#4338ca">🛗 Ascensores: ${money(totalElev)}</span>
+        <span class="badge" style="background:#dcfce7;color:#15803d">🛡️ Vigilancia: ${money(totalSec)}</span>
+        <span class="badge" style="background:#ffedd5;color:#c2410c">⛽ Planta: ${money(totalFuel)}</span>
+        <span class="badge orange">🛠️ Reparaciones: ${money(totalRep)}</span>
+      </div>
+    `;
+
+    const rows = filteredExpenses.map(ex => {
+      const remaining = ex.amount - (ex.paid_amount || 0);
+      return `
+        <tr>
+          <td><strong>${esc(ex.condo_name)}</strong></td>
+          <td>${serviceTypeLabels[ex.service_type]||ex.service_type}</td>
+          <td><strong>${esc(ex.provider_name)}</strong><div class="muted">${esc(ex.invoice_number||'Sin NCF/NIC')}</div></td>
+          <td>${esc(ex.service_period||'—')}<div class="muted">Emisión: ${displayDate(ex.invoice_date)}</div></td>
+          <td>${displayDate(ex.due_date)}</td>
+          <td><strong>${money(ex.amount)}</strong></td>
+          <td>${condoExpenseStatusBadges[ex.status]||badge(ex.status)}</td>
+          <td>${ex.payment_date ? displayDate(ex.payment_date)+'<div class="muted">'+esc(ex.payment_reference||'')+'</div>' : '<span class="muted">No pagada</span>'}</td>
+          <td>
+            <div style="display:flex;gap:4px;flex-wrap:wrap">
+              ${remaining > 0 ? `<button type="button" class="small primary" data-action="pay_condo_expense" data-id="${ex.id}">💳 Pagar</button>` : ''}
+              <button type="button" class="small" data-action="edit_re_condo_expense" data-id="${ex.id}">✏️</button>
+              ${ex.paid_amount === 0 ? `<button type="button" class="small danger" data-action="delete_re_condo_expense" data-id="${ex.id}">🗑️</button>` : ''}
+            </div>
+          </td>
+        </tr>
+      `;
+    });
+
+    body = panel('Facturas y Gastos de Servicios de Área Común (Luz, Agua, Elevador, Planta)', toolbar + table(['Condominio','Servicio','Proveedor / Documento','Período Facturado','Vencimiento','Monto Factura','Estado','Detalle de Pago','Acciones'], rows, 'No hay facturas de servicios comunes registradas.'), '<button type="button" class="primary" data-open="re_condo_expense">+ Registrar factura</button>');
+  }
+
+  // ---------------- TAB: LEASES ----------------
   else if(reTab === 'leases'){
     const rows = leases.map(l => {
       const prop = properties.find(p => p.id === l.property_id);
@@ -5081,6 +5651,7 @@ function realEstateView(){
     body = panel('Contratos de Arrendamiento / Alquiler', table(['Inmueble','Inquilino / Contacto','Renta Mensual','Depósito','Vigencia','Día de Pago','Estado','Acciones'], rows, 'Todavía no hay contratos de alquiler registrados.'), openButton('+ Contrato de alquiler', 're_lease'));
   }
 
+  // ---------------- TAB: SALES ----------------
   else if(reTab === 'sales'){
     const rows = sales.map(s => {
       const prop = properties.find(p => p.id === s.property_id);
@@ -5107,6 +5678,7 @@ function realEstateView(){
     body = panel('Ventas y Cierres Inmobiliarios', table(['Fecha Cierre','Inmueble','Comprador / Contacto','Precio de Venta','Comisión Agencia','Agente Responsable','Estado','Acciones'], rows, 'Todavía no hay ventas registradas.'), openButton('+ Registrar venta', 're_sale'));
   }
 
+  // ---------------- TAB: VISITS ----------------
   else if(reTab === 'visits'){
     const rows = visits.map(v => {
       const prop = properties.find(p => p.id === v.property_id);
@@ -5133,6 +5705,7 @@ function realEstateView(){
     body = panel('Visitas e Interesados en Propiedades', table(['Fecha','Inmueble','Cliente Interesado','Nivel de Interés','Agente','Comentarios / Feedback','Estado','Acciones'], rows, 'Todavía no hay visitas agendadas.'), openButton('+ Agendar visita', 're_visit'));
   }
 
+  // ---------------- TAB: MAINTENANCE ----------------
   else if(reTab === 'maintenance'){
     const rows = maintenances.map(m => {
       const prop = properties.find(p => p.id === m.property_id);
@@ -5172,12 +5745,12 @@ function realEstateView(){
         <div>
           <div style="display:flex;align-items:center;gap:6px">
             <span class="badge ${isCircumstantial?'blue':'green'}">${isCircumstantial?'MÓDULO CIRCUNSTANCIAL':'NATURALEZA PRINCIPAL'}</span>
-            <strong style="font-size:13px">Bienes Raíces e Inmobiliaria · ${esc(company().name)}</strong>
+            <strong style="font-size:13px">Bienes Raíces, Administración de Condominios y Propiedades · ${esc(company().name)}</strong>
           </div>
           <div class="muted" style="font-size:12px;margin-top:2px">
             ${isCircumstantial 
-              ? `Operando de forma adaptativa y circunstancial para esta empresa (Naturaleza principal: ${verticalLabels[activeVertical]||activeVertical}). Puede gestionar inmuebles, cobros de renta en RD$ y contratos sin alterar la contabilidad ni las labores nativas.` 
-              : 'Módulo principal activo para esta empresa inmobiliaria.'}
+              ? `Operando de forma adaptativa y circunstancial para esta empresa (Naturaleza principal: ${verticalLabels[activeVertical]||activeVertical}). Puede gestionar condominios, cobros de cuotas a condóminos, facturas comunes de luz y agua, ventas y alquileres sin alterar la contabilidad ni las labores nativas.` 
+              : 'Módulo principal activo para esta empresa inmobiliaria y administradora de condominios.'}
           </div>
         </div>
         <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
@@ -5191,7 +5764,7 @@ function realEstateView(){
     </div>
   `;
 
-  return heading('🏢 Gestión Inmobiliaria y Bienes Raíces', 'Catálogo de propiedades, contratos de arrendamiento, ventas, visitas y mantenimiento.', headerActions) + circumstantialBanner + kpis + demoNotice + subnav + body;
+  return heading('🏢 Inmobiliaria, Bienes Raíces y Condominios', 'Catálogo de propiedades, administración de condominios, cobros a condóminos y facturas de servicios comunes (luz, agua, elevadores).', headerActions) + circumstantialBanner + kpis + demoNotice + subnav + body;
 }
 
 function agricultureView(){
