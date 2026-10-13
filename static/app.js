@@ -88,6 +88,11 @@ let reSearch = '';
 let reTypeFilter = '';
 let reStatusFilter = '';
 let reOpFilter = '';
+let reBuyerStatusFilter = '';
+let reBuyerSearch = '';
+let reSaleStatusFilter = '';
+let reSaleSearch = '';
+let reSalePaymentSearch = '';
 let reChargeCondoFilter = '';
 let reChargeStatusFilter = '';
 let reChargePeriodFilter = '';
@@ -231,8 +236,13 @@ function render(){
 
   const realEstateNav = [
     ['real_estate:properties', '🏢', 'Catálogo de Inmuebles'],
+    ['real_estate:buyers', '👥', 'Compradores y Prospectos'],
+    ['real_estate:sales', '🤝', 'Ventas y Financiamientos'],
+    ['real_estate:sale_payments', '🧾', 'Cobros y Abonos a Ventas'],
+    ['real_estate:condos', '🏛️', 'Condominios y Torres'],
+    ['real_estate:condo_charges', '💵', 'Cuotas de Mantenimiento'],
+    ['real_estate:common_services', '⚡', 'Servicios Área Común'],
     ['real_estate:leases', '📑', 'Alquileres y Contratos'],
-    ['real_estate:sales', '🤝', 'Ventas y Cierres'],
     ['real_estate:visits', '🗓️', 'Visitas e Interesados'],
     ['real_estate:maintenance', '🛠️', 'Mantenimiento']
   ];
@@ -2309,6 +2319,11 @@ function bind(){
   const reCondoEl=$('#re-condo-filter');if(reCondoEl)reCondoEl.onchange=e=>{reCondoFilter=e.target.value;render()};
   const reStatusEl=$('#re-status-filter');if(reStatusEl)reStatusEl.onchange=e=>{reStatusFilter=e.target.value;render()};
   const reOpEl=$('#re-op-filter');if(reOpEl)reOpEl.onchange=e=>{reOpFilter=e.target.value;render()};
+  const reBuyerStatusEl=$('#re-buyer-status-filter');if(reBuyerStatusEl)reBuyerStatusEl.onchange=e=>{reBuyerStatusFilter=e.target.value;render()};
+  const reBuyerSearchEl=$('#re-buyer-search');if(reBuyerSearchEl)reBuyerSearchEl.oninput=e=>{reBuyerSearch=e.target.value;render()};
+  const reSaleStatusEl=$('#re-sale-status-filter');if(reSaleStatusEl)reSaleStatusEl.onchange=e=>{reSaleStatusFilter=e.target.value;render()};
+  const reSaleSearchEl=$('#re-sale-search');if(reSaleSearchEl)reSaleSearchEl.oninput=e=>{reSaleSearch=e.target.value;render()};
+  const reSalePaymentSearchEl=$('#re-sale-payment-search');if(reSalePaymentSearchEl)reSalePaymentSearchEl.oninput=e=>{reSalePaymentSearch=e.target.value;render()};
   const reChCondoEl=$('#re-charge-condo-filter');if(reChCondoEl)reChCondoEl.onchange=e=>{reChargeCondoFilter=e.target.value;render()};
   const reChStatusEl=$('#re-charge-status-filter');if(reChStatusEl)reChStatusEl.onchange=e=>{reChargeStatusFilter=e.target.value;render()};
   const reChPeriodEl=$('#re-charge-period-filter');if(reChPeriodEl)reChPeriodEl.oninput=e=>{reChargePeriodFilter=e.target.value;render()};
@@ -3613,13 +3628,247 @@ function openHelpModal(){
   renderHelpModal();
 }
 async function save(actionName,data){const result=await api('action',{company_id:Number(cid),action:actionName,...data});await refresh();return result}
-async function handleAction(b){const a=b.dataset.action,id=Number(b.dataset.id);if(a==='view_employee_account'){showEmployeeAccountModal(id);return}if(a==='assign_queue_job'){showAssignQueueJobModal(id||null);return}if(a==='add_labor_to_farm'){showAddLaborToFarmModal(id||null);return}if(a==='add_employee_to_farm'){openForm('employee',null,{farm_id:id});return}if(a==='report_queue_job'){showReportQueueJobModal(id);return}if(a==='approve_queue_job'){b.disabled=true;try{const res=await save('approve_queue_job',{id});toast(`Trabajo aprobado. Se acreditaron ${money(res.job?.earned_amount||0)} a la cuenta del colaborador.`);}catch(err){toast(err.message);b.disabled=false;}return;}if(payrollKinds.includes(a)){payrollDialog(a,id);return}if(a==='payroll_single'){payrollDialog('payroll',{employee_id:id,cadence:b.dataset.cadence});return}if(a==='payroll_deduction'){payrollDialog('payroll_adjustment',{employee_id:id||'',kind:'deduction'});return}if(a==='assign_custom_days'){openForm('farm_job',id);return}if(a==='reset-branding'){await save('branding',{accent_color:'#185b4d',surface_color:'#f4f6f3',card_color:'#ffffff',text_color:'#172f2d',font_scale:'100'});return}if(a==='files'){await openFiles(b.dataset.entity,id);return}if(a==='approve_all_worklogs'){b.disabled=true;try{const work_date=b.dataset.date||null;const res=await save('approve_all_worklogs',{work_date});toast(`${res.approved_count||'Todas las'} hora(s) aprobada(s) correctamente.`);}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='approve_all_farm_jobs'){b.disabled=true;try{const work_date=b.dataset.date||null;const res=await save('approve_all_farm_jobs',{work_date});toast(`${res.approved_count||'Todas las'} labore(s) aprobada(s) correctamente.`);}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='create_default_cash_account'){b.disabled=true;try{await save('create_default_cash_account',{});toast('Caja General (DOP) creada y lista para operar.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='export'){b.disabled=true;try{const archive=await api('export?company_id='+cid);const link=document.createElement('a');link.href='/api/export?company_id='+cid;link.download=company().name.replace(/[^a-zA-Z0-9_-]/g,'_')+'-'+S.today+'.zero.json';document.body.appendChild(link);link.click();link.remove();toast('Archivo de empresa preparado para descargar.')}catch(err){toast(err.message)}finally{b.disabled=false}return;}if(a==='extend_contract'){const co=S.farm_contracts?.find(c=>c.id===id);if(co){const d=new Date(co.end_date+'T12:00:00');d.setDate(d.getDate()+7);const newEnd=d.toISOString().slice(0,10);b.disabled=true;try{await save('edit_farm_contract',{id:co.id,farm_id:co.farm_id,employee_id:co.employee_id,kind:co.kind,basis:co.basis,rate:co.rate/100,description:co.description,start_date:co.start_date,end_date:newEnd,status:'active'});toast(`Continuidad extendida hasta el ${displayDate(newEnd)}.`);}catch(err){toast(err.message);b.disabled=false;}return;}}if(a==='approve_job_direct'){b.disabled=true;try{await save('job_status',{id,status:'approved'});toast('Labor / horas aprobadas para nómina.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='discard_payroll'){if(!confirm('¿Desea descartar esta nómina pendiente? Los reportes y deducciones asociados quedarán liberados.'))return;b.disabled=true;try{await save('discard_payroll',{id});toast('Nómina descartada.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='discard_farm_payroll'){if(!confirm('¿Desea descartar esta nómina de labores? Los trabajos volverán a quedar pendientes en la cola.'))return;b.disabled=true;try{await save('discard_farm_payroll',{id});toast('Nómina descartada.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='archive_cash_account'){const acc=S.cash_accounts?.find(c=>c.id===id);const isArch=Boolean(acc?.archived);if(!confirm(`¿Desea ${isArch?'reactivar':'archivar'} la cuenta «${acc?.name||'seleccionada'}»?`))return;b.disabled=true;try{await save('archive_cash_account',{id,archived:isArch?0:1});toast(`Cuenta ${isArch?'reactivada':'archivada'}.`);}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='seed_demo_real_estate'){b.disabled=true;const orig=b.innerHTML;b.innerHTML='⏳ Cargando demo...';try{const res=await save('seed_demo_real_estate',{force:true});setActiveView('real_estate');reTab='properties';render();toast(res?.message||'✓ Portafolio de prueba de Bienes Raíces cargado con éxito.');}catch(err){toast(err.message);b.disabled=false;b.innerHTML=orig;}return;}if(a==='generate_condo_month_fees'){openForm('generate_condo_fees',null,{condo_id:id});return}if(a==='pay_condo_charge'){openForm('pay_condo_charge',id);return}if(a==='pay_condo_expense'){openForm('pay_condo_expense',id);return}if(a==='view_condo_receipt'){showCondoReceiptModal(id);return}if(a==='open_condo_charge'){const propId=Number(b.dataset.propertyId);const condoId=Number(b.dataset.condoId);openForm('re_condo_charge',null,{property_id:propId,condo_id:condoId});return}if(a==='charge_lease_rent'){b.disabled=true;try{const res=await save('generate_re_lease_charge',{lease_id:id});toast(res.message||'Cuenta por cobrar generada para el inquilino.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='terminate_re_lease'){if(!confirm('¿Desea rescindir / finalizar este contrato de alquiler? La propiedad quedará disponible nuevamente para alquiler o venta.'))return;b.disabled=true;try{await save('terminate_re_lease',{id});toast('Contrato finalizado y propiedad liberada como disponible.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='resolve_re_maintenance'){b.disabled=true;try{await save('resolve_re_maintenance',{id});toast('Incidencia marcada como resuelta.');}catch(err){toast(err.message);b.disabled=false;}return;}if(['payment','expense_payment','edit_member','edit_expense','edit_employee','terminate_employee','view_termination','contract_status','pay_payroll','edit_department','edit_project','edit_task','edit_farm','edit_farm_contract','edit_farm_job','edit_company','edit_product','edit_customer','edit_worklog','edit_subscription','edit_farm_sale','edit_ncf_sequence','edit_re_property','edit_re_condo','edit_re_condo_charge','edit_re_condo_expense','edit_re_lease','edit_re_sale','edit_re_visit','edit_re_maintenance'].includes(a)){openForm(a,id);return}if(a==='reactivate_employee'){const emp=S.employees?.find(e=>e.id===id);if(!confirm(`¿Desea reactivar a «${emp?.name||'este colaborador'}» como personal activo? Volverá a estar disponible para asignaciones y nómina.`))return;b.disabled=true;try{await save('reactivate_employee',{id});toast('Colaborador reactivado con éxito.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='delete_employee'){const emp=S.employees?.find(e=>e.id===id);if(!confirm(`¿Está seguro de que desea eliminar la ficha de «${emp?.name||'este colaborador'}»? Solo es posible si no posee historial contable ni tareas asociadas.`))return;b.disabled=true;try{await save('delete_employee',{id});toast('Ficha de personal eliminada.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='cancel_subscription'){openForm('cancel_subscription',id);return}if(a.startsWith('delete_')){if(!confirm('¿Está seguro de que desea eliminar este registro permanentemente?'))return}b.disabled=true;try{if(a==='refresh')await refresh();else{const result=await save(a,{id});toast(a==='generate'?`${result.generated} cargo(s) nuevo(s). Los existentes se conservaron.`:'Operación guardada.')}}catch(err){toast(err.message);b.disabled=false}}
+async function handleAction(b){const a=b.dataset.action,id=Number(b.dataset.id);if(a==='view_employee_account'){showEmployeeAccountModal(id);return}if(a==='assign_queue_job'){showAssignQueueJobModal(id||null);return}if(a==='add_labor_to_farm'){showAddLaborToFarmModal(id||null);return}if(a==='add_employee_to_farm'){openForm('employee',null,{farm_id:id});return}if(a==='report_queue_job'){showReportQueueJobModal(id);return}if(a==='approve_queue_job'){b.disabled=true;try{const res=await save('approve_queue_job',{id});toast(`Trabajo aprobado. Se acreditaron ${money(res.job?.earned_amount||0)} a la cuenta del colaborador.`);}catch(err){toast(err.message);b.disabled=false;}return;}if(payrollKinds.includes(a)){payrollDialog(a,id);return}if(a==='payroll_single'){payrollDialog('payroll',{employee_id:id,cadence:b.dataset.cadence});return}if(a==='payroll_deduction'){payrollDialog('payroll_adjustment',{employee_id:id||'',kind:'deduction'});return}if(a==='assign_custom_days'){openForm('farm_job',id);return}if(a==='reset-branding'){await save('branding',{accent_color:'#185b4d',surface_color:'#f4f6f3',card_color:'#ffffff',text_color:'#172f2d',font_scale:'100'});return}if(a==='files'){await openFiles(b.dataset.entity,id);return}if(a==='approve_all_worklogs'){b.disabled=true;try{const work_date=b.dataset.date||null;const res=await save('approve_all_worklogs',{work_date});toast(`${res.approved_count||'Todas las'} hora(s) aprobada(s) correctamente.`);}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='approve_all_farm_jobs'){b.disabled=true;try{const work_date=b.dataset.date||null;const res=await save('approve_all_farm_jobs',{work_date});toast(`${res.approved_count||'Todas las'} labore(s) aprobada(s) correctamente.`);}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='create_default_cash_account'){b.disabled=true;try{await save('create_default_cash_account',{});toast('Caja General (DOP) creada y lista para operar.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='export'){b.disabled=true;try{const archive=await api('export?company_id='+cid);const link=document.createElement('a');link.href='/api/export?company_id='+cid;link.download=company().name.replace(/[^a-zA-Z0-9_-]/g,'_')+'-'+S.today+'.zero.json';document.body.appendChild(link);link.click();link.remove();toast('Archivo de empresa preparado para descargar.')}catch(err){toast(err.message)}finally{b.disabled=false}return;}if(a==='extend_contract'){const co=S.farm_contracts?.find(c=>c.id===id);if(co){const d=new Date(co.end_date+'T12:00:00');d.setDate(d.getDate()+7);const newEnd=d.toISOString().slice(0,10);b.disabled=true;try{await save('edit_farm_contract',{id:co.id,farm_id:co.farm_id,employee_id:co.employee_id,kind:co.kind,basis:co.basis,rate:co.rate/100,description:co.description,start_date:co.start_date,end_date:newEnd,status:'active'});toast(`Continuidad extendida hasta el ${displayDate(newEnd)}.`);}catch(err){toast(err.message);b.disabled=false;}return;}}if(a==='approve_job_direct'){b.disabled=true;try{await save('job_status',{id,status:'approved'});toast('Labor / horas aprobadas para nómina.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='discard_payroll'){if(!confirm('¿Desea descartar esta nómina pendiente? Los reportes y deducciones asociados quedarán liberados.'))return;b.disabled=true;try{await save('discard_payroll',{id});toast('Nómina descartada.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='discard_farm_payroll'){if(!confirm('¿Desea descartar esta nómina de labores? Los trabajos volverán a quedar pendientes en la cola.'))return;b.disabled=true;try{await save('discard_farm_payroll',{id});toast('Nómina descartada.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='archive_cash_account'){const acc=S.cash_accounts?.find(c=>c.id===id);const isArch=Boolean(acc?.archived);if(!confirm(`¿Desea ${isArch?'reactivar':'archivar'} la cuenta «${acc?.name||'seleccionada'}»?`))return;b.disabled=true;try{await save('archive_cash_account',{id,archived:isArch?0:1});toast(`Cuenta ${isArch?'reactivada':'archivada'}.`);}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='seed_demo_real_estate'){b.disabled=true;const orig=b.innerHTML;b.innerHTML='⏳ Cargando demo...';try{const res=await save('seed_demo_real_estate',{force:true});setActiveView('real_estate');reTab='properties';render();toast(res?.message||'✓ Portafolio de prueba de Bienes Raíces cargado con éxito.');}catch(err){toast(err.message);b.disabled=false;b.innerHTML=orig;}return;}if(a==='generate_condo_month_fees'){openForm('generate_condo_fees',null,{condo_id:id});return}if(a==='pay_condo_charge'){openForm('pay_condo_charge',id);return}if(a==='pay_condo_expense'){openForm('pay_condo_expense',id);return}if(a==='view_condo_receipt'){showCondoReceiptModal(id);return}if(a==='view_sale_installments'){showSaleInstallmentsModal(id||Number(b.dataset.saleId));return}if(a==='view_sale_payment_receipt'){showSalePaymentReceiptModal(id||Number(b.dataset.paymentId));return}if(a==='record_sale_payment'){openForm('record_re_sale_payment',null,{sale_id:Number(b.dataset.saleId||id)});return}if(a==='pay_sale_installment'){openForm('record_re_sale_payment',null,{sale_id:Number(b.dataset.saleId),installment_id:Number(b.dataset.installmentId)});return}if(a==='recalculate_sale_late_fees'){const saleId=Number(b.dataset.saleId||id);b.disabled=true;try{const res=await save('recalculate_re_sale_late_fees',{sale_id:saleId});toast(res.message||'Moras recalculadas según días de atraso.');showSaleInstallmentsModal(saleId);}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='generate_sale_installments'){const saleId=Number(b.dataset.saleId||id);b.disabled=true;try{const res=await save('generate_re_sale_installments',{sale_id:saleId});toast(res.message||'Cuotas de financiamiento generadas con éxito.');showSaleInstallmentsModal(saleId);}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='open_condo_charge'){const propId=Number(b.dataset.propertyId);const condoId=Number(b.dataset.condoId);openForm('re_condo_charge',null,{property_id:propId,condo_id:condoId});return}if(a==='charge_lease_rent'){b.disabled=true;try{const res=await save('generate_re_lease_charge',{lease_id:id});toast(res.message||'Cuenta por cobrar generada para el inquilino.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='terminate_re_lease'){if(!confirm('¿Desea rescindir / finalizar este contrato de alquiler? La propiedad quedará disponible nuevamente para alquiler o venta.'))return;b.disabled=true;try{await save('terminate_re_lease',{id});toast('Contrato finalizado y propiedad liberada como disponible.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='resolve_re_maintenance'){b.disabled=true;try{await save('resolve_re_maintenance',{id});toast('Incidencia marcada como resuelta.');}catch(err){toast(err.message);b.disabled=false;}return;}if(['payment','expense_payment','edit_member','edit_expense','edit_employee','terminate_employee','view_termination','contract_status','pay_payroll','edit_department','edit_project','edit_task','edit_farm','edit_farm_contract','edit_farm_job','edit_company','edit_product','edit_customer','edit_worklog','edit_subscription','edit_farm_sale','edit_ncf_sequence','edit_re_property','edit_re_condo','edit_re_condo_charge','edit_re_condo_expense','edit_re_buyer','edit_re_lease','edit_re_sale','edit_re_visit','edit_re_maintenance'].includes(a)){openForm(a,id);return}if(a==='reactivate_employee'){const emp=S.employees?.find(e=>e.id===id);if(!confirm(`¿Desea reactivar a «${emp?.name||'este colaborador'}» como personal activo? Volverá a estar disponible para asignaciones y nómina.`))return;b.disabled=true;try{await save('reactivate_employee',{id});toast('Colaborador reactivado con éxito.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='delete_employee'){const emp=S.employees?.find(e=>e.id===id);if(!confirm(`¿Está seguro de que desea eliminar la ficha de «${emp?.name||'este colaborador'}»? Solo es posible si no posee historial contable ni tareas asociadas.`))return;b.disabled=true;try{await save('delete_employee',{id});toast('Ficha de personal eliminada.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='cancel_subscription'){openForm('cancel_subscription',id);return}if(a.startsWith('delete_')){if(!confirm('¿Está seguro de que desea eliminar este registro permanentemente?'))return}b.disabled=true;try{if(a==='refresh')await refresh();else{const result=await save(a,{id});toast(a==='generate'?`${result.generated} cargo(s) nuevo(s). Los existentes se conservaron.`:'Operación guardada.')}}catch(err){toast(err.message);b.disabled=false}}
 function showCondoReceiptModal(chargeId){
   const ch=(S.re_condo_charges||[]).find(x=>x.id===chargeId);
   if(!ch)return;
   const condo=(S.re_condos||[]).find(c=>c.id===ch.condo_id);
   const prop=(S.re_properties||[]).find(p=>p.id===ch.property_id);
   const receiptHtml=`<div class="modal-header"><h2>📄 Recibo Oficial de Cuota de Condominio</h2><button type="button" id="close-modal" aria-label="Cerrar">×</button></div><div id="printable-condo-receipt" style="padding:20px;background:#fff;color:#0f172a;border-radius:8px;border:1px solid #e2e8f0;font-family:-apple-system,BlinkMacSystemFont,sans-serif"><div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #0f766e;padding-bottom:14px;margin-bottom:14px"><div><h2 style="margin:0;color:#0f766e;font-size:20px">${esc(condo?.name||'Administración de Condominio')}</h2><div style="font-size:13px;color:#64748b;margin-top:4px">📍 ${esc(condo?.address||'')}${condo?.city?' · '+esc(condo.city):''}${condo?.rnc_tax_id?'<br>RNC Condominio: <strong>'+esc(condo.rnc_tax_id)+'</strong> (Ley 5038)':''}</div></div><div style="text-align:right"><div style="font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase">Recibo de Mantenimiento</div><div style="font-size:18px;font-weight:800;color:#0f766e">REC-COND-${String(ch.id).padStart(5,'0')}</div><div style="font-size:12px;color:#64748b">Fecha: ${displayDate(ch.payment_date||ch.issue_date)}</div></div></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;background:#f8fafc;padding:12px;border-radius:8px"><div><span style="font-size:11px;color:#64748b;text-transform:uppercase;font-weight:700">Condómino / Propietario</span><div style="font-size:15px;font-weight:700;color:#1e293b;margin-top:2px">${esc(ch.owner_name||prop?.owner_name||'Propietario')}</div><div style="font-size:12px;color:#64748b">${prop?.owner_document?'Doc/RNC: '+esc(prop.owner_document)+' · ':''}${prop?.owner_phone?'Tel: '+esc(prop.owner_phone):''}</div></div><div><span style="font-size:11px;color:#64748b;text-transform:uppercase;font-weight:700">Inmueble / Unidad</span><div style="font-size:15px;font-weight:700;color:#1e293b;margin-top:2px">${esc(ch.property_title)}</div><div style="font-size:12px;color:#64748b">${ch.unit_number?'Unidad: <strong>'+esc(ch.unit_number)+'</strong> · ':''}${prop?.aliquot_pct?'Alícuota: '+prop.aliquot_pct+'%':''}</div></div></div><table style="width:100%;border-collapse:collapse;margin-bottom:16px;font-size:14px"><thead><tr style="background:#f1f5f9;border-bottom:1px solid #cbd5e1;text-align:left"><th style="padding:10px">Concepto</th><th style="padding:10px">Período</th><th style="padding:10px;text-align:right">Monto Cuota</th><th style="padding:10px;text-align:right">Monto Pagado</th></tr></thead><tbody><tr style="border-bottom:1px solid #e2e8f0"><td style="padding:10px"><strong>${esc(ch.concept)}</strong></td><td style="padding:10px">${esc(ch.period)}</td><td style="padding:10px;text-align:right">${money(ch.amount)}</td><td style="padding:10px;text-align:right;color:#0f766e;font-weight:700">${money(ch.paid_amount||ch.amount)}</td></tr></tbody></table><div style="display:flex;justify-content:space-between;align-items:center;background:#ecfdf5;border:1px solid #a7f3d0;padding:12px 16px;border-radius:8px;margin-bottom:16px"><div><span style="font-size:12px;color:#065f46;font-weight:700">ESTADO DEL PAGO</span><div style="font-size:14px;color:#065f46">✓ Totalmente Pagado · Al día</div>${ch.payment_reference?`<div style="font-size:12px;color:#047857;margin-top:2px">Ref: ${esc(ch.payment_reference)}</div>`:''}</div><div style="text-align:right"><div style="font-size:11px;color:#065f46;text-transform:uppercase">Total Percibido</div><div style="font-size:22px;font-weight:800;color:#065f46">${money(ch.paid_amount||ch.amount)}</div></div></div><div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:24px;padding-top:16px;border-top:1px dashed #cbd5e1"><div style="font-size:11px;color:#94a3b8">Emitido por Zero ERP · Plataforma de Gestión Inmobiliaria y Condominios<br>${condo?.admin_phone?'Contacto Administración: '+esc(condo.admin_phone):''}</div><div style="text-align:center;width:200px;border-top:1px solid #475569;padding-top:4px;font-size:12px;color:#475569">Firma y Sello de Administración</div></div></div><div class="form-actions" style="margin-top:14px"><button type="button" id="close-receipt-btn">Cerrar</button><button type="button" class="primary" id="print-receipt-btn">🖨️ Imprimir Recibo</button></div>`;
+  $('#modal-content').innerHTML=receiptHtml;
+  $('#modal').showModal();
+  $('#close-modal').onclick=$('#close-receipt-btn').onclick=()=>$('#modal').close();
+  $('#print-receipt-btn').onclick=()=>window.print();
+}
+function showSaleInstallmentsModal(saleId){
+  const sale=(S.re_sales||[]).find(x=>x.id===saleId);
+  if(!sale)return;
+  const prop=(S.re_properties||[]).find(p=>p.id===sale.property_id);
+  const insts=[...(S.re_sale_installments||[]).filter(i=>i.sale_id===saleId)].sort((a,b)=>a.installment_number-b.installment_number);
+  const totalCapital=insts.reduce((sum,i)=>sum+i.capital_amount,0);
+  const totalInterest=insts.reduce((sum,i)=>sum+i.interest_amount,0);
+  const totalLate=insts.reduce((sum,i)=>sum+(i.calculated_late_fee||i.late_fee_amount||0),0);
+  const totalPaid=insts.reduce((sum,i)=>sum+i.paid_amount,0);
+  const instStatusBadges={
+    paid:'<span class="badge green">Pagada ✓</span>',
+    partial:'<span class="badge blue">Abono parcial</span>',
+    overdue:'<span class="badge red">Vencida / Mora</span>',
+    pending:'<span class="badge orange">Pendiente</span>',
+    cancelled:'<span class="badge gray">Cancelada</span>'
+  };
+  const rows=insts.map(inst=>{
+    const isOverdue=inst.is_overdue||inst.status==='overdue';
+    const lateFee=inst.calculated_late_fee||inst.late_fee_amount||0;
+    const remaining=(inst.total_due+lateFee)-(inst.paid_amount||0);
+    const statusBadge=isOverdue?`<span class="badge" style="background:#fee2e2;color:#991b1b;font-weight:700">⚠️ Vencida (${inst.days_overdue||0}d mora)</span>`:(instStatusBadges[inst.status]||badge(inst.status));
+    return `
+      <tr style="${isOverdue?'background:rgba(254,226,226,0.25)':''}">
+        <td><strong>#${inst.installment_number}</strong></td>
+        <td>${displayDate(inst.due_date)}</td>
+        <td>${money(inst.capital_amount)}</td>
+        <td>${money(inst.interest_amount)}</td>
+        <td style="${lateFee>0?'color:#b91c1c;font-weight:700':'color:var(--muted)'}">${lateFee>0?money(lateFee):'—'}</td>
+        <td><strong>${money(inst.total_due+lateFee)}</strong></td>
+        <td style="color:#0f766e;font-weight:700">${money(inst.paid_amount||0)}</td>
+        <td style="color:${remaining>0?'#b91c1c':'var(--muted)'};font-weight:600">${money(remaining)}</td>
+        <td>${statusBadge}</td>
+        <td>
+          ${inst.paid_date?`<span style="font-size:12px;color:var(--muted)">${displayDate(inst.paid_date)}</span>`:(
+            remaining>0?`<button type="button" class="small primary" data-action="pay_sale_installment" data-sale-id="${sale.id}" data-installment-id="${inst.id}">💵 Cobrar</button>`:'—'
+          )}
+        </td>
+      </tr>
+    `;
+  }).join('');
+  const modalHtml=`
+    <div class="modal-header">
+      <div>
+        <h2 style="margin:0;font-size:18px">📅 Plan de Amortización y Cuotas de Financiamiento</h2>
+        <div style="font-size:13px;color:var(--muted);margin-top:4px">
+          Contrato #${sale.id} · ${esc(sale.property_title||prop?.title||'Inmueble')} · Comprador: <strong>${esc(sale.buyer_name)}</strong>
+        </div>
+      </div>
+      <button type="button" id="close-modal" aria-label="Cerrar">×</button>
+    </div>
+    <div style="padding:16px 20px;display:flex;flex-direction:column;gap:16px">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;background:var(--surface,#f8fafc);padding:12px;border-radius:8px">
+        <div>
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:700">Precio Venta Acordado</div>
+          <div style="font-size:15px;font-weight:700">${money(sale.sale_price)}</div>
+          <div style="font-size:11px;color:var(--muted)">Inicial: ${money(sale.down_payment||0)}</div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:700">Capital Amortizado</div>
+          <div style="font-size:15px;font-weight:700;color:#0f766e">${money(sale.total_capital_paid||0)}</div>
+          <div style="font-size:11px;color:var(--muted)">Progreso: ${sale.payment_progress_pct||0}%</div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:700">Saldo Capital Restante</div>
+          <div style="font-size:15px;font-weight:700;color:${(sale.remaining_capital||0)>0?'#b91c1c':'#0f766e'}">${money(sale.remaining_capital||0)}</div>
+          <div style="font-size:11px;color:var(--muted)">${sale.remaining_capital===0?'✓ Inmueble saldado':'Por cobrar'}</div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:700">Condiciones Crédito</div>
+          <div style="font-size:13px;font-weight:700">${sale.interest_rate_annual||0}% anual · ${sale.installments_count||insts.length} cuotas</div>
+          <div style="font-size:11px;color:var(--muted)">Mora: ${sale.late_fee_rate_monthly||2}%/mes (${sale.grace_days||5}d gracia)</div>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <div style="font-size:13px;color:var(--ink)">
+          <strong>${insts.length} cuotas mensuales</strong> (${insts.filter(i=>i.status==='paid').length} pagadas · ${insts.filter(i=>i.is_overdue).length} con atraso)
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button type="button" class="small secondary" data-action="recalculate_sale_late_fees" data-sale-id="${sale.id}" title="Recalcular días de mora e intereses punitivos">⚡ Recalcular Moras</button>
+          <button type="button" class="small primary" data-action="record_sale_payment" data-sale-id="${sale.id}">+ Facturar Cobro / Abono Capital</button>
+        </div>
+      </div>
+      ${insts.length?`
+        <div style="max-height:420px;overflow-y:auto;border:1px solid var(--border);border-radius:8px">
+          <table style="width:100%;font-size:12.5px">
+            <thead style="position:sticky;top:0;background:var(--surface,#f1f5f9);z-index:2">
+              <tr>
+                <th>Cuota</th>
+                <th>Vencimiento</th>
+                <th>Capital</th>
+                <th>Interés</th>
+                <th>Mora</th>
+                <th>Total Cuota</th>
+                <th>Pagado</th>
+                <th>Balance</th>
+                <th>Estado</th>
+                <th>Acción / Pago</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      `:`
+        <div class="empty" style="padding:24px;text-align:center">
+          <p>Este contrato aún no tiene una tabla de cuotas generada.</p>
+          <button type="button" class="primary small" data-action="generate_sale_installments" data-sale-id="${sale.id}">⚡ Generar Cuotas de Financiamiento Ahora</button>
+        </div>
+      `}
+    </div>
+    <div class="form-actions" style="padding:10px 20px 16px">
+      <button type="button" id="close-modal-btn">Cerrar</button>
+    </div>
+  `;
+  $('#modal-content').innerHTML=modalHtml;
+  $('#modal').showModal();
+  $('#close-modal').onclick=$('#close-modal-btn').onclick=()=>$('#modal').close();
+  $('#modal-content').querySelectorAll('[data-action]').forEach(b=>b.onclick=()=>handleAction(b));
+}
+function showSalePaymentReceiptModal(paymentId){
+  const pay=(S.re_sale_payments||[]).find(x=>x.id===paymentId);
+  if(!pay)return;
+  const sale=(S.re_sales||[]).find(s=>s.id===pay.sale_id);
+  const prop=(S.re_properties||[]).find(p=>p.id===(sale?sale.property_id:pay.property_id));
+  const buyer=sale?(S.re_buyers||[]).find(b=>b.id===sale.buyer_id):null;
+  const buyerName=pay.buyer_name||sale?.buyer_name||'Comprador Adquirente';
+  const buyerDoc=buyer?.document_id||sale?.buyer_document||'';
+  const buyerPhone=buyer?.phone||sale?.buyer_phone||'';
+  const buyerEmail=buyer?.email||'';
+  const comp=company();
+  const inst=pay.installment_id?(S.re_sale_installments||[]).find(i=>i.id===pay.installment_id):null;
+  const conceptText=inst?`Pago Cuota #${inst.installment_number} de ${sale?.installments_count||''} · Plan de Financiamiento Inmobiliario`:(pay.notes||'Abono directo al saldo total de capital de la propiedad');
+  const receiptHtml=`
+    <div class="modal-header">
+      <h2>🧾 Factura / Recibo Oficial de Cobro de Inmueble</h2>
+      <button type="button" id="close-modal" aria-label="Cerrar">×</button>
+    </div>
+    <div id="printable-sale-receipt" style="padding:24px;background:#ffffff;color:#0f172a;border-radius:10px;border:1px solid #cbd5e1;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #0f766e;padding-bottom:14px;margin-bottom:16px">
+        <div>
+          <h2 style="margin:0;color:#0f766e;font-size:22px;letter-spacing:-0.5px">${esc(comp.name)}</h2>
+          <div style="font-size:12.5px;color:#475569;margin-top:4px;line-height:1.4">
+            ${comp.rnc?`RNC Empresa: <strong>${esc(comp.rnc)}</strong><br>`:''}
+            División Inmobiliaria & Fideicomisos de Viviendas y Terrenos<br>
+            Santo Domingo, República Dominicana
+          </div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px">Comprobante de Ingreso Inmobiliario</div>
+          <div style="font-size:20px;font-weight:800;color:#0f766e;margin-top:2px">${esc(pay.receipt_number||('REC-VTA-'+String(pay.id).padStart(5,'0')))}</div>
+          <div style="font-size:12px;color:#64748b;margin-top:3px">Fecha emisión: <strong>${displayDate(pay.payment_date)}</strong></div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;background:#f8fafc;padding:14px;border-radius:8px;border:1px solid #e2e8f0">
+        <div>
+          <span style="font-size:11px;color:#64748b;text-transform:uppercase;font-weight:700">Cliente Adquirente / Comprador</span>
+          <div style="font-size:15px;font-weight:700;color:#0f172a;margin-top:2px">${esc(buyerName)}</div>
+          <div style="font-size:12px;color:#475569;margin-top:2px">
+            ${buyerDoc?`Cédula / RNC: <strong>${esc(buyerDoc)}</strong><br>`:''}
+            ${buyerPhone?`Tel / WhatsApp: ${esc(buyerPhone)}`:''}
+            ${buyerEmail?` · ${esc(buyerEmail)}`:''}
+          </div>
+        </div>
+        <div>
+          <span style="font-size:11px;color:#64748b;text-transform:uppercase;font-weight:700">Propiedad Adquirida / Referencia</span>
+          <div style="font-size:15px;font-weight:700;color:#0f172a;margin-top:2px">${esc(prop?.title||sale?.property_title||'Inmueble')}</div>
+          <div style="font-size:12px;color:#475569;margin-top:2px">
+            ${prop?.code?`Código: <strong>${esc(prop.code)}</strong> · `:''}
+            ${prop?.address?esc(prop.address)+(prop?.city?', '+esc(prop.city):''):''}
+            ${sale?`<br>Precio Convenido: <strong>${money(sale.sale_price)}</strong>`:''}
+          </div>
+        </div>
+      </div>
+      <table style="width:100%;border-collapse:collapse;margin-bottom:16px;font-size:13.5px">
+        <thead>
+          <tr style="background:#f1f5f9;border-bottom:2px solid #cbd5e1;text-align:left">
+            <th style="padding:10px;color:#334155">Descripción / Concepto del Cobro</th>
+            <th style="padding:10px;text-align:right;color:#334155">Capital (RD$)</th>
+            <th style="padding:10px;text-align:right;color:#334155">Interés (RD$)</th>
+            <th style="padding:10px;text-align:right;color:#334155">Mora (RD$)</th>
+            <th style="padding:10px;text-align:right;color:#334155">Total Recibido (RD$)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr style="border-bottom:1px solid #e2e8f0">
+            <td style="padding:12px 10px">
+              <strong>${esc(conceptText)}</strong>
+              ${pay.reference?`<div style="font-size:12px;color:#64748b;margin-top:2px">Transacción: ${esc(pay.reference)} (${esc(pay.payment_method)})</div>`:''}
+            </td>
+            <td style="padding:12px 10px;text-align:right;font-weight:600">${money(pay.capital_paid||0)}</td>
+            <td style="padding:12px 10px;text-align:right;color:${(pay.interest_paid||0)>0?'#0369a1':'#64748b'}">${money(pay.interest_paid||0)}</td>
+            <td style="padding:12px 10px;text-align:right;color:${(pay.late_fee_paid||0)>0?'#b91c1c':'#64748b'}">${money(pay.late_fee_paid||0)}</td>
+            <td style="padding:12px 10px;text-align:right;font-size:15px;font-weight:800;color:#0f766e">${money(pay.amount)}</td>
+          </tr>
+        </tbody>
+      </table>
+      <div style="display:grid;grid-template-columns:1.2fr 1fr;gap:14px;background:#ecfdf5;border:1px solid #a7f3d0;padding:14px;border-radius:8px;margin-bottom:18px">
+        <div>
+          <span style="font-size:11px;color:#065f46;font-weight:700;text-transform:uppercase">ESTADO DE CUENTA DE LA PROPIEDAD</span>
+          <div style="font-size:13.5px;color:#065f46;margin-top:3px">
+            Total amortizado acumulado: <strong>${money(sale?(sale.total_capital_paid||0):pay.capital_paid)}</strong>
+          </div>
+          <div style="font-size:13.5px;color:${sale&&sale.remaining_capital===0?'#047857':'#991b1b'};margin-top:2px">
+            ${sale&&sale.remaining_capital===0?'<strong>✓ Propiedad completamente saldada al 100%</strong>':`Balance de capital pendiente: <strong>${money(sale?sale.remaining_capital:0)}</strong>`}
+          </div>
+        </div>
+        <div style="text-align:right;border-left:1px dashed #a7f3d0;padding-left:14px">
+          <div style="font-size:11px;color:#065f46;font-weight:700;text-transform:uppercase">TOTAL PERCIBIDO EN ESTE RECIBO</div>
+          <div style="font-size:24px;font-weight:900;color:#065f46;margin-top:2px">${money(pay.amount)}</div>
+          <div style="font-size:11px;color:#047857">Pesos Dominicanos (DOP)</div>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:32px;padding-top:16px;border-top:1px dashed #cbd5e1">
+        <div style="text-align:center;width:240px">
+          <div style="border-top:1px solid #475569;padding-top:4px;font-size:12px;color:#475569">
+            <strong>${esc(buyerName)}</strong><br>Entregado Conforme (Comprador)
+          </div>
+        </div>
+        <div style="text-align:center;width:240px">
+          <div style="border-top:1px solid #475569;padding-top:4px;font-size:12px;color:#475569">
+            <strong>Firma y Sello Inmobiliario</strong><br>Zero ERP · Gestión de Bienes Raíces
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="form-actions" style="margin-top:14px">
+      <button type="button" id="close-receipt-btn">Cerrar</button>
+      <button type="button" class="primary" id="print-receipt-btn">🖨️ Imprimir Factura / Recibo</button>
+    </div>
+  `;
   $('#modal-content').innerHTML=receiptHtml;
   $('#modal').showModal();
   $('#close-modal').onclick=$('#close-receipt-btn').onclick=()=>$('#modal').close();
@@ -3705,10 +3954,14 @@ if(kind==='re_property'||kind==='edit_re_property'){
          input('city','Ciudad / Sector','text',p?.city||'Santo Domingo','maxlength="200"')+
          input('price_rent','Precio de renta mensual (RD$)', 'number', p?.price_rent?(p.price_rent/100):'', 'min="0" step="0.01"')+
          input('price_sale','Precio de venta (RD$)', 'number', p?.price_sale?(p.price_sale/100):'', 'min="0" step="0.01"')+
-         input('area_sqm','Área (m²)', 'number', p?.area_sqm||'', 'min="0" step="0.1"')+
+         input('area_sqm','Área de terreno / solar (m²)', 'number', p?.area_sqm||'', 'min="0" step="0.1"')+
+         input('built_sqm','Área de construcción (m²)', 'number', p?.built_sqm||'', 'min="0" step="0.1" placeholder="ej. 220"')+
+         input('levels','Niveles / Pisos', 'number', p?.levels||1, 'min="1" max="100"')+
          input('bedrooms','Habitaciones', 'number', p?.bedrooms||0, 'min="0"')+
          input('bathrooms','Baños', 'number', p?.bathrooms||0, 'min="0" step="0.5"')+
          input('parking_spots','Estacionamientos / Parqueos', 'number', p?.parking_spots||0, 'min="0"')+
+         input('image_url','URL Fotografía del inmueble', 'url', p?.image_url||'', 'placeholder="https://... enlace de imagen"')+
+         input('features','Amenidades / extras (separadas por coma)', 'text', p?.features||'', 'placeholder="ej. Piscina, Ascensor, Planta Full, Balcón"')+
          input('owner_name','Propietario / Condómino', 'text', p?.owner_name||'')+
          input('owner_document','Cédula / RNC del Propietario / Condómino', 'text', p?.owner_document||'')+
          input('owner_phone','Teléfono del propietario', 'text', p?.owner_phone||'')+
@@ -3812,23 +4065,96 @@ if(kind==='re_lease'||kind==='edit_re_lease'){
          area('notes','Términos, cláusulas y observaciones',l?.notes||'');
   help='Al crear el contrato el inmueble pasa a "Alquilado". Podrá generar cobros mensuales automáticos en Contabilidad.';
 }
+if(kind==='re_buyer'||kind==='edit_re_buyer'){
+  const b=kind==='edit_re_buyer'?(S.re_buyers||[]).find(x=>x.id===id):null;
+  title=b?`Editar comprador / prospecto: «${b.name}»`:'Nuevo comprador o prospecto inmobiliario';
+  if(b) initial={id};
+  const buyerTypes=[['individual','Persona Física (Cédula)'],['corporate','Empresa / Jurídica (RNC)']];
+  const statuses=[
+    ['prospect','🔍 Prospecto calificado'],
+    ['lead','🌱 Lead / Primer contacto'],
+    ['active','🔥 Activo con financiamiento'],
+    ['buyer','🏆 Comprador / Adquirente'],
+    ['inactive','⏸️ Inactivo']
+  ];
+  const propTypes=[
+    ['apartment','Apartamento'],['penthouse','Penthouse'],['house','Casa'],['villa','Villa'],
+    ['townhouse','Townhouse'],['commercial','Local comercial'],['office','Oficina'],
+    ['industrial','Nave industrial'],['land','Solar urbano'],['lot','Terreno']
+  ];
+  fields=input('name','Nombre completo o Razón Social','text',b?.name||'','required maxlength="200" placeholder="ej. Dra. Patricia Reyes / Inversiones Soto SRL"')+
+         select('buyer_type','Tipo de cliente',buyerTypes,b?.buyer_type||'individual')+
+         input('document_id','Cédula o RNC','text',b?.document_id||'','placeholder="ej. 001-0987654-3"')+
+         input('phone','Teléfono / WhatsApp','tel',b?.phone||'','required placeholder="ej. 809-555-1234"')+
+         input('email','Correo electrónico','email',b?.email||'','placeholder="cliente@ejemplo.com"')+
+         input('address','Dirección residencial o de oficina','text',b?.address||'')+
+         input('city','Ciudad / Sector','text',b?.city||'Santo Domingo','maxlength="200"')+
+         input('budget','Presupuesto disponible (RD$)','number',b?.budget?(b.budget/100):'','min="0" step="0.01" placeholder="ej. 15000000.00"')+
+         select('preferred_property_type','Tipo de inmueble de interés',propTypes,b?.preferred_property_type||'apartment')+
+         select('status','Estado del prospecto / comprador',statuses,b?.status||'prospect')+
+         select('agent_id','Agente asesor asignado',options('employees',true,true),b?.agent_id||'')+
+         area('notes','Requerimientos específicos, zonas de interés y notas de seguimiento',b?.notes||'');
+  help='Gestione compradores y prospectos interesados en la adquisición de inmuebles.';
+}
 if(kind==='re_sale'||kind==='edit_re_sale'){
   const s=kind==='edit_re_sale'?(S.re_sales||[]).find(x=>x.id===id):null;
-  title=s?`Editar venta · #${id}`:'Registrar venta y cierre inmobiliario';
+  title=s?`Editar venta · #${id}`:'Registrar venta y plan de financiamiento';
   if(s) initial={id};
   const propOpts=(S.re_properties||[]).map(p=>[p.id, `${p.code?p.code+' · ':''}${p.title} (Ref: ${money(p.price_sale)})`]);
+  const buyerOpts=[['','— Seleccionar comprador registrado o digitar abajo —'],...(S.re_buyers||[]).map(b=>[b.id,`👤 ${b.name} (${b.document_id||b.phone})`])];
+  const saleStatuses=[['in_progress','En financiamiento (Cuotas activas)'],['closed','Cerrado / Pagado en su totalidad'],['reserved','Reservado / En arras'],['cancelled','Cancelado']];
   fields=select('property_id','Inmueble vendido',propOpts,s?.property_id||extraData?.property_id||'','required')+
-         input('buyer_name','Nombre completo del comprador','text',s?.buyer_name||'','required maxlength="200"')+
+         select('buyer_id','Comprador registrado (opcional)',buyerOpts,s?.buyer_id||extraData?.buyer_id||'')+
+         input('buyer_name','Nombre completo del comprador','text',s?.buyer_name||'','required maxlength="200" placeholder="Nombre completo"')+
          input('buyer_document','Cédula / RNC del comprador','text',s?.buyer_document||'')+
-         input('buyer_phone','Teléfono del comprador','text',s?.buyer_phone||'')+
-         input('sale_price','Precio de venta final (RD$)','number',s?.sale_price?(s.sale_price/100):'','required min="0.01" step="0.01"')+
+         input('buyer_phone','Teléfono / WhatsApp del comprador','text',s?.buyer_phone||'')+
+         input('sale_price','Precio total de venta acordado (RD$)','number',s?.sale_price?(s.sale_price/100):'','required min="0.01" step="0.01"')+
+         input('down_payment','Inicial / Pago de Separación (RD$)','number',s?.down_payment?(s.down_payment/100):0,'min="0" step="0.01" placeholder="ej. 4500000.00"')+
+         input('installments_count','Cantidad de cuotas mensuales de financiamiento','number',s?.installments_count||0,'min="0" max="360" placeholder="ej. 24, 36, 60 (0 para venta al contado)"')+
+         input('interest_rate_annual','Tasa de interés anual de financiamiento (%)','number',s?.interest_rate_annual||0,'min="0" max="100" step="0.01" placeholder="ej. 12.0 para 12% anual"')+
+         input('installment_day','Día de vencimiento de las cuotas (1-31)','number',s?.installment_day||15,'min="1" max="31"')+
+         input('late_fee_rate_monthly','Tasa de mora mensual por atraso (%)','number',s?.late_fee_rate_monthly||2.0,'min="0" max="50" step="0.1"')+
+         input('grace_days','Días de gracia antes de mora','number',s?.grace_days!==undefined?s.grace_days:5,'min="0" max="60"')+
          input('commission_rate','Porcentaje de comisión agencia (%)','number',s?.commission_rate||5.0,'min="0" step="0.1"')+
-         input('commission_amount','Monto comisión agencia (RD$, opcional)','number',s?.commission_amount?(s.commission_amount/100):'','min="0" step="0.01" placeholder="Calculado según el porcentaje si se omite"')+
-         input('closing_date','Fecha de cierre / firma','date',s?.closing_date||S.today,'required')+
-         select('agent_id','Agente de cierre',options('employees',true,true),s?.agent_id||'')+
-         select('status','Estado del cierre',[['closed','Cerrado / Finalizado'],['reserved','Reservado / En arras'],['cancelled','Cancelado']],s?.status||'closed')+
-         area('notes','Notas de cierre, fiduciaria o método de pago',s?.notes||'');
-  help='Al cerrar la venta el inmueble se marca como "Vendido" y se registra la comisión.';
+         input('commission_amount','Monto comisión agencia (RD$, opcional)','number',s?.commission_amount?(s.commission_amount/100):'','min="0" step="0.01" placeholder="Calculado si se omite"')+
+         input('closing_date','Fecha de firma / contrato','date',s?.closing_date||S.today,'required')+
+         select('agent_id','Agente de cierre responsable',options('employees',true,true),s?.agent_id||'')+
+         select('status','Estado de la venta',saleStatuses,s?.status||'in_progress')+
+         area('notes','Condiciones de pago, financiamiento, banco o fiduciaria',s?.notes||'');
+  help='Registre ventas al contado o con plan de financiamiento en cuotas mensuales (sistema de amortización francés), cálculo de intereses y mora por atraso.';
+}
+if(kind==='record_re_sale_payment'){
+  const saleId=Number(extraData?.sale_id||id);
+  const s=(S.re_sales||[]).find(x=>x.id===saleId);
+  const instId=extraData?.installment_id?Number(extraData.installment_id):null;
+  const inst=instId?(S.re_sale_installments||[]).find(x=>x.id===instId):null;
+  title=s?`Facturar Cobro / Abono a Venta · Contrato #${saleId}`:'Facturar Cobro o Abono a Venta Inmobiliaria';
+  initial={sale_id:saleId};
+  if(instId) initial.installment_id=instId;
+  const sInsts=(S.re_sale_installments||[]).filter(i=>i.sale_id===saleId&&i.status!=='paid');
+  const instOpts=[
+    ['','— Abono extraordinario directo al capital total de la propiedad —'],
+    ...sInsts.map(i=>[i.id,`Cuota #${i.installment_number} (Vence ${displayDate(i.due_date)}) — Cuota: ${money(i.total_due)}${i.calculated_late_fee>0?' + Mora: '+money(i.calculated_late_fee):''} (Pendiente: ${money((i.total_due+(i.calculated_late_fee||0))-(i.paid_amount||0))})`])
+  ];
+  const pendingAmount = inst ? ((inst.total_due + (inst.calculated_late_fee||0)) - (inst.paid_amount||0)) : (s?.remaining_capital || 0);
+  const paymentMethods=[
+    ['transfer','Transferencia Bancaria'],
+    ['deposit','Depósito Bancario en Efectivo'],
+    ['check','Cheque Certificado'],
+    ['cash','Efectivo en Caja'],
+    ['card','Tarjeta de Débito / Crédito']
+  ];
+  const cashAccounts=[['','Caja / Banco por defecto'],...(S.cash_accounts||[]).filter(a=>!a.archived).map(a=>[a.id,`🏦 ${a.name} (${a.currency} · Saldo: ${accountMoney(a.balance,a.currency)})`])];
+
+  fields=select('installment_id','Cuota mensual a saldar (o abono a capital)',instOpts,instId||'')+
+         input('amount','Monto a cobrar / abonar (RD$)','number',pendingAmount>0?(pendingAmount/100):'','required min="0.01" step="0.01"')+
+         input('payment_date','Fecha del cobro','date',S.today,`required max="${S.today}"`)+
+         select('payment_method','Medio de pago',paymentMethods,'transfer')+
+         input('reference','No. Depósito / Referencia Bancaria / Cheque','text','',`required placeholder="ej. Transf. Banreservas #990142"`)+
+         select('account_id','Cuenta de Tesorería receptora',cashAccounts,'')+
+         area('notes','Notas u observaciones del recibo de cobro','');
+  help=`Comprador: ${esc(s?.buyer_name||'N/A')}. Saldo capital restante de la propiedad: ${money(s?.remaining_capital||0)}. Se emitirá automáticamente un comprobante oficial de ingreso con numeración consecutiva.`;
+  submit='Emitir recibo y registrar cobro';
 }
 if(kind==='re_visit'||kind==='edit_re_visit'){
   const v=kind==='edit_re_visit'?(S.re_visits||[]).find(x=>x.id===id):null;
@@ -3864,7 +4190,7 @@ $('#modal').querySelectorAll('input,textarea,select').forEach(el=>{el.setAttribu
 $('#modal').showModal();
 $('#close-modal').onclick=$('#cancel-modal').onclick=()=>$('#modal').close();
 if(kind==='subscription')$('#f-product_id').onchange=e=>{$('#f-amount').value=S.products.find(p=>p.id===Number(e.target.value)).amount/100};
-$('#record-form').onsubmit=async e=>{e.preventDefault();const btn=e.target.querySelector('[type=submit]');btn.disabled=true;const form=new FormData(e.target),data={...Object.fromEntries(form),...initial};if(form.has('allow_early_close'))data.allow_early_close=true;if(form.has('close_contracts'))data.close_contracts=true;if(kind==='view_termination'){$('#modal').close();return;}if(['member','edit_member'].includes(kind)){data.departments=form.getAll('departments').map(Number);data.projects=form.getAll('projects').map(Number);data.collections=form.has('collections')}try{if(['expense_payment','pay_payroll'].includes(kind)){const accId=data.account_id;const acc=S.cash_accounts?.find(a=>String(a.id)===String(accId));if(acc){let payAmount=0;if(kind==='expense_payment')payAmount=Math.round(Number(data.amount||0)*100);else if(kind==='pay_payroll'){const p=(S.farm_payrolls||[]).find(x=>x.id===Number(data.id));if(p)payAmount=p.amount;}if(payAmount>acc.balance){throw Error(`Saldo insuficiente en «${acc.name}». Saldo disponible: ${accountMoney(acc.balance,acc.currency)}.`);}}}if(kind==='password')await api('password',data);else if(kind==='company'){data.company_id=cid;const created=await api('company',data);$('#modal').close();await boot();setActiveCompany(created.company_id);await refresh();toast('Empresa creada correctamente.')}else if(kind==='edit_company'){const targetId=Number(initial.id||data.id||cid);data.id=targetId;data.target_company_id=targetId;data.demo=form.has('demo');const targetComp=me?.companies?.find(x=>x.id===targetId)||{};data.logo=targetComp.logo||(targetId===Number(cid)?S.company_profile?.logo:'')||'';if(data.remove_logo)data.logo='';const file=$('#company-logo-modal')?.files?.[0];if(file){if(file.size>500000)throw Error('El logo supera 500 KB.');data.logo=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(Error('No se pudo leer el logo.'));reader.readAsDataURL(file)})}await save('edit_company',data);me=await api('me');$('#modal').close();await refresh();toast('Ficha de empresa actualizada correctamente.')}else if(kind==='terminate_employee'){await save('terminate_employee',data);$('#modal').close();toast('Colaborador dado de baja correctamente.');}else{const reActionMap={re_property:'create_re_property',re_condo:'create_re_condo',edit_re_condo:'edit_re_condo',re_condo_charge:'create_re_condo_charge',edit_re_condo_charge:'edit_re_condo_charge',generate_condo_fees:'generate_condo_month_fees',pay_condo_charge:'record_condo_charge_payment',re_condo_expense:'create_re_condo_expense',edit_re_condo_expense:'edit_re_condo_expense',pay_condo_expense:'pay_re_condo_expense',re_lease:'create_re_lease',re_sale:'create_re_sale',re_visit:'create_re_visit',re_maintenance:'create_re_maintenance',edit_member:'member'};const actionName=reActionMap[kind]||kind;await save(actionName,data);$('#modal').close();toast('Guardado correctamente.')}}catch(err){$('#form-error').textContent=err.message;btn.disabled=false}}}
+$('#record-form').onsubmit=async e=>{e.preventDefault();const btn=e.target.querySelector('[type=submit]');btn.disabled=true;const form=new FormData(e.target),data={...Object.fromEntries(form),...initial};if(form.has('allow_early_close'))data.allow_early_close=true;if(form.has('close_contracts'))data.close_contracts=true;if(kind==='view_termination'){$('#modal').close();return;}if(['member','edit_member'].includes(kind)){data.departments=form.getAll('departments').map(Number);data.projects=form.getAll('projects').map(Number);data.collections=form.has('collections')}try{if(['expense_payment','pay_payroll'].includes(kind)){const accId=data.account_id;const acc=S.cash_accounts?.find(a=>String(a.id)===String(accId));if(acc){let payAmount=0;if(kind==='expense_payment')payAmount=Math.round(Number(data.amount||0)*100);else if(kind==='pay_payroll'){const p=(S.farm_payrolls||[]).find(x=>x.id===Number(data.id));if(p)payAmount=p.amount;}if(payAmount>acc.balance){throw Error(`Saldo insuficiente en «${acc.name}». Saldo disponible: ${accountMoney(acc.balance,acc.currency)}.`);}}}if(kind==='password')await api('password',data);else if(kind==='company'){data.company_id=cid;const created=await api('company',data);$('#modal').close();await boot();setActiveCompany(created.company_id);await refresh();toast('Empresa creada correctamente.')}else if(kind==='edit_company'){const targetId=Number(initial.id||data.id||cid);data.id=targetId;data.target_company_id=targetId;data.demo=form.has('demo');const targetComp=me?.companies?.find(x=>x.id===targetId)||{};data.logo=targetComp.logo||(targetId===Number(cid)?S.company_profile?.logo:'')||'';if(data.remove_logo)data.logo='';const file=$('#company-logo-modal')?.files?.[0];if(file){if(file.size>500000)throw Error('El logo supera 500 KB.');data.logo=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(Error('No se pudo leer el logo.'));reader.readAsDataURL(file)})}await save('edit_company',data);me=await api('me');$('#modal').close();await refresh();toast('Ficha de empresa actualizada correctamente.')}else if(kind==='terminate_employee'){await save('terminate_employee',data);$('#modal').close();toast('Colaborador dado de baja correctamente.');}else{const reActionMap={re_property:'create_re_property',re_condo:'create_re_condo',edit_re_condo:'edit_re_condo',re_condo_charge:'create_re_condo_charge',edit_re_condo_charge:'edit_re_condo_charge',generate_condo_fees:'generate_condo_month_fees',pay_condo_charge:'record_condo_charge_payment',re_condo_expense:'create_re_condo_expense',edit_re_condo_expense:'edit_re_condo_expense',pay_condo_expense:'pay_re_condo_expense',re_buyer:'create_re_buyer',edit_re_buyer:'edit_re_buyer',re_sale:'create_re_sale',edit_re_sale:'edit_re_sale',record_re_sale_payment:'record_re_sale_payment',re_lease:'create_re_lease',re_visit:'create_re_visit',re_maintenance:'create_re_maintenance',edit_member:'member'};const actionName=reActionMap[kind]||kind;await save(actionName,data);$('#modal').close();toast('Guardado correctamente.')}}catch(err){$('#form-error').textContent=err.message;btn.disabled=false}}}
 let reportFilters={type:'expenses',start:'',end:'',department:'',project:'',person:'',status:'',search:''};
 let currentReport=null;
 function reportColumns(result){const type=reportFilters.type,op=result.definition.operational;const headers=['Fecha','Registro','Concepto',...(op?['Departamento','Proyecto']:['Cliente']),...(result.definition.person?['Persona']:[]),'Estado',...(type==='worklogs'?['Horas']:type==='tasks'?[]:['Importe RD$','Pagado RD$','Saldo RD$']),'Referencia / observaciones'];const values=r=>[r.date,r.id,r.concept,...(op?[r.department,r.project]:[r.customer]),...(result.definition.person?[r.person]:[]),statuses[r.status]||r.status,...(type==='worklogs'?[(r.minutes/60).toFixed(2)]:type==='tasks'?[]:[(r.amount/100).toFixed(2),(r.paid/100).toFixed(2),(r.balance/100).toFixed(2)]),r.reference||r.notes];return {headers,rows:result.records.map(values)}}
@@ -4958,11 +5284,14 @@ function showReportQueueJobModal(jobId){
 
 function realEstateView(){
   const properties = S.re_properties || [];
+  const buyers = S.re_buyers || [];
+  const sales = S.re_sales || [];
+  const saleInstallments = S.re_sale_installments || [];
+  const salePayments = S.re_sale_payments || [];
   const condos = S.re_condos || [];
   const condoCharges = S.re_condo_charges || [];
   const condoExpenses = S.re_condo_expenses || [];
   const leases = S.re_leases || [];
-  const sales = S.re_sales || [];
   const visits = S.re_visits || [];
   const maintenances = S.re_maintenances || [];
 
@@ -5008,32 +5337,62 @@ function realEstateView(){
     reserved: '<span class="badge orange">Reservado</span>',
     maintenance: '<span class="badge orange">En mantenimiento</span>'
   };
+
   const propOpLabels = {
     rent: 'Alquiler',
     sale: 'Venta',
     both: 'Alquiler / Venta'
   };
+
+  const buyerStatusBadges = {
+    lead: '<span class="badge blue">Prospecto inicial</span>',
+    contacted: '<span class="badge blue">Contactado</span>',
+    prospect: '<span class="badge orange">Calificado / En visita</span>',
+    active_buyer: '<span class="badge green">Comprador Activo 🔥</span>',
+    purchased: '<span class="badge" style="background:#0f766e;color:#fff">Propietario / Compró ✓</span>',
+    archived: '<span class="badge gray">Archivado</span>'
+  };
+
+  const buyerTypeLabels = {
+    individual: 'Persona física',
+    company: 'Empresa / Jurídica'
+  };
+
+  const saleStatusBadges = {
+    pending: '<span class="badge orange">En negociación</span>',
+    under_contract: '<span class="badge blue">Promesa de venta</span>',
+    financed: '<span class="badge green">Financiamiento Activo</span>',
+    closed: '<span class="badge" style="background:#0f766e;color:#fff">Saldado / Cerrado ✓</span>',
+    cancelled: '<span class="badge gray">Cancelado</span>'
+  };
+
+  const paymentTypeLabels = {
+    down_payment: 'Inicial / Separación',
+    installment: 'Cuota mensual amortización',
+    extra_principal: 'Abono extraordinario a capital',
+    fee: 'Mora / Gastos administrativos',
+    other: 'Otro concepto'
+  };
+
   const leaseStatusBadges = {
     active: '<span class="badge green">Activo</span>',
     expired: '<span class="badge orange">Vencido</span>',
     terminated: '<span class="badge gray">Finalizado</span>'
   };
-  const saleStatusBadges = {
-    closed: '<span class="badge green">Cerrado</span>',
-    reserved: '<span class="badge orange">Reservado</span>',
-    cancelled: '<span class="badge gray">Cancelado</span>'
-  };
+
   const visitInterestBadges = {
     high: '<span class="badge orange">Alto interés 🔥</span>',
     medium: '<span class="badge blue">Interés regular</span>',
     low: '<span class="badge gray">Poco interés</span>',
     offer_made: '<span class="badge green">Oferta presentada 📝</span>'
   };
+
   const visitStatusBadges = {
     completed: '<span class="badge green">Realizada</span>',
     scheduled: '<span class="badge blue">Programada</span>',
     cancelled: '<span class="badge gray">Cancelada</span>'
   };
+
   const maintStatusBadges = {
     pending: '<span class="badge orange">Pendiente</span>',
     in_progress: '<span class="badge blue">En progreso</span>',
@@ -5053,7 +5412,7 @@ function realEstateView(){
     cancelled: '<span class="badge gray">Anulada</span>'
   };
 
-  // Property categorization
+  // Property categorization helpers
   const isResidential = p => ['apartment','penthouse','house','villa','townhouse'].includes(p.property_type);
   const isCommercial = p => ['commercial','office','industrial','building'].includes(p.property_type);
   const isLand = p => ['land','lot','parcel'].includes(p.property_type);
@@ -5068,6 +5427,12 @@ function realEstateView(){
   const landCount = properties.filter(isLand).length;
   const inCondoCount = properties.filter(isInCondo).length;
 
+  // Financial rollups
+  const totalSalesVolume = sales.reduce((sum, s) => sum + (s.sale_price || 0), 0);
+  const totalSalesCapitalPaid = sales.reduce((sum, s) => sum + (s.total_capital_paid || 0), 0);
+  const totalSalesRemainingCapital = sales.reduce((sum, s) => sum + (s.remaining_capital || 0), 0);
+  const totalSalesOverdueInstallments = sales.reduce((sum, s) => sum + (s.installments_overdue || 0), 0);
+
   const totalReserveFund = condos.reduce((sum, c) => sum + (c.reserve_fund || 0), 0);
   const totalCondoBilled = condoCharges.filter(c => c.status !== 'cancelled').reduce((sum, c) => sum + (c.amount || 0), 0);
   const totalCondoCollected = condoCharges.filter(c => c.status !== 'cancelled').reduce((sum, c) => sum + (c.paid_amount || 0), 0);
@@ -5080,20 +5445,18 @@ function realEstateView(){
 
   const activeLeases = leases.filter(l => l.status === 'active');
   const totalMonthlyRent = activeLeases.reduce((sum, l) => sum + (l.monthly_rent || 0), 0);
-  const closedSales = sales.filter(s => s.status === 'closed');
-  const totalSalesVolume = closedSales.reduce((sum, s) => sum + (s.sale_price || 0), 0);
-  const totalCommissions = closedSales.reduce((sum, s) => sum + (s.commission_amount || 0), 0);
-  const pendingMaints = maintenances.filter(m => m.status !== 'resolved').length;
 
   const headerActions = `
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
       ${openButton('+ Nuevo inmueble', 're_property')}
+      <button type="button" class="small" data-open="re_buyer">+ Cliente / Comprador</button>
+      <button type="button" class="small primary" data-open="re_sale">+ Venta / Financiamiento</button>
+      <button type="button" class="small" data-open="record_re_sale_payment">+ Registrar abono / cobro</button>
       <button type="button" class="small" data-open="re_condo">+ Condominio / Torre</button>
-      <button type="button" class="small primary" data-open="generate_condo_fees" title="Generar cuotas mensuales en 1 clic">⚡ Generar cuotas del mes</button>
+      <button type="button" class="small primary" data-open="generate_condo_fees" title="Generar cuotas mensuales en 1 clic">⚡ Cuotas del mes</button>
       <button type="button" class="small" data-open="re_condo_expense">+ Factura área común</button>
       <button type="button" class="small" data-open="re_condo_charge">+ Cobro condómino</button>
       ${openButton('+ Alquiler', 're_lease')}
-      ${openButton('+ Venta', 're_sale')}
       <button type="button" class="small" data-open="re_visit">+ Visita</button>
       <button type="button" class="small" data-open="re_maintenance">+ Mantenimiento</button>
       ${totalProps === 0 ? `<button type="button" class="primary small" data-action="seed_demo_real_estate">⚡ Cargar datos de prueba</button>` : ''}
@@ -5108,19 +5471,19 @@ function realEstateView(){
         <div class="card-note">${residentialCount} viviendas · ${commercialCount} comerciales · ${landCount} terrenos/solares · ${inCondoCount} en condominio</div>
       </article>
       <article class="card">
-        <div class="card-title">Condominios y Torres <span>🏛️</span></div>
-        <div class="card-value">${condos.length}</div>
-        <div class="card-note">${inCondoCount} unidades administradas · Fondo reserva: ${money(totalReserveFund)}</div>
+        <div class="card-title">Compradores y Clientes CRM <span>👥</span></div>
+        <div class="card-value">${buyers.length}</div>
+        <div class="card-note">${buyers.filter(b => b.status === 'active_buyer' || b.status === 'prospect').length} activos/calificados · ${buyers.filter(b => b.status === 'purchased').length} con compra realizada</div>
       </article>
       <article class="card">
-        <div class="card-title">Mantenimiento Cobrado <span>💵</span></div>
+        <div class="card-title">Ventas y Financiamientos <span>🤝</span></div>
+        <div class="card-value">${money(totalSalesVolume)}</div>
+        <div class="card-note">${money(totalSalesCapitalPaid)} cobrado · ${money(totalSalesRemainingCapital)} por cobrar ${totalSalesOverdueInstallments > 0 ? `<span style="color:var(--danger,#b91c1c);font-weight:700">· ⚠️ ${totalSalesOverdueInstallments} en mora</span>` : '· Al día'}</div>
+      </article>
+      <article class="card">
+        <div class="card-title">Condominios y Cuotas <span>🏛️</span></div>
         <div class="card-value">${money(totalCondoCollected)}</div>
-        <div class="card-note">${money(totalCondoPending)} pendiente de cobro (${condoCharges.length} cuotas emitidas)</div>
-      </article>
-      <article class="card">
-        <div class="card-title">Servicios de Área Común <span>⚡💧</span></div>
-        <div class="card-value">${money(totalCommonExpenses)}</div>
-        <div class="card-note">${money(totalCommonPaid)} pagado · ${money(totalCommonPending)} por pagar en luz, agua, elevadores</div>
+        <div class="card-note">${money(totalCondoPending)} pendiente (${condos.length} edificios · Fondo: ${money(totalReserveFund)})</div>
       </article>
       <article class="card">
         <div class="card-title">Balance Operativo Condominios <span>⚖️</span></div>
@@ -5135,10 +5498,10 @@ function realEstateView(){
       <div style="flex:1;min-width:260px">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
           <span style="font-size:24px">🏢</span>
-          <strong style="font-size:16px;color:var(--brand-accent,#0f766e)">¿Desea probar el módulo de Bienes Raíces y Administración de Condominios con datos de ejemplo?</strong>
+          <strong style="font-size:16px;color:var(--brand-accent,#0f766e)">¿Desea probar el módulo de Bienes Raíces, Catálogo, Compradores y Ventas con datos de ejemplo?</strong>
         </div>
         <div style="font-size:13.5px;line-height:1.5;color:var(--ink,#1e293b)">
-          Cargue en 1 clic <strong>Torre Bella Vista Real</strong> (condominio con apartamentos, cuotas de mantenimiento mensual, facturas de área común de <strong>Edesur luz de bombas</strong>, <strong>CAASD agua cisterna</strong>, <strong>Otis elevadores</strong>, seguridad y gasoil de planta), más <strong>viviendas</strong>, <strong>locales comerciales</strong>, <strong>solares urbanos</strong> y <strong>terrenos campestres</strong>.
+          Cargue en 1 clic <strong>Torre Bella Vista Real</strong> (condominio con apartamentos, cuotas de mantenimiento mensual, facturas de área común de luz, agua y elevadores), <strong>viviendas</strong>, <strong>locales comerciales</strong>, <strong>solares urbanos</strong>, más <strong>clientes compradores registrados</strong>, <strong>contratos con financiamiento y amortización</strong>, y <strong>recibos de pago con desglose de capital, interés y mora</strong>.
         </div>
       </div>
       <button type="button" class="primary" data-action="seed_demo_real_estate" style="white-space:nowrap;padding:10px 20px;font-weight:700;font-size:14px;display:inline-flex;align-items:center;gap:6px">
@@ -5150,11 +5513,13 @@ function realEstateView(){
   const subnav = `
     <div class="sub-nav" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;align-items:center">
       <button type="button" class="${reTab==='properties'?'primary':''}" data-re-tab="properties">🏢 Inmuebles (${properties.length})</button>
+      <button type="button" class="${reTab==='buyers'?'primary':''}" data-re-tab="buyers">👥 Clientes / Compradores (${buyers.length})</button>
+      <button type="button" class="${reTab==='sales'?'primary':''}" data-re-tab="sales">🤝 Ventas y Financiamientos (${sales.length})</button>
+      <button type="button" class="${reTab==='sale_payments'?'primary':''}" data-re-tab="sale_payments">🧾 Recibos y Abonos (${salePayments.length})</button>
       <button type="button" class="${reTab==='condos'?'primary':''}" data-re-tab="condos">🏛️ Condominios y Torres (${condos.length})</button>
       <button type="button" class="${reTab==='condo_charges'?'primary':''}" data-re-tab="condo_charges">💵 Cobros a Condóminos (${condoCharges.length})</button>
       <button type="button" class="${reTab==='common_services'?'primary':''}" data-re-tab="common_services">⚡ Servicios de Área Común (${condoExpenses.length})</button>
       <button type="button" class="${reTab==='leases'?'primary':''}" data-re-tab="leases">📑 Alquileres (${leases.length})</button>
-      <button type="button" class="${reTab==='sales'?'primary':''}" data-re-tab="sales">🤝 Ventas (${sales.length})</button>
       <button type="button" class="${reTab==='visits'?'primary':''}" data-re-tab="visits">🗓️ Visitas (${visits.length})</button>
       <button type="button" class="${reTab==='maintenance'?'primary':''}" data-re-tab="maintenance">🛠️ Mantenimiento (${maintenances.length})</button>
       ${totalProps > 0 ? `<button type="button" class="small secondary" data-action="seed_demo_real_estate" title="Recargar o restaurar las propiedades y condominios demo" style="margin-left:auto">🔄 Recargar demo inmobiliario</button>` : ''}
@@ -5163,7 +5528,7 @@ function realEstateView(){
 
   let body = '';
 
-  // ---------------- TAB: INMUEBLES ----------------
+  // ---------------- TAB: INMUEBLES (CATALOGO VISUAL) ----------------
   if(reTab === 'properties'){
     let filtered = properties;
 
@@ -5260,13 +5625,15 @@ function realEstateView(){
     `;
 
     const cardsHtml = filtered.length ? `
-      <div class="property-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px">
+      <div class="property-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:18px">
         ${filtered.map(p => {
           const specs = [];
           if(p.bedrooms) specs.push(`🛏️ ${p.bedrooms} hab`);
           if(p.bathrooms) specs.push(`🚿 ${p.bathrooms} baños`);
           if(p.parking_spots) specs.push(`🚗 ${p.parking_spots} parq`);
           if(p.area_sqm) specs.push(`📐 ${p.area_sqm} m²`);
+          if(p.built_sqm) specs.push(`🏗️ ${p.built_sqm} m² const.`);
+          if(p.levels) specs.push(`🏢 ${p.levels} niv`);
           const agentName = lookup('employees', p.agent_id);
 
           const categoryBadge = isResidential(p) ? '<span class="badge blue">🏠 Vivienda</span>' :
@@ -5274,16 +5641,28 @@ function realEstateView(){
                                 isLand(p) ? '<span class="badge green">🌾 Solar/Terreno</span>' :
                                 '<span class="badge gray">🏛️ Inmueble</span>';
 
+          const featuresList = (p.features || '').split(',').map(f => f.trim()).filter(Boolean);
+
           return `
-            <article class="property-card" style="border:1px solid var(--border);border-radius:12px;padding:16px;background:var(--card);display:flex;flex-direction:column;gap:10px;box-shadow:0 2px 5px rgba(0,0,0,0.03)">
-              <div style="display:flex;justify-content:space-between;align-items:center;gap:6px">
-                <div style="display:flex;align-items:center;gap:6px">
-                  <span style="font-weight:700;font-size:13px;color:var(--brand-accent,#0f766e)">${esc(p.code||'PROP-'+p.id)}</span>
-                  ${categoryBadge}
+            <article class="property-card" style="border:1px solid var(--border);border-radius:12px;padding:16px;background:var(--card);display:flex;flex-direction:column;gap:10px;box-shadow:0 2px 6px rgba(0,0,0,0.04);position:relative;overflow:hidden">
+              ${p.image_url ? `
+                <div style="width:calc(100% + 32px);height:180px;margin:-16px -16px 6px -16px;overflow:hidden;position:relative;background:#1e293b">
+                  <img src="${esc(p.image_url)}" alt="${esc(p.title)}" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.onerror=null;this.parentElement.style.display='none'">
+                  <div style="position:absolute;top:10px;left:10px">${categoryBadge}</div>
+                  <div style="position:absolute;top:10px;right:10px">${propStatusBadges[p.status]||badge(p.status)}</div>
+                  ${p.code ? `<div style="position:absolute;bottom:8px;left:10px;background:rgba(0,0,0,0.7);color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;backdrop-filter:blur(3px)">${esc(p.code)}</div>` : ''}
                 </div>
-                <div style="display:flex;gap:4px">${propStatusBadges[p.status]||badge(p.status)}</div>
-              </div>
-              <h3 style="margin:0;font-size:16px;line-height:1.3">${esc(p.title)}</h3>
+              ` : `
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:6px">
+                  <div style="display:flex;align-items:center;gap:6px">
+                    <span style="font-weight:700;font-size:13px;color:var(--brand-accent,#0f766e)">${esc(p.code||'PROP-'+p.id)}</span>
+                    ${categoryBadge}
+                  </div>
+                  <div style="display:flex;gap:4px">${propStatusBadges[p.status]||badge(p.status)}</div>
+                </div>
+              `}
+
+              <h3 style="margin:0;font-size:16px;line-height:1.3;font-weight:700">${esc(p.title)}</h3>
               <div style="font-size:13px;color:var(--muted);display:flex;align-items:center;gap:4px">
                 <span>📍</span> <span>${esc(p.address||'Sin dirección')}${p.city ? ' · '+esc(p.city) : ''}</span>
               </div>
@@ -5311,20 +5690,28 @@ function realEstateView(){
                 </div>
               ` : '')}
 
-              ${specs.length ? `<div style="display:flex;gap:8px;flex-wrap:wrap;font-size:12px;background:var(--surface,#f8fafc);padding:6px 10px;border-radius:6px;color:var(--text,#334155)">${specs.join(' · ')}</div>` : ''}
-              
-              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:auto;padding-top:6px;border-top:1px solid var(--border)">
+              ${specs.length ? `<div style="display:flex;gap:6px;flex-wrap:wrap;font-size:12px;background:var(--surface,#f8fafc);padding:6px 10px;border-radius:6px;color:var(--text,#334155)">${specs.join(' · ')}</div>` : ''}
+
+              ${featuresList.length ? `
+                <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:2px">
+                  ${featuresList.slice(0, 4).map(f => `<span style="font-size:11px;background:var(--surface,#f1f5f9);padding:2px 7px;border-radius:4px;border:1px solid var(--border);color:var(--text,#334155)">✨ ${esc(f)}</span>`).join('')}
+                  ${featuresList.length > 4 ? `<span style="font-size:11px;color:var(--muted);padding:2px 4px">+${featuresList.length - 4} más</span>` : ''}
+                </div>
+              ` : ''}
+
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:auto;padding-top:8px;border-top:1px solid var(--border)">
                 <div>
                   ${p.price_rent > 0 ? `<div><span style="font-size:11px;color:var(--muted)">Renta:</span> <strong style="color:var(--brand-accent,#0f766e)">${money(p.price_rent)}/m</strong></div>` : ''}
-                  ${p.price_sale > 0 ? `<div><span style="font-size:11px;color:var(--muted)">Venta:</span> <strong>${money(p.price_sale)}</strong></div>` : ''}
+                  ${p.price_sale > 0 ? `<div><span style="font-size:11px;color:var(--muted)">Venta:</span> <strong style="font-size:15px;color:var(--ink,#1e293b)">${money(p.price_sale)}</strong></div>` : ''}
                 </div>
                 ${agentName !== 'Sin asignar' ? `<div style="font-size:11px;color:var(--muted);text-align:right">Agente:<br><strong>${esc(agentName)}</strong></div>` : ''}
               </div>
+
               <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">
                 <button type="button" class="small" data-action="edit_re_property" data-id="${p.id}">✏️ Editar</button>
                 ${p.condo_id ? `<button type="button" class="small" data-action="open_condo_charge" data-property-id="${p.id}" data-condo-id="${p.condo_id}" title="Emitir cuota de mantenimiento a esta unidad">💵 Emitir cobro</button>` : ''}
-                ${p.status==='available' && ['rent','both'].includes(p.listing_type) ? `<button type="button" class="small primary" data-open="re_lease" data-property-id="${p.id}">📑 Alquilar</button>` : ''}
                 ${p.status==='available' && ['sale','both'].includes(p.listing_type) ? `<button type="button" class="small primary" data-open="re_sale" data-property-id="${p.id}">🤝 Vender</button>` : ''}
+                ${p.status==='available' && ['rent','both'].includes(p.listing_type) ? `<button type="button" class="small" data-open="re_lease" data-property-id="${p.id}">📑 Alquilar</button>` : ''}
                 <button type="button" class="small" data-open="re_visit" data-property-id="${p.id}">🗓️ Visita</button>
                 <button type="button" class="small" data-open="re_maintenance" data-property-id="${p.id}">🛠️</button>
                 ${filesButton('re_properties', p.id)}
@@ -5337,6 +5724,265 @@ function realEstateView(){
     ` : '<div class="empty">No hay inmuebles que coincidan con los filtros seleccionados. Haga clic en «+ Nuevo inmueble» o en «Cargar datos completos de Bienes Raíces».</div>';
 
     body = panel('Catálogo de Inmuebles (Viviendas, Comerciales, Terrenos y Condominios)', categoryPillsHtml + filterToolbar + cardsHtml, openButton('+ Nuevo inmueble', 're_property'));
+  }
+
+  // ---------------- TAB: CLIENTES Y COMPRADORES CRM ----------------
+  else if(reTab === 'buyers'){
+    let filteredBuyers = buyers;
+    if(reBuyerStatusFilter) filteredBuyers = filteredBuyers.filter(b => b.status === reBuyerStatusFilter);
+    if(reBuyerSearch){
+      const q = reBuyerSearch.toLowerCase();
+      filteredBuyers = filteredBuyers.filter(b => (b.name||'').toLowerCase().includes(q) || (b.document_id||'').toLowerCase().includes(q) || (b.phone||'').toLowerCase().includes(q) || (b.email||'').toLowerCase().includes(q) || (b.city||'').toLowerCase().includes(q));
+    }
+
+    const filterToolbar = `
+      <div class="toolbar" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
+        <div class="field" style="flex:2;min-width:200px">
+          <label for="re-buyer-search">Buscar cliente comprador</label>
+          <input type="search" id="re-buyer-search" value="${esc(reBuyerSearch)}" placeholder="Nombre, cédula/RNC, teléfono, email, ciudad...">
+        </div>
+        <div class="field" style="flex:1;min-width:160px">
+          <label for="re-buyer-status-filter">Etapa CRM / Estado</label>
+          <select id="re-buyer-status-filter">
+            <option value="">Todos los estados</option>
+            <option value="lead" ${reBuyerStatusFilter==='lead'?'selected':''}>Prospecto inicial</option>
+            <option value="contacted" ${reBuyerStatusFilter==='contacted'?'selected':''}>Contactado</option>
+            <option value="prospect" ${reBuyerStatusFilter==='prospect'?'selected':''}>Calificado / En visita</option>
+            <option value="active_buyer" ${reBuyerStatusFilter==='active_buyer'?'selected':''}>Comprador activo</option>
+            <option value="purchased" ${reBuyerStatusFilter==='purchased'?'selected':''}>Propietario / Compró</option>
+            <option value="archived" ${reBuyerStatusFilter==='archived'?'selected':''}>Archivado</option>
+          </select>
+        </div>
+      </div>
+    `;
+
+    const buyerRows = filteredBuyers.map(b => {
+      const agentName = lookup('employees', b.assigned_agent_id);
+      const budgetText = (b.budget_min > 0 || b.budget_max > 0) ? `${money(b.budget_min||0)} – ${money(b.budget_max||0)}` : 'Sin definir';
+      return `
+        <tr>
+          <td>
+            <div style="font-weight:700;font-size:14px;color:var(--brand-accent,#0f766e)">${esc(b.name)}</div>
+            <div style="font-size:12px;color:var(--muted)">${b.document_type || 'Cédula/RNC'}: <strong>${esc(b.document_id||'Sin documento')}</strong> · ${buyerTypeLabels[b.buyer_type]||b.buyer_type||'Persona física'}</div>
+          </td>
+          <td>
+            <div style="font-size:13px">${b.phone ? `<a href="tel:${esc(b.phone)}" style="text-decoration:none;font-weight:600">📞 ${esc(b.phone)}</a>` : '<span class="muted">Sin tel</span>'}</div>
+            <div style="font-size:12px;color:var(--muted)">${b.email ? `✉️ ${esc(b.email)}` : ''} ${b.city ? '· 📍 '+esc(b.city) : ''}</div>
+          </td>
+          <td>
+            <div style="font-size:13px"><strong>${propTypeLabels[b.preferred_property_type]||b.preferred_property_type||'Cualquier tipo'}</strong></div>
+            <div style="font-size:12px;color:var(--muted)">Presupuesto: ${budgetText}</div>
+          </td>
+          <td>
+            <div style="font-size:13px"><strong>${b.total_purchases||0} ${b.total_purchases === 1 ? 'propiedad' : 'propiedades'}</strong></div>
+            <div style="font-size:12px;color:var(--brand-accent,#0f766e)">Inversión: <strong>${money(b.total_purchased_amount||0)}</strong></div>
+          </td>
+          <td>
+            <div style="font-size:13px;font-weight:700;color:${(b.remaining_debt||0)>0?'var(--danger,#b91c1c)':'var(--brand-accent,#0f766e)'}">${money(b.remaining_debt||0)}</div>
+            <div style="font-size:11.5px;color:var(--muted)">Amortizado: ${money(b.total_paid||0)}</div>
+          </td>
+          <td>${buyerStatusBadges[b.status]||badge(b.status)}</td>
+          <td>
+            <div style="display:flex;gap:4px;flex-wrap:wrap">
+              <button class="small" data-action="edit_re_buyer" data-id="${b.id}" title="Editar cliente">✏️ Editar</button>
+              <button class="small primary" data-open="re_sale" data-buyer-id="${b.id}" title="Crear contrato de venta para este comprador">🤝 Venta</button>
+              <button class="small danger" data-action="delete_re_buyer" data-id="${b.id}">🗑️</button>
+            </div>
+          </td>
+        </tr>
+      `;
+    });
+
+    body = panel(
+      'Cartera de Clientes y Compradores (CRM Inmobiliario)',
+      filterToolbar + table(
+        ['Comprador / Identidad', 'Contacto', 'Preferencia & Presupuesto', 'Propiedades Compradas', 'Saldo Deudor Pendiente', 'Estado CRM', 'Acciones'],
+        buyerRows,
+        'No hay clientes compradores registrados con los filtros seleccionados.'
+      ),
+      openButton('+ Nuevo cliente / comprador', 're_buyer')
+    );
+  }
+
+  // ---------------- TAB: VENTAS Y FINANCIAMIENTOS ----------------
+  else if(reTab === 'sales'){
+    let filteredSales = sales;
+    if(reSaleStatusFilter) filteredSales = filteredSales.filter(s => s.status === reSaleStatusFilter);
+    if(reSaleSearch){
+      const q = reSaleSearch.toLowerCase();
+      filteredSales = filteredSales.filter(s => (s.property_title||'').toLowerCase().includes(q) || (s.property_code||'').toLowerCase().includes(q) || (s.buyer_name||'').toLowerCase().includes(q) || (s.buyer_document||'').toLowerCase().includes(q));
+    }
+
+    const filterToolbar = `
+      <div class="toolbar" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
+        <div class="field" style="flex:2;min-width:200px">
+          <label for="re-sale-search">Buscar contrato de venta</label>
+          <input type="search" id="re-sale-search" value="${esc(reSaleSearch)}" placeholder="Inmueble, comprador, cédula/RNC, código...">
+        </div>
+        <div class="field" style="flex:1;min-width:160px">
+          <label for="re-sale-status-filter">Estado del Contrato</label>
+          <select id="re-sale-status-filter">
+            <option value="">Todos los estados</option>
+            <option value="pending" ${reSaleStatusFilter==='pending'?'selected':''}>En negociación</option>
+            <option value="under_contract" ${reSaleStatusFilter==='under_contract'?'selected':''}>Promesa de venta</option>
+            <option value="financed" ${reSaleStatusFilter==='financed'?'selected':''}>Financiamiento activo</option>
+            <option value="closed" ${reSaleStatusFilter==='closed'?'selected':''}>Saldado / Cerrado</option>
+            <option value="cancelled" ${reSaleStatusFilter==='cancelled'?'selected':''}>Cancelado</option>
+          </select>
+        </div>
+      </div>
+    `;
+
+    const saleRows = filteredSales.map(s => {
+      const propTitle = s.property_title || `Inmueble #${s.property_id}`;
+      const agentName = lookup('employees', s.agent_id);
+
+      const progressPct = Math.min(100, Math.max(0, s.payment_progress_pct || 0));
+
+      return `
+        <tr>
+          <td>
+            <div style="font-weight:700;font-size:13px;color:var(--brand-accent,#0f766e)">${esc(s.property_code||'VTA-'+s.id)}</div>
+            <div style="font-weight:600;font-size:14px">${esc(propTitle)}</div>
+            <div style="font-size:12px;color:var(--muted)">Fecha: ${displayDate(s.closing_date)} · Agente: ${esc(agentName)}</div>
+          </td>
+          <td>
+            <div style="font-weight:700;font-size:13.5px">${esc(s.buyer_name)}</div>
+            <div style="font-size:12px;color:var(--muted)">Doc: <strong>${esc(s.buyer_document||'Sin doc')}</strong> ${s.buyer_phone ? '· Tel: '+esc(s.buyer_phone) : ''}</div>
+          </td>
+          <td>
+            <div style="font-size:14px;font-weight:700">${money(s.sale_price)}</div>
+            <div style="font-size:12px;color:var(--muted)">Inicial/Separación: <strong>${money(s.down_payment||0)}</strong></div>
+            ${s.financed_amount > 0 ? `<div style="font-size:11.5px;color:var(--brand-accent,#0f766e)">Financiado: <strong>${money(s.financed_amount)}</strong> (${s.interest_rate_pct||0}% a ${s.term_months||0} meses)</div>` : '<div style="font-size:11.5px;color:var(--muted)">Venta directa de contado</div>'}
+          </td>
+          <td style="min-width:140px">
+            <div style="background:var(--border);border-radius:6px;height:7px;overflow:hidden;margin-bottom:4px;width:100%">
+              <div style="background:var(--brand-accent,#0f766e);height:100%;width:${progressPct}%"></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:11.5px">
+              <span><strong>${progressPct}%</strong> pagado</span>
+              <span style="color:var(--brand-accent,#0f766e)">${money(s.total_capital_paid||0)}</span>
+            </div>
+            <div style="font-size:11px;color:${(s.remaining_capital||0)>0?'var(--danger,#b91c1c)':'var(--muted)'}">
+              Resta por amortizar: <strong>${money(s.remaining_capital||0)}</strong>
+            </div>
+          </td>
+          <td>
+            ${s.installments_total > 0 ? `
+              <div style="font-size:12.5px;font-weight:600">${s.installments_paid||0} de ${s.installments_total} cuotas pagadas</div>
+              ${s.installments_overdue > 0 ? `
+                <div style="font-size:11.5px;color:var(--danger,#b91c1c);font-weight:700">⚠️ ${s.installments_overdue} ${s.installments_overdue===1?'cuota vencida':'cuotas vencidas'} en mora</div>
+              ` : (s.is_paid_in_full ? `
+                <div style="font-size:11.5px;color:var(--brand-accent,#0f766e);font-weight:700">✓ 100% Amortizado</div>
+              ` : `
+                <div style="font-size:11.5px;color:var(--brand-accent,#0f766e)">Cuotas al día</div>
+              `)}
+              <div style="font-size:11px;color:var(--muted)">Día de pago: ${s.payment_day||5} de mes</div>
+            ` : `
+              <div style="font-size:12px;color:var(--muted)">Sin calendario cuotas</div>
+            `}
+          </td>
+          <td>${saleStatusBadges[s.status]||badge(s.status)}</td>
+          <td>
+            <div style="display:flex;gap:4px;flex-wrap:wrap">
+              <button class="small" data-action="view_sale_installments" data-id="${s.id}" title="Ver tabla de amortización, cuotas e intereses">📅 Cuotas (${s.installments_total||0})</button>
+              <button class="small primary" data-action="record_sale_payment" data-id="${s.id}" title="Registrar cobro de cuota o abono extraordinario a capital">💵 Cobro / Abono</button>
+              <button class="small" data-action="recalculate_sale_late_fees" data-id="${s.id}" title="Recalcular días y recargos por mora al día de hoy">⚡ Moras</button>
+              <button class="small" data-action="edit_re_sale" data-id="${s.id}">✏️</button>
+              <button class="small danger" data-action="delete_re_sale" data-id="${s.id}">🗑️</button>
+            </div>
+          </td>
+        </tr>
+      `;
+    });
+
+    body = panel(
+      'Ventas Inmobiliarias, Financiamientos y Amortización',
+      filterToolbar + table(
+        ['Contrato / Inmueble', 'Comprador / Documento', 'Precio & Financiamiento', 'Amortización de Capital', 'Estado de Cuotas & Moras', 'Estado', 'Acciones'],
+        saleRows,
+        'Todavía no hay ventas registradas con los filtros seleccionados.'
+      ),
+      openButton('+ Nueva venta / contrato', 're_sale')
+    );
+  }
+
+  // ---------------- TAB: RECIBOS Y ABONOS (COBROS) ----------------
+  else if(reTab === 'sale_payments'){
+    let filteredPays = salePayments;
+    if(reSalePaymentSearch){
+      const q = reSalePaymentSearch.toLowerCase();
+      filteredPays = filteredPays.filter(p => (p.receipt_number||'').toLowerCase().includes(q) || (p.buyer_name||'').toLowerCase().includes(q) || (p.property_title||'').toLowerCase().includes(q) || (p.payment_method||'').toLowerCase().includes(q) || (p.reference_number||'').toLowerCase().includes(q));
+    }
+
+    const totalCollectedPays = filteredPays.reduce((sum, p) => sum + (p.total_paid || 0), 0);
+    const totalCapitalPays = filteredPays.reduce((sum, p) => sum + (p.capital_amount || 0), 0);
+    const totalInterestPays = filteredPays.reduce((sum, p) => sum + (p.interest_amount || 0), 0);
+    const totalLateFeePays = filteredPays.reduce((sum, p) => sum + (p.late_fee_amount || 0), 0);
+
+    const filterToolbar = `
+      <div class="toolbar" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
+        <div class="field" style="flex:2;min-width:220px">
+          <label for="re-sale-payment-search">Buscar recibo de cobro o abono</label>
+          <input type="search" id="re-sale-payment-search" value="${esc(reSalePaymentSearch)}" placeholder="N° Recibo (REC-VTA-...), comprador, propiedad, referencia...">
+        </div>
+        <div style="margin-left:auto;display:flex;gap:12px;font-size:12.5px;background:var(--surface,#f8fafc);padding:8px 12px;border-radius:6px;border:1px solid var(--border)">
+          <span>Total Cobrado: <strong>${money(totalCollectedPays)}</strong></span>
+          <span>Capital: <strong style="color:var(--brand-accent,#0f766e)">${money(totalCapitalPays)}</strong></span>
+          <span>Intereses: <strong>${money(totalInterestPays)}</strong></span>
+          ${totalLateFeePays > 0 ? `<span style="color:var(--danger,#b91c1c)">Moras: <strong>${money(totalLateFeePays)}</strong></span>` : ''}
+        </div>
+      </div>
+    `;
+
+    const payRows = filteredPays.map(p => {
+      return `
+        <tr>
+          <td>
+            <button type="button" class="small" data-action="view_sale_payment_receipt" data-id="${p.id}" style="font-weight:700;font-family:monospace;background:#f0fdf4;border-color:#bbf7d0;color:#166534" title="Ver e imprimir recibo oficial con desglose">
+              🧾 ${esc(p.receipt_number||'REC-'+p.id)}
+            </button>
+            <div style="font-size:11.5px;color:var(--muted);margin-top:2px">Fecha: ${displayDate(p.payment_date)}</div>
+          </td>
+          <td>
+            <div style="font-weight:700;font-size:13.5px">${esc(p.property_title||'Inmueble')}</div>
+            <div style="font-size:12px;color:var(--muted)">Comprador: <strong>${esc(p.buyer_name||'Comprador')}</strong></div>
+          </td>
+          <td>
+            <span class="badge blue">${paymentTypeLabels[p.payment_type]||p.payment_type}</span>
+            ${p.installment_id ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">Cuota vinculada #${p.installment_id}</div>` : ''}
+          </td>
+          <td>
+            <div style="font-size:12px">Capital: <strong>${money(p.capital_amount||0)}</strong></div>
+            <div style="font-size:11.5px;color:var(--muted)">Interés: ${money(p.interest_amount||0)}</div>
+            ${p.late_fee_amount > 0 ? `<div style="font-size:11.5px;color:var(--danger,#b91c1c)">Mora: ${money(p.late_fee_amount)}</div>` : ''}
+          </td>
+          <td>
+            <strong style="font-size:14px;color:var(--brand-accent,#0f766e)">${money(p.total_paid)}</strong>
+          </td>
+          <td>
+            <div style="font-size:12.5px">${esc(p.payment_method||'Transferencia bancaria')}</div>
+            <div style="font-size:11.5px;color:var(--muted)">${p.reference_number ? 'Ref: '+esc(p.reference_number) : ''}</div>
+          </td>
+          <td>
+            <div style="display:flex;gap:4px;flex-wrap:wrap">
+              <button class="small" data-action="view_sale_payment_receipt" data-id="${p.id}" title="Ver e imprimir recibo oficial de cobro">🧾 Recibo</button>
+              <button class="small danger" data-action="delete_re_sale_payment" data-id="${p.id}" title="Anular este pago y restaurar el saldo de la cuota">🗑️ Anular</button>
+            </div>
+          </td>
+        </tr>
+      `;
+    });
+
+    body = panel(
+      'Libro de Recibos, Cobros y Abonos a Propiedades',
+      filterToolbar + table(
+        ['N° Recibo / Fecha', 'Inmueble & Comprador', 'Concepto', 'Desglose Financiero', 'Monto Total Cobrado', 'Método & Ref.', 'Acciones'],
+        payRows,
+        'No hay recibos de pago registrados en las ventas inmobiliarias.'
+      ),
+      '<button type="button" class="small primary" data-open="record_re_sale_payment">+ Registrar nuevo cobro / abono</button>'
+    );
   }
 
   // ---------------- TAB: CONDOMINIOS Y TORRES ----------------
@@ -5432,31 +6078,33 @@ function realEstateView(){
                 <h4 style="margin:0 0 8px;font-size:14px;color:var(--text)">Unidades y Condóminos del Edificio (${cProps.length})</h4>
                 ${cProps.length ? `
                   <div style="overflow-x:auto">
-                    <table style="width:100%;font-size:12.5px">
+                    <table class="data-table" style="font-size:13px">
                       <thead>
                         <tr>
                           <th>Unidad</th>
-                          <th>Inmueble</th>
-                          <th>Alícuota</th>
-                          <th>Cuota Mensual</th>
-                          <th>Día Límite</th>
-                          <th>Condómino (Propietario)</th>
+                          <th>Descripción</th>
+                          <th>Alícuota %</th>
+                          <th>Cuota Mes</th>
+                          <th>Día Cobro</th>
+                          <th>Condómino</th>
                           <th>Estado</th>
                           <th>Acciones</th>
                         </tr>
                       </thead>
-                      <tbody>${cUnitsRows}</tbody>
+                      <tbody>
+                        ${cUnitsRows}
+                      </tbody>
                     </table>
                   </div>
-                ` : `<div style="font-size:12px;color:var(--muted);padding:8px;background:var(--surface,#f8fafc);border-radius:6px">No hay unidades asignadas a este condominio aún. Haga clic en «+ Agregar unidad».</div>`}
+                ` : '<div class="muted" style="font-size:13px;padding:8px 0">No hay unidades asignadas aún a este condominio. Haga clic en «+ Agregar unidad».</div>'}
               </div>
             </article>
           `;
         }).join('')}
       </div>
-    ` : '<div class="empty">No hay condominios registrados. Haga clic en «+ Condominio / Torre» para crear una torre residencial o comercial.</div>';
+    ` : '<div class="empty">No hay condominios registrados aún. Haga clic en «+ Nuevo Condominio / Torre» o en «Cargar datos completos de Bienes Raíces».</div>';
 
-    body = panel('Condominios, Torres y Edificios Residenciales', condoCardsHtml, '<button type="button" class="primary" data-open="re_condo">+ Condominio / Torre</button>');
+    body = panel('Administración de Condominios, Torres y Edificios', condoCardsHtml, openButton('+ Nuevo Condominio / Torre', 're_condo'));
   }
 
   // ---------------- TAB: COBROS A CONDÓMINOS ----------------
@@ -5464,165 +6112,134 @@ function realEstateView(){
     let filteredCharges = condoCharges;
     if(reChargeCondoFilter) filteredCharges = filteredCharges.filter(c => String(c.condo_id) === String(reChargeCondoFilter));
     if(reChargeStatusFilter) filteredCharges = filteredCharges.filter(c => c.status === reChargeStatusFilter);
-    if(reChargePeriodFilter) filteredCharges = filteredCharges.filter(c => (c.period||'').includes(reChargePeriodFilter));
+    if(reChargePeriodFilter) filteredCharges = filteredCharges.filter(c => (c.period || '').startsWith(reChargePeriodFilter));
 
-    const totalPeriodBilled = filteredCharges.filter(c => c.status !== 'cancelled').reduce((sum, c) => sum + c.amount, 0);
-    const totalPeriodCollected = filteredCharges.filter(c => c.status !== 'cancelled').reduce((sum, c) => sum + (c.paid_amount||0), 0);
-    const totalPeriodPending = totalPeriodBilled - totalPeriodCollected;
+    const condoOptions = (condos||[]).map(c => `<option value="${c.id}" ${String(reChargeCondoFilter)===String(c.id)?'selected':''}>${esc(c.name)}</option>`).join('');
 
-    const condoOpts = (condos||[]).map(c => `<option value="${c.id}" ${String(reChargeCondoFilter)===String(c.id)?'selected':''}>${esc(c.name)}</option>`).join('');
-
-    const toolbar = `
+    const filterToolbar = `
       <div class="toolbar" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
-        <div class="field" style="flex:1;min-width:160px">
+        <div class="field" style="flex:1;min-width:180px">
           <label for="re-charge-condo-filter">Condominio</label>
           <select id="re-charge-condo-filter">
             <option value="">Todos los condominios</option>
-            ${condoOpts}
+            ${condoOptions}
           </select>
         </div>
-        <div class="field" style="flex:1;min-width:130px">
-          <label for="re-charge-period-filter">Período (AAAA-MM)</label>
-          <input type="text" id="re-charge-period-filter" value="${esc(reChargePeriodFilter)}" placeholder="ej. 2026-10">
-        </div>
-        <div class="field" style="flex:1;min-width:130px">
+        <div class="field" style="flex:1;min-width:140px">
           <label for="re-charge-status-filter">Estado</label>
           <select id="re-charge-status-filter">
-            <option value="">Todos los estados</option>
+            <option value="">Todos</option>
             <option value="pending" ${reChargeStatusFilter==='pending'?'selected':''}>Pendiente</option>
-            <option value="paid" ${reChargeStatusFilter==='paid'?'selected':''}>Pagado</option>
             <option value="partial" ${reChargeStatusFilter==='partial'?'selected':''}>Abono parcial</option>
+            <option value="paid" ${reChargeStatusFilter==='paid'?'selected':''}>Pagada ✓</option>
           </select>
         </div>
-        <div style="margin-left:auto;display:flex;gap:6px">
-          <button type="button" class="primary small" data-open="generate_condo_fees">⚡ Generar cuotas mes</button>
-          <button type="button" class="small" data-open="re_condo_charge">+ Nuevo cobro manual</button>
+        <div class="field" style="flex:1;min-width:140px">
+          <label for="re-charge-period-filter">Mes / Período</label>
+          <input type="month" id="re-charge-period-filter" value="${esc(reChargePeriodFilter)}">
         </div>
-      </div>
-
-      <div style="display:flex;gap:12px;margin-bottom:16px;background:var(--surface,#f8fafc);padding:12px 16px;border-radius:8px;align-items:center;flex-wrap:wrap">
-        <div>Total Cuotas: <strong>${money(totalPeriodBilled)}</strong></div>
-        <div>Total Cobrado: <strong style="color:var(--brand-accent,#0f766e)">${money(totalPeriodCollected)}</strong></div>
-        <div>Pendiente de Cobro: <strong style="color:var(--danger,#b91c1c)">${money(totalPeriodPending)}</strong></div>
       </div>
     `;
 
-    const rows = filteredCharges.map(ch => {
-      const remaining = ch.amount - (ch.paid_amount || 0);
+    const chargeRows = filteredCharges.map(ch => {
+      const isPaid = ch.status === 'paid';
       return `
         <tr>
-          <td><strong>${esc(ch.condo_name)}</strong><div class="muted">${esc(ch.unit_number ? 'Unidad: '+ch.unit_number : ch.property_title)}</div></td>
-          <td><strong>${esc(ch.owner_name||'Condómino')}</strong><div class="muted">${esc(ch.owner_phone||'')}</div></td>
-          <td>${esc(ch.concept)}</td>
-          <td>${esc(ch.period)}<div class="muted">Vence: ${displayDate(ch.due_date)}</div></td>
+          <td><strong>${esc(ch.period||'-')}</strong></td>
+          <td><strong>${esc(ch.condo_name||'Condominio')}</strong><div class="muted">${esc(ch.property_title||'')}</div></td>
+          <td><span class="badge blue">${esc(ch.unit_number||'S/N')}</span></td>
+          <td><strong>${esc(ch.owner_name||'Condómino')}</strong></td>
           <td><strong>${money(ch.amount)}</strong></td>
-          <td style="color:var(--brand-accent,#0f766e)">${money(ch.paid_amount||0)}</td>
-          <td style="color:${remaining > 0 ? 'var(--danger,#b91c1c)' : 'var(--muted)'}">${money(remaining)}</td>
+          <td><span style="color:var(--brand-accent,#0f766e);font-weight:700">${money(ch.paid_amount||0)}</span></td>
+          <td><strong style="color:${ch.balance>0?'var(--danger,#b91c1c)':'var(--muted)'}">${money(ch.balance||0)}</strong></td>
+          <td>${displayDate(ch.due_date)}</td>
           <td>${condoChargeStatusBadges[ch.status]||badge(ch.status)}</td>
           <td>
             <div style="display:flex;gap:4px;flex-wrap:wrap">
-              ${remaining > 0 ? `<button type="button" class="small primary" data-action="pay_condo_charge" data-id="${ch.id}">💵 Cobrar</button>` : ''}
-              ${ch.paid_amount > 0 ? `<button type="button" class="small secondary" data-action="view_condo_receipt" data-id="${ch.id}" title="Ver o imprimir recibo oficial">📄 Recibo</button>` : ''}
-              <button type="button" class="small" data-action="edit_re_condo_charge" data-id="${ch.id}">✏️</button>
-              ${ch.paid_amount === 0 ? `<button type="button" class="small danger" data-action="delete_re_condo_charge" data-id="${ch.id}">🗑️</button>` : ''}
+              ${!isPaid ? `<button class="small primary" data-action="pay_condo_charge" data-id="${ch.id}" title="Registrar pago recibido">💵 Registrar Pago</button>` : ''}
+              <button class="small" data-action="edit_re_condo_charge" data-id="${ch.id}">✏️</button>
+              <button class="small danger" data-action="delete_re_condo_charge" data-id="${ch.id}">🗑️</button>
             </div>
           </td>
         </tr>
       `;
     });
 
-    body = panel('Gestión de Cobros a Condóminos (Cuotas de Mantenimiento)', toolbar + table(['Condominio / Unidad','Condómino','Concepto','Período / Vencimiento','Cuota','Cobrado','Balance','Estado','Acciones'], rows, 'No hay cobros de condominio emitidos.'), '<button type="button" class="primary" data-open="generate_condo_fees">⚡ Generar cuotas mes</button>');
+    body = panel('Cobros y Recibos de Cuotas de Mantenimiento a Condóminos', filterToolbar + table(['Período','Condominio','Unidad','Condómino','Monto Cuota','Pagado','Balance Pendiente','Fecha Límite','Estado','Acciones'], chargeRows, 'No hay cuotas de mantenimiento emitidas con los filtros actuales.'), `<div style="display:flex;gap:6px">${openButton('+ Emitir cuota individual', 're_condo_charge')}<button type="button" class="small primary" data-open="generate_condo_fees">⚡ Generar cuotas masivas del mes</button></div>`);
   }
 
   // ---------------- TAB: SERVICIOS DE ÁREA COMÚN ----------------
   else if(reTab === 'common_services'){
-    let filteredExpenses = condoExpenses;
-    if(reExpenseCondoFilter) filteredExpenses = filteredExpenses.filter(e => String(e.condo_id) === String(reExpenseCondoFilter));
-    if(reExpenseServiceFilter) filteredExpenses = filteredExpenses.filter(e => e.service_type === reExpenseServiceFilter);
-    if(reExpenseStatusFilter) filteredExpenses = filteredExpenses.filter(e => e.status === reExpenseStatusFilter);
+    let filteredExp = condoExpenses;
+    if(reExpenseCondoFilter) filteredExp = filteredExp.filter(e => String(e.condo_id) === String(reExpenseCondoFilter));
+    if(reExpenseServiceFilter) filteredExp = filteredExp.filter(e => e.service_type === reExpenseServiceFilter);
+    if(reExpenseStatusFilter) filteredExp = filteredExp.filter(e => e.status === reExpenseStatusFilter);
 
-    const totalElec = filteredExpenses.filter(e => e.service_type === 'electricity' && e.status !== 'cancelled').reduce((sum, e) => sum + e.amount, 0);
-    const totalWater = filteredExpenses.filter(e => e.service_type === 'water' && e.status !== 'cancelled').reduce((sum, e) => sum + e.amount, 0);
-    const totalElev = filteredExpenses.filter(e => e.service_type === 'elevator' && e.status !== 'cancelled').reduce((sum, e) => sum + e.amount, 0);
-    const totalSec = filteredExpenses.filter(e => e.service_type === 'security_cleaning' && e.status !== 'cancelled').reduce((sum, e) => sum + e.amount, 0);
-    const totalFuel = filteredExpenses.filter(e => e.service_type === 'generator_fuel' && e.status !== 'cancelled').reduce((sum, e) => sum + e.amount, 0);
-    const totalRep = filteredExpenses.filter(e => e.service_type === 'maintenance_repairs' && e.status !== 'cancelled').reduce((sum, e) => sum + e.amount, 0);
+    const condoOptions = (condos||[]).map(c => `<option value="${c.id}" ${String(reExpenseCondoFilter)===String(c.id)?'selected':''}>${esc(c.name)}</option>`).join('');
 
-    const condoOpts = (condos||[]).map(c => `<option value="${c.id}" ${String(reExpenseCondoFilter)===String(c.id)?'selected':''}>${esc(c.name)}</option>`).join('');
-
-    const toolbar = `
+    const filterToolbar = `
       <div class="toolbar" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
-        <div class="field" style="flex:1;min-width:160px">
-          <label for="re-exp-condo-filter">Condominio</label>
-          <select id="re-exp-condo-filter">
+        <div class="field" style="flex:1;min-width:180px">
+          <label for="re-expense-condo-filter">Condominio</label>
+          <select id="re-expense-condo-filter">
             <option value="">Todos los condominios</option>
-            ${condoOpts}
+            ${condoOptions}
           </select>
         </div>
-        <div class="field" style="flex:1;min-width:160px">
-          <label for="re-exp-service-filter">Tipo de servicio</label>
-          <select id="re-exp-service-filter">
+        <div class="field" style="flex:1;min-width:180px">
+          <label for="re-expense-service-filter">Tipo de Servicio Común</label>
+          <select id="re-expense-service-filter">
             <option value="">Todos los servicios</option>
-            <option value="electricity" ${reExpenseServiceFilter==='electricity'?'selected':''}>⚡ Electricidad Común (Edesur/EdeEste/Edenorte)</option>
-            <option value="water" ${reExpenseServiceFilter==='water'?'selected':''}>💧 Agua Potable y Cisterna (CAASD/Coraasan)</option>
-            <option value="elevator" ${reExpenseServiceFilter==='elevator'?'selected':''}>🛗 Ascensores (Mantenimiento)</option>
-            <option value="security_cleaning" ${reExpenseServiceFilter==='security_cleaning'?'selected':''}>🛡️ Conserjería y Seguridad</option>
-            <option value="generator_fuel" ${reExpenseServiceFilter==='generator_fuel'?'selected':''}>⛽ Combustible Planta Eléctrica</option>
-            <option value="maintenance_repairs" ${reExpenseServiceFilter==='maintenance_repairs'?'selected':''}>🛠️ Mantenimiento y Reparaciones</option>
-            <option value="insurance" ${reExpenseServiceFilter==='insurance'?'selected':''}>📑 Póliza de Seguro</option>
-            <option value="other" ${reExpenseServiceFilter==='other'?'selected':''}>📦 Otros Servicios</option>
+            <option value="electricity" ${reExpenseServiceFilter==='electricity'?'selected':''}>Luz común (Edesur / Edenorte / Edeeste)</option>
+            <option value="water" ${reExpenseServiceFilter==='water'?'selected':''}>Agua común / Cisterna (CAASD / CORAASAN)</option>
+            <option value="elevator" ${reExpenseServiceFilter==='elevator'?'selected':''}>Mantenimiento de Elevadores</option>
+            <option value="security_cleaning" ${reExpenseServiceFilter==='security_cleaning'?'selected':''}>Seguridad y Limpieza</option>
+            <option value="generator_fuel" ${reExpenseServiceFilter==='generator_fuel'?'selected':''}>Combustible planta eléctrica</option>
+            <option value="maintenance_repairs" ${reExpenseServiceFilter==='maintenance_repairs'?'selected':''}>Bombas y reparaciones</option>
+            <option value="insurance" ${reExpenseServiceFilter==='insurance'?'selected':''}>Seguro de áreas comunes</option>
+            <option value="other" ${reExpenseServiceFilter==='other'?'selected':''}>Otros gastos comunes</option>
           </select>
         </div>
-        <div class="field" style="flex:1;min-width:120px">
-          <label for="re-exp-status-filter">Estado</label>
-          <select id="re-exp-status-filter">
+        <div class="field" style="flex:1;min-width:140px">
+          <label for="re-expense-status-filter">Estado</label>
+          <select id="re-expense-status-filter">
             <option value="">Todos</option>
             <option value="pending" ${reExpenseStatusFilter==='pending'?'selected':''}>Por pagar</option>
-            <option value="paid" ${reExpenseStatusFilter==='paid'?'selected':''}>Pagada</option>
+            <option value="paid" ${reExpenseStatusFilter==='paid'?'selected':''}>Pagada ✓</option>
           </select>
         </div>
-        <div style="margin-left:auto">
-          <button type="button" class="primary small" data-open="re_condo_expense">+ Factura área común</button>
-        </div>
-      </div>
-
-      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;font-size:12px">
-        <span class="badge" style="background:#fef08a;color:#854d0e">⚡ Luz: ${money(totalElec)}</span>
-        <span class="badge" style="background:#bae6fd;color:#0369a1">💧 Agua: ${money(totalWater)}</span>
-        <span class="badge" style="background:#e0e7ff;color:#4338ca">🛗 Ascensores: ${money(totalElev)}</span>
-        <span class="badge" style="background:#dcfce7;color:#15803d">🛡️ Vigilancia: ${money(totalSec)}</span>
-        <span class="badge" style="background:#ffedd5;color:#c2410c">⛽ Planta: ${money(totalFuel)}</span>
-        <span class="badge orange">🛠️ Reparaciones: ${money(totalRep)}</span>
       </div>
     `;
 
-    const rows = filteredExpenses.map(ex => {
-      const remaining = ex.amount - (ex.paid_amount || 0);
+    const expenseRows = filteredExp.map(exp => {
+      const isPaid = exp.status === 'paid';
       return `
         <tr>
-          <td><strong>${esc(ex.condo_name)}</strong></td>
-          <td>${serviceTypeLabels[ex.service_type]||ex.service_type}</td>
-          <td><strong>${esc(ex.provider_name)}</strong><div class="muted">${esc(ex.invoice_number||'Sin NCF/NIC')}</div></td>
-          <td>${esc(ex.service_period||'—')}<div class="muted">Emisión: ${displayDate(ex.invoice_date)}</div></td>
-          <td>${displayDate(ex.due_date)}</td>
-          <td><strong>${money(ex.amount)}</strong></td>
-          <td>${condoExpenseStatusBadges[ex.status]||badge(ex.status)}</td>
-          <td>${ex.payment_date ? displayDate(ex.payment_date)+'<div class="muted">'+esc(ex.payment_reference||'')+'</div>' : '<span class="muted">No pagada</span>'}</td>
+          <td><strong>${esc(exp.period||'-')}</strong></td>
+          <td><strong>${esc(exp.condo_name||'Condominio')}</strong></td>
+          <td><strong>${serviceTypeLabels[exp.service_type]||exp.service_type}</strong></td>
+          <td><strong>${esc(exp.supplier_name||'Proveedor')}</strong><div class="muted">${exp.rnc_or_contract ? 'NIC / Contrato: '+esc(exp.rnc_or_contract) : ''}</div></td>
+          <td>${exp.invoice_number ? `<span class="badge gray">NCF: ${esc(exp.invoice_number)}</span>` : '<span class="muted">Sin factura</span>'}</td>
+          <td><strong>${money(exp.amount)}</strong></td>
+          <td><span style="color:var(--brand-accent,#0f766e);font-weight:700">${money(exp.paid_amount||0)}</span></td>
+          <td><strong style="color:${exp.balance>0?'var(--danger,#b91c1c)':'var(--muted)'}">${money(exp.balance||0)}</strong></td>
+          <td>${displayDate(exp.due_date)}</td>
+          <td>${condoExpenseStatusBadges[exp.status]||badge(exp.status)}</td>
           <td>
             <div style="display:flex;gap:4px;flex-wrap:wrap">
-              ${remaining > 0 ? `<button type="button" class="small primary" data-action="pay_condo_expense" data-id="${ex.id}">💳 Pagar</button>` : ''}
-              <button type="button" class="small" data-action="edit_re_condo_expense" data-id="${ex.id}">✏️</button>
-              ${ex.paid_amount === 0 ? `<button type="button" class="small danger" data-action="delete_re_condo_expense" data-id="${ex.id}">🗑️</button>` : ''}
+              ${!isPaid ? `<button class="small primary" data-action="pay_condo_expense" data-id="${exp.id}" title="Registrar pago realizado al proveedor">⚡ Pagar factura</button>` : ''}
+              <button class="small" data-action="edit_re_condo_expense" data-id="${exp.id}">✏️</button>
+              <button class="small danger" data-action="delete_re_condo_expense" data-id="${exp.id}">🗑️</button>
             </div>
           </td>
         </tr>
       `;
     });
 
-    body = panel('Facturas y Gastos de Servicios de Área Común (Luz, Agua, Elevador, Planta)', toolbar + table(['Condominio','Servicio','Proveedor / Documento','Período Facturado','Vencimiento','Monto Factura','Estado','Detalle de Pago','Acciones'], rows, 'No hay facturas de servicios comunes registradas.'), '<button type="button" class="primary" data-open="re_condo_expense">+ Registrar factura</button>');
+    body = panel('Facturas de Servicios Comunes de Condominios (Luz, Agua, Ascensores, Seguridad)', filterToolbar + table(['Período','Condominio','Servicio Común','Proveedor / Empresa','Factura / NIC','Monto Total','Pagado','Por Pagar','Fecha Límite','Estado','Acciones'], expenseRows, 'No hay facturas de servicios comunes registradas con los filtros seleccionados.'), openButton('+ Registrar factura de servicio común', 're_condo_expense'));
   }
 
-  // ---------------- TAB: LEASES ----------------
+  // ---------------- TAB: ALQUILERES ----------------
   else if(reTab === 'leases'){
     const rows = leases.map(l => {
       const prop = properties.find(p => p.id === l.property_id);
@@ -5651,34 +6268,7 @@ function realEstateView(){
     body = panel('Contratos de Arrendamiento / Alquiler', table(['Inmueble','Inquilino / Contacto','Renta Mensual','Depósito','Vigencia','Día de Pago','Estado','Acciones'], rows, 'Todavía no hay contratos de alquiler registrados.'), openButton('+ Contrato de alquiler', 're_lease'));
   }
 
-  // ---------------- TAB: SALES ----------------
-  else if(reTab === 'sales'){
-    const rows = sales.map(s => {
-      const prop = properties.find(p => p.id === s.property_id);
-      const propTitle = prop ? `${prop.code ? prop.code+' · ' : ''}${prop.title}` : `Inmueble #${s.property_id}`;
-      const agentName = lookup('employees', s.agent_id);
-      return `
-        <tr>
-          <td>${displayDate(s.closing_date)}</td>
-          <td><strong>${esc(propTitle)}</strong></td>
-          <td><strong>${esc(s.buyer_name)}</strong><div class="muted">${esc(s.buyer_phone||'')} ${s.buyer_document ? '· RNC/Doc: '+esc(s.buyer_document) : ''}</div></td>
-          <td><strong>${money(s.sale_price)}</strong></td>
-          <td><strong>${money(s.commission_amount)}</strong><div class="muted">${s.commission_rate ? s.commission_rate+'%' : ''}</div></td>
-          <td>${esc(agentName)}</td>
-          <td>${saleStatusBadges[s.status]||badge(s.status)}</td>
-          <td>
-            <div style="display:flex;gap:4px;flex-wrap:wrap">
-              <button class="small" data-action="edit_re_sale" data-id="${s.id}">✏️ Editar</button>
-              <button class="small danger" data-action="delete_re_sale" data-id="${s.id}">🗑️</button>
-            </div>
-          </td>
-        </tr>
-      `;
-    });
-    body = panel('Ventas y Cierres Inmobiliarios', table(['Fecha Cierre','Inmueble','Comprador / Contacto','Precio de Venta','Comisión Agencia','Agente Responsable','Estado','Acciones'], rows, 'Todavía no hay ventas registradas.'), openButton('+ Registrar venta', 're_sale'));
-  }
-
-  // ---------------- TAB: VISITS ----------------
+  // ---------------- TAB: VISITAS ----------------
   else if(reTab === 'visits'){
     const rows = visits.map(v => {
       const prop = properties.find(p => p.id === v.property_id);
@@ -5764,7 +6354,7 @@ function realEstateView(){
     </div>
   `;
 
-  return heading('🏢 Inmobiliaria, Bienes Raíces y Condominios', 'Catálogo de propiedades, administración de condominios, cobros a condóminos y facturas de servicios comunes (luz, agua, elevadores).', headerActions) + circumstantialBanner + kpis + demoNotice + subnav + body;
+  return heading('🏢 Inmobiliaria, Bienes Raíces y Condominios', 'Catálogo de propiedades, CRM de compradores, contratos de venta con financiamiento, cuotas de amortización y administración de condominios.', headerActions) + circumstantialBanner + kpis + demoNotice + subnav + body;
 }
 
 function agricultureView(){

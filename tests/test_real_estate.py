@@ -363,6 +363,9 @@ class RealEstateTests(unittest.TestCase):
         self.assertGreaterEqual(len(st['re_condo_expenses']), 5) # Electricity, water, elevator, security, fuel
         self.assertGreaterEqual(len(st['re_leases']), 1)
         self.assertGreaterEqual(len(st['re_sales']), 1)
+        self.assertGreaterEqual(len(st['re_buyers']), 3) # Demo buyers
+        self.assertGreaterEqual(len(st['re_sale_installments']), 24) # 24 installments
+        self.assertGreaterEqual(len(st['re_sale_payments']), 3) # Initial + 2 installments
         self.assertGreaterEqual(len(st['re_visits']), 1)
         self.assertGreaterEqual(len(st['re_maintenances']), 1)
         self.assertEqual(st['company_profile']['business_vertical'], 'real_estate')
@@ -375,6 +378,148 @@ class RealEstateTests(unittest.TestCase):
         st2 = app.state(self.c, 1, 1)
         self.assertEqual(len(st2['re_condos']), 1)
         self.assertEqual(len(st2['re_properties']), 7)
+        self.assertGreaterEqual(len(st2['re_buyers']), 3)
+        self.assertGreaterEqual(len(st2['re_sale_installments']), 24)
+
+    def test_buyer_crud(self):
+        res = self.save('create_re_buyer',
+            name='Ing. Roberto Gómez',
+            document_id='001-2233445-6',
+            phone='809-555-4321',
+            email='roberto.gomez@test.do',
+            address='Calle Sarasota #10',
+            city='Santo Domingo',
+            buyer_type='individual',
+            budget=15000000,
+            preferred_property_type='apartment',
+            status='prospect'
+        )
+        self.assertTrue(res['ok'])
+        b_id = res['id']
+
+        st = app.state(self.c, 1, 1)
+        b = next(x for x in st['re_buyers'] if x['id'] == b_id)
+        self.assertEqual(b['name'], 'Ing. Roberto Gómez')
+        self.assertEqual(b['document_id'], '001-2233445-6')
+        self.assertEqual(b['status'], 'prospect')
+
+        # Edit buyer
+        edit_res = self.save('edit_re_buyer',
+            id=b_id,
+            name='Ing. Roberto Gómez Santana',
+            status='active'
+        )
+        self.assertTrue(edit_res['ok'])
+        st = app.state(self.c, 1, 1)
+        b = next(x for x in st['re_buyers'] if x['id'] == b_id)
+        self.assertEqual(b['name'], 'Ing. Roberto Gómez Santana')
+        self.assertEqual(b['status'], 'active')
+
+        # Delete buyer
+        del_res = self.save('delete_re_buyer', id=b_id)
+        self.assertTrue(del_res['ok'])
+        st = app.state(self.c, 1, 1)
+        self.assertFalse(any(x['id'] == b_id for x in st['re_buyers']))
+
+    def test_sales_financing_installments_and_payments(self):
+        # 1. Create property
+        prop_res = self.save('create_re_property',
+            title='Apartamento 10B Torre Horizonte',
+            code='PROP-HZ10',
+            property_type='apartment',
+            listing_type='sale',
+            status='available',
+            price_sale='10000000' # 10,000,000 DOP
+        )
+        prop_id = prop_res['id']
+
+        # 2. Create buyer
+        buyer_res = self.save('create_re_buyer',
+            name='Dra. Elena Santos',
+            document_id='001-9988776-5',
+            phone='809-777-6655',
+            status='prospect'
+        )
+        buyer_id = buyer_res['id']
+
+        # 3. Create sale with financing: 20% down payment (2,000,000 DOP), 8,000,000 financed in 12 installments at 12% annual
+        sale_res = self.save('create_re_sale',
+            property_id=prop_id,
+            buyer_id=buyer_id,
+            sale_price='10000000',
+            down_payment='2000000',
+            financed_amount='8000000',
+            installments_count=12,
+            interest_rate_annual=12.0,
+            late_fee_rate_monthly=2.0,
+            grace_days=5,
+            installment_day=15,
+            closing_date=app.today().isoformat()
+        )
+        self.assertTrue(sale_res['ok'])
+        sale_id = sale_res['id']
+
+        st = app.state(self.c, 1, 1)
+        prop = next(p for p in st['re_properties'] if p['id'] == prop_id)
+        self.assertEqual(prop['status'], 'reserved')
+
+        sale = next(s for s in st['re_sales'] if s['id'] == sale_id)
+        self.assertEqual(sale['status'], 'in_progress')
+        self.assertEqual(sale['down_payment'], 200000000)
+        self.assertEqual(sale['financed_amount'], 800000000)
+        self.assertEqual(sale['remaining_capital'], 800000000)
+        self.assertEqual(sale['total_capital_paid'], 200000000)
+        self.assertEqual(sale['installments_total'], 12)
+
+        # Down payment payment receipt should be automatically created
+        dp_payment = next(p for p in st['re_sale_payments'] if p['sale_id'] == sale_id and p['receipt_number'].endswith('-001'))
+        self.assertEqual(dp_payment['amount'], 200000000)
+        self.assertEqual(dp_payment['capital_paid'], 200000000)
+
+        # 12 installments generated
+        sale_insts = [i for i in st['re_sale_installments'] if i['sale_id'] == sale_id]
+        self.assertEqual(len(sale_insts), 12)
+
+        # 4. Pay installment 1
+        inst1 = sale_insts[0]
+        pay1_res = self.save('record_re_sale_payment',
+            sale_id=sale_id,
+            installment_id=inst1['id'],
+            amount=inst1['total_due'] / 100.0,
+            payment_method='transfer',
+            reference='TRF-00123'
+        )
+        self.assertTrue(pay1_res['ok'])
+        self.assertTrue('REC-VTA-' in pay1_res['receipt_number'])
+
+        st = app.state(self.c, 1, 1)
+        inst1_updated = next(i for i in st['re_sale_installments'] if i['id'] == inst1['id'])
+        self.assertEqual(inst1_updated['status'], 'paid')
+
+        sale_updated = next(s for s in st['re_sales'] if s['id'] == sale_id)
+        self.assertEqual(sale_updated['installments_paid'], 1)
+        self.assertLess(sale_updated['remaining_capital'], 800000000)
+
+        # 5. Make extraordinary capital abono of the rest to close the sale
+        rem_cap = sale_updated['remaining_capital'] / 100.0
+        pay2_res = self.save('record_re_sale_payment',
+            sale_id=sale_id,
+            amount=rem_cap,
+            capital_amount=rem_cap,
+            payment_method='check',
+            reference='CHK-88990'
+        )
+        self.assertTrue(pay2_res['ok'])
+
+        # Property should now be sold and sale status closed
+        st = app.state(self.c, 1, 1)
+        sale_final = next(s for s in st['re_sales'] if s['id'] == sale_id)
+        self.assertEqual(sale_final['status'], 'closed')
+        self.assertEqual(sale_final['remaining_capital'], 0)
+        self.assertTrue(sale_final['is_paid_in_full'])
+
+        prop_final = next(p for p in st['re_properties'] if p['id'] == prop_id)
+        self.assertEqual(prop_final['status'], 'sold')
 
 if __name__ == '__main__':
     unittest.main()
