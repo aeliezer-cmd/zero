@@ -1,6 +1,6 @@
 """Portable, company-scoped archives. Imports always create an isolated company."""
 import attachments
-import agriculture, commerce, ecf, payroll, treasury
+import agriculture, commerce, ecf, payroll, treasury, real_estate
 import datetime as dt
 import hashlib
 import json
@@ -8,7 +8,7 @@ import re
 import secrets
 import sqlite3
 
-TABLES=('departments','projects','customers','products','subscriptions','charges','payments','employees','worklogs','tasks','expenses','expense_payments','attachments')+agriculture.TABLES+commerce.TABLES+('cash_accounts',)+payroll.TABLES+('audit','cash_movements')+ecf.TABLES
+TABLES=('departments','projects','customers','products','subscriptions','charges','payments','employees','worklogs','tasks','expenses','expense_payments','attachments')+agriculture.TABLES+commerce.TABLES+('cash_accounts',)+payroll.TABLES+('audit','cash_movements')+ecf.TABLES+real_estate.TABLES
 REFS={'attachments':{'uploaded_by':'users'},'subscriptions':{'customer_id':'customers','product_id':'products'},'charges':{'subscription_id':'subscriptions'},'payments':{'charge_id':'charges'},'employees':{'department_id':'departments','project_id':'projects'},'worklogs':{'employee_id':'employees','department_id':'departments','project_id':'projects','created_by':'users'},'tasks':{'responsible_id':'employees','department_id':'departments','project_id':'projects'},'expenses':{'department_id':'departments','project_id':'projects','created_by':'users'},'expense_payments':{'expense_id':'expenses'},'audit':{'user_id':'users'}}
 
 REFS.update({'secuencias_ncf':{'created_by':'users'},'sales_invoices':{'charge_id':'charges','created_by':'users','secuencia_ncf_id':'secuencias_ncf'},'farms':{'department_id':'departments','project_id':'projects','manager_id':'employees'},'farm_sales':{'farm_id':'farms','created_by':'users'},'farm_contracts':{'farm_id':'farms','employee_id':'employees','created_by':'users'},'farm_jobs':{'contract_id':'farm_contracts','created_by':'users'},'farm_payrolls':{'farm_id':'farms','created_by':'users'},'farm_payroll_lines':{'payroll_id':'farm_payrolls','job_id':'farm_jobs'}})
@@ -16,6 +16,7 @@ REFS.update({'payrolls':{'created_by':'users'},'payroll_lines':{'payroll_id':'pa
 REFS.update({'employee_pay_settings':{'employee_id':'employees'},'work_contracts':{'employee_id':'employees','created_by':'users'},'payroll_adjustments':{'employee_id':'employees','contract_id':'work_contracts','payroll_id':'payrolls','created_by':'users'},'payroll_payments':{'payroll_id':'payrolls','account_id':'cash_accounts','created_by':'users'},'cash_movements':{'account_id':'cash_accounts','created_by':'users'}})
 REFS.update({'ecf_documents':{'source_invoice_id':'sales_invoices'},'ecf_audit_log':{'ecf_id':'ecf_documents'}})
 REFS.update({'employee_account_entries':{'employee_id':'employees','cash_account_id':'cash_accounts','created_by':'users'}})
+REFS.update(real_estate.REFS)
 
 def export_company(core,c,uid,cid):
     core.membership(c,uid,cid,3)
@@ -77,6 +78,10 @@ def validate(core,c,bundle):
             row.setdefault('report_notes','')
             row.setdefault('assigned_date',None)
             row.setdefault('due_date',None)
+    if isinstance(data,dict):
+        for table in real_estate.TABLES: data.setdefault(table,[])
+        for row in data.get('company_profiles',[]):
+            row.setdefault('business_vertical','general')
     if not isinstance(company,dict) or not isinstance(data,dict) or set(data)!=set(TABLES) or not isinstance(actors,list): fail()
     for account in data['cash_accounts']:
         if not isinstance(account,dict) or account.get('currency') not in treasury.CURRENCIES: fail()

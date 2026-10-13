@@ -81,10 +81,12 @@ function getSavedCompanyId(user){
   }
 }
 let currentCategory = 'rrhh';
+let reTab = 'properties';
 function getCategoryForView(v){
   if(v==='departments') return currentCategory === 'administracion' ? 'administracion' : 'rrhh';
   if(['team','payroll','tasks','agriculture'].includes(v)) return 'rrhh';
   if(['dashboard','collections','expenses','treasury','reports'].includes(v)) return 'contabilidad';
+  if(v==='real_estate'||v?.startsWith('real_estate:')) return 'real_estate';
   if(v==='settings'||v?.startsWith('settings:')) return 'administracion';
   return 'contabilidad';
 }
@@ -106,6 +108,9 @@ function setCategory(cat){
       setActiveView('payroll');
     } else if(cat === 'contabilidad'){
       setActiveView('dashboard');
+    } else if(cat === 'real_estate'){
+      setActiveView('real_estate');
+      if(!reTab) reTab = 'properties';
     } else if(cat === 'administracion'){
       setActiveView('settings');
       if(!settingsTab) settingsTab = 'server';
@@ -119,6 +124,15 @@ function setActiveView(newView){
     settingsTab = sub;
     view = 'settings';
     currentCategory = 'administracion';
+  } else if(newView?.startsWith('real_estate:')){
+    const sub = newView.split(':')[1];
+    reTab = sub;
+    view = 'real_estate';
+    currentCategory = 'real_estate';
+  } else if(newView === 'real_estate'){
+    view = 'real_estate';
+    currentCategory = 'real_estate';
+    if(!reTab) reTab = 'properties';
   } else {
     view = newView;
     currentCategory = getCategoryForView(newView);
@@ -135,7 +149,15 @@ function getSavedView(){
     return 'dashboard';
   }
 }
-function unitLabel(plural=false,lowercase=false){const p=S?.company_profile||{};let text=plural?(p.unit_plural||'Unidades operativas'):(p.unit_singular||'Unidad operativa');if(lowercase)return text.toLowerCase();return text}
+function unitLabel(plural=false,lowercase=false){
+  const p=S?.company_profile||{};
+  const isRE = p.business_vertical === 'real_estate';
+  let text = plural
+    ? (p.unit_plural || (isRE ? 'Propiedades' : 'Unidades operativas'))
+    : (p.unit_singular || (isRE ? 'Propiedad' : 'Unidad operativa'));
+  if(lowercase) return text.toLowerCase();
+  return text;
+}
 async function boot(){
   try{
     me=await api('me');
@@ -145,12 +167,12 @@ async function boot(){
     setActiveCompany(matched?matched.id:me.companies[0].id);
     const savedView=getSavedView();
     const savedCat=getSavedCategory();
-    if(['dashboard','collections','expenses','treasury','payroll','team','agriculture','tasks','reports','settings','departments'].includes(savedView)){
+    if(['dashboard','collections','expenses','treasury','payroll','team','agriculture','tasks','reports','settings','departments','real_estate'].includes(savedView)){
       view=savedView;
       currentCategory=getCategoryForView(savedView);
     } else {
       currentCategory=savedCat;
-      view=savedCat==='rrhh'?'payroll':savedCat==='administracion'?'settings':'dashboard';
+      view=savedCat==='rrhh'?'payroll':savedCat==='administracion'?'settings':savedCat==='real_estate'?'real_estate':'dashboard';
     }
     await refresh();
   }catch(err){
@@ -191,6 +213,14 @@ function render(){
     ] : [])
   ];
 
+  const realEstateNav = [
+    ['real_estate:properties', '🏢', 'Catálogo de Inmuebles'],
+    ['real_estate:leases', '📑', 'Alquileres y Contratos'],
+    ['real_estate:sales', '🤝', 'Ventas y Cierres'],
+    ['real_estate:visits', '🗓️', 'Visitas e Interesados'],
+    ['real_estate:maintenance', '🛠️', 'Mantenimiento']
+  ];
+
   const catMeta = {
     rrhh: {
       badge: '👥 RECURSOS HUMANOS',
@@ -203,6 +233,12 @@ function render(){
       title: 'Módulo Contabilidad',
       desc: 'Facturación, cobros y tesorería',
       nav: contabilidadNav
+    },
+    real_estate: {
+      badge: '🏢 BIENES RAÍCES E INMOBILIARIA',
+      title: 'Módulo Bienes Raíces',
+      desc: 'Inmuebles, alquileres, ventas y visitas',
+      nav: realEstateNav
     },
     administracion: {
       badge: '⚙️ ADMINISTRACIÓN GENERAL',
@@ -217,6 +253,8 @@ function render(){
   const rrhhPending = ((S.worklogs || []).filter(w => w.status === 'proposed').length) +
                       ((S.farm_jobs || []).filter(j => j.status === 'proposed').length);
   const contabPending = ((S.expenses || []).filter(e => e.status === 'proposed').length);
+  const activeVertical = S?.company_profile?.business_vertical || 'general';
+  const rePropsCount = (S.re_properties || []).length;
 
   const floatingMasterBar = `
     <div class="floating-master-bar-container">
@@ -237,6 +275,14 @@ function render(){
           </div>
           ${contabPending > 0 ? `<span class="glass-pill-badge orange" title="${contabPending} gastos por aprobar">${contabPending}</span>` : ''}
         </button>
+        <button type="button" class="glass-pill-btn ${currentCategory === 'real_estate' ? 'active' : ''}" data-master-cat="real_estate" title="Bienes Raíces: Inmuebles, alquileres, ventas y visitas">
+          <span class="glass-pill-icon">🏢</span>
+          <div class="glass-pill-text">
+            <span class="glass-pill-title"><span class="title-full">Bienes Raíces</span><span class="title-short">Inmuebles</span></span>
+            <span class="glass-pill-desc">${activeVertical === 'real_estate' ? 'Propiedades y Rentas' : 'Probar Inmobiliaria'}</span>
+          </div>
+          ${rePropsCount > 0 ? `<span class="glass-pill-badge" title="${rePropsCount} inmuebles en cartera">${rePropsCount}</span>` : ''}
+        </button>
         <button type="button" class="glass-pill-btn ${currentCategory === 'administracion' ? 'active' : ''}" data-master-cat="administracion" title="Administración: Empresas, usuarios, red y sistema">
           <span class="glass-pill-icon">⚙️</span>
           <div class="glass-pill-text">
@@ -251,6 +297,8 @@ function render(){
   const sidebarButtons = activeMeta.nav.map(([v, i, t]) => {
     const isAct = v.startsWith('settings:')
       ? (view === 'settings' && settingsTab === v.split(':')[1])
+      : v.startsWith('real_estate:')
+      ? (view === 'real_estate' && reTab === v.split(':')[1])
       : (view === v);
     return `<button data-view="${v}" class="${isAct ? 'active' : ''}">
       <span class="nav-symbol">${i}</span>
@@ -301,7 +349,7 @@ function render(){
       ${mobileSubnav}
       <main class="content">
         ${company().demo?'<div class="notice">Está en demostración: todas las personas, clientes y movimientos son ficticios. Use su usuario empresarial para trabajar con datos reales.</div>':'<div class="notice">Empresa real · Piloto local. Registre datos autorizados y cree un respaldo al finalizar la jornada.</div>'}
-        ${({payroll:payrollView,treasury:treasuryView,dashboard:dashboardView,collections:collectionsView,expenses:expensesView,team:teamView,tasks:tasksView,settings:settingsView,agriculture:agricultureView,reports:reportsView,departments:departmentsView}[view])()}
+        ${({payroll:payrollView,treasury:treasuryView,dashboard:dashboardView,collections:collectionsView,expenses:expensesView,team:teamView,tasks:tasksView,settings:settingsView,agriculture:agricultureView,reports:reportsView,departments:departmentsView,real_estate:realEstateView}[view])()}
         <div class="footer-note">Actualizado ${esc(new Date(S.updated_at).toLocaleString('es-DO',{timeZone:'America/Santo_Domingo'}))} · Importes en RD$, salvo cuentas de caja y banco con otra moneda indicada.</div>
       </main>
     </div>
@@ -2091,6 +2139,11 @@ function bind(){
   document.querySelectorAll('[data-master-cat]').forEach(b=>b.onclick=()=>setCategory(b.dataset.masterCat));
   document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{setActiveView(b.dataset.view);render()});
   document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{tab=b.dataset.tab;render()});
+  document.querySelectorAll('[data-re-tab]').forEach(b=>b.onclick=()=>{reTab=b.dataset.reTab;render()});
+  const reSearchEl=$('#re-search');if(reSearchEl)reSearchEl.oninput=e=>{reSearch=e.target.value;render()};
+  const reTypeEl=$('#re-type-filter');if(reTypeEl)reTypeEl.onchange=e=>{reTypeFilter=e.target.value;render()};
+  const reStatusEl=$('#re-status-filter');if(reStatusEl)reStatusEl.onchange=e=>{reStatusFilter=e.target.value;render()};
+  const reOpEl=$('#re-op-filter');if(reOpEl)reOpEl.onchange=e=>{reOpFilter=e.target.value;render()};
   document.querySelectorAll('[data-team-filter]').forEach(b=>b.onclick=()=>{teamFilter=b.dataset.teamFilter;render()});
   if($('#f-team-farm-filter')) $('#f-team-farm-filter').onchange = e => { teamFarmFilter = e.target.value; render(); };
   document.querySelectorAll('[data-queue-filter]').forEach(b=>b.onclick=()=>{queueFilter=b.dataset.queueFilter;render()});
@@ -2117,7 +2170,12 @@ function bind(){
   $('#logout').onclick=async()=>{await api('logout',{});me=null;login()};
   const btnHelp = $('#btn-help-modal');
   if(btnHelp) btnHelp.onclick = () => openHelpModal();
-  document.querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>openForm(b.dataset.open));
+  document.querySelectorAll('[data-open]').forEach(b=>{
+    b.onclick=()=>{
+      const extra = b.dataset.propertyId ? {property_id: Number(b.dataset.propertyId)} : null;
+      openForm(b.dataset.open, null, extra);
+    };
+  });
   document.querySelectorAll('[data-action]').forEach(b=>b.onclick=()=>handleAction(b));
   document.querySelectorAll('[data-delete-company]').forEach(b=>b.onclick=()=>openDeleteCompanyDialog(Number(b.dataset.deleteCompany)));
   document.querySelectorAll('[data-restore-company]').forEach(b=>b.onclick=async()=>{
@@ -2889,7 +2947,7 @@ function openHelpModal(){
   renderHelpModal();
 }
 async function save(actionName,data){const result=await api('action',{company_id:Number(cid),action:actionName,...data});await refresh();return result}
-async function handleAction(b){const a=b.dataset.action,id=Number(b.dataset.id);if(a==='view_employee_account'){showEmployeeAccountModal(id);return}if(a==='assign_queue_job'){showAssignQueueJobModal(id||null);return}if(a==='add_labor_to_farm'){showAddLaborToFarmModal(id||null);return}if(a==='add_employee_to_farm'){openForm('employee',null,{farm_id:id});return}if(a==='report_queue_job'){showReportQueueJobModal(id);return}if(a==='approve_queue_job'){b.disabled=true;try{const res=await save('approve_queue_job',{id});toast(`Trabajo aprobado. Se acreditaron ${money(res.job?.earned_amount||0)} a la cuenta del colaborador.`);}catch(err){toast(err.message);b.disabled=false;}return;}if(payrollKinds.includes(a)){payrollDialog(a,id);return}if(a==='payroll_single'){payrollDialog('payroll',{employee_id:id,cadence:b.dataset.cadence});return}if(a==='payroll_deduction'){payrollDialog('payroll_adjustment',{employee_id:id||'',kind:'deduction'});return}if(a==='assign_custom_days'){openForm('farm_job',id);return}if(a==='reset-branding'){await save('branding',{accent_color:'#185b4d',surface_color:'#f4f6f3',card_color:'#ffffff',text_color:'#172f2d',font_scale:'100'});return}if(a==='files'){await openFiles(b.dataset.entity,id);return}if(a==='approve_all_worklogs'){b.disabled=true;try{const work_date=b.dataset.date||null;const res=await save('approve_all_worklogs',{work_date});toast(`${res.approved_count||'Todas las'} hora(s) aprobada(s) correctamente.`);}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='approve_all_farm_jobs'){b.disabled=true;try{const work_date=b.dataset.date||null;const res=await save('approve_all_farm_jobs',{work_date});toast(`${res.approved_count||'Todas las'} labore(s) aprobada(s) correctamente.`);}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='create_default_cash_account'){b.disabled=true;try{await save('create_default_cash_account',{});toast('Caja General (DOP) creada y lista para operar.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='export'){b.disabled=true;try{const archive=await api('export?company_id='+cid);const link=document.createElement('a');link.href='/api/export?company_id='+cid;link.download=company().name.replace(/[^a-zA-Z0-9_-]/g,'_')+'-'+S.today+'.zero.json';document.body.appendChild(link);link.click();link.remove();toast('Archivo de empresa preparado para descargar.')}catch(err){toast(err.message)}finally{b.disabled=false}return;}if(a==='extend_contract'){const co=S.farm_contracts?.find(c=>c.id===id);if(co){const d=new Date(co.end_date+'T12:00:00');d.setDate(d.getDate()+7);const newEnd=d.toISOString().slice(0,10);b.disabled=true;try{await save('edit_farm_contract',{id:co.id,farm_id:co.farm_id,employee_id:co.employee_id,kind:co.kind,basis:co.basis,rate:co.rate/100,description:co.description,start_date:co.start_date,end_date:newEnd,status:'active'});toast(`Continuidad extendida hasta el ${displayDate(newEnd)}.`);}catch(err){toast(err.message);b.disabled=false;}return;}}if(a==='approve_job_direct'){b.disabled=true;try{await save('job_status',{id,status:'approved'});toast('Labor / horas aprobadas para nómina.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='discard_payroll'){if(!confirm('¿Desea descartar esta nómina pendiente? Los reportes y deducciones asociados quedarán liberados.'))return;b.disabled=true;try{await save('discard_payroll',{id});toast('Nómina descartada.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='discard_farm_payroll'){if(!confirm('¿Desea descartar esta nómina de labores? Los trabajos volverán a quedar pendientes en la cola.'))return;b.disabled=true;try{await save('discard_farm_payroll',{id});toast('Nómina descartada.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='archive_cash_account'){const acc=S.cash_accounts?.find(c=>c.id===id);const isArch=Boolean(acc?.archived);if(!confirm(`¿Desea ${isArch?'reactivar':'archivar'} la cuenta «${acc?.name||'seleccionada'}»?`))return;b.disabled=true;try{await save('archive_cash_account',{id,archived:isArch?0:1});toast(`Cuenta ${isArch?'reactivada':'archivada'}.`);}catch(err){toast(err.message);b.disabled=false;}return;}if(['payment','expense_payment','edit_member','edit_expense','edit_employee','terminate_employee','view_termination','contract_status','pay_payroll','edit_department','edit_project','edit_task','edit_farm','edit_farm_contract','edit_farm_job','edit_company','edit_product','edit_customer','edit_worklog','edit_subscription','edit_farm_sale','edit_ncf_sequence'].includes(a)){openForm(a,id);return}if(a==='reactivate_employee'){const emp=S.employees?.find(e=>e.id===id);if(!confirm(`¿Desea reactivar a «${emp?.name||'este colaborador'}» como personal activo? Volverá a estar disponible para asignaciones y nómina.`))return;b.disabled=true;try{await save('reactivate_employee',{id});toast('Colaborador reactivado con éxito.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='delete_employee'){const emp=S.employees?.find(e=>e.id===id);if(!confirm(`¿Está seguro de que desea eliminar la ficha de «${emp?.name||'este colaborador'}»? Solo es posible si no posee historial contable ni tareas asociadas.`))return;b.disabled=true;try{await save('delete_employee',{id});toast('Ficha de personal eliminada.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='cancel_subscription'){openForm('cancel_subscription',id);return}if(a.startsWith('delete_')){if(!confirm('¿Está seguro de que desea eliminar este registro permanentemente?'))return}b.disabled=true;try{if(a==='refresh')await refresh();else{const result=await save(a,{id});toast(a==='generate'?`${result.generated} cargo(s) nuevo(s). Los existentes se conservaron.`:'Operación guardada.')}}catch(err){toast(err.message);b.disabled=false}}
+async function handleAction(b){const a=b.dataset.action,id=Number(b.dataset.id);if(a==='view_employee_account'){showEmployeeAccountModal(id);return}if(a==='assign_queue_job'){showAssignQueueJobModal(id||null);return}if(a==='add_labor_to_farm'){showAddLaborToFarmModal(id||null);return}if(a==='add_employee_to_farm'){openForm('employee',null,{farm_id:id});return}if(a==='report_queue_job'){showReportQueueJobModal(id);return}if(a==='approve_queue_job'){b.disabled=true;try{const res=await save('approve_queue_job',{id});toast(`Trabajo aprobado. Se acreditaron ${money(res.job?.earned_amount||0)} a la cuenta del colaborador.`);}catch(err){toast(err.message);b.disabled=false;}return;}if(payrollKinds.includes(a)){payrollDialog(a,id);return}if(a==='payroll_single'){payrollDialog('payroll',{employee_id:id,cadence:b.dataset.cadence});return}if(a==='payroll_deduction'){payrollDialog('payroll_adjustment',{employee_id:id||'',kind:'deduction'});return}if(a==='assign_custom_days'){openForm('farm_job',id);return}if(a==='reset-branding'){await save('branding',{accent_color:'#185b4d',surface_color:'#f4f6f3',card_color:'#ffffff',text_color:'#172f2d',font_scale:'100'});return}if(a==='files'){await openFiles(b.dataset.entity,id);return}if(a==='approve_all_worklogs'){b.disabled=true;try{const work_date=b.dataset.date||null;const res=await save('approve_all_worklogs',{work_date});toast(`${res.approved_count||'Todas las'} hora(s) aprobada(s) correctamente.`);}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='approve_all_farm_jobs'){b.disabled=true;try{const work_date=b.dataset.date||null;const res=await save('approve_all_farm_jobs',{work_date});toast(`${res.approved_count||'Todas las'} labore(s) aprobada(s) correctamente.`);}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='create_default_cash_account'){b.disabled=true;try{await save('create_default_cash_account',{});toast('Caja General (DOP) creada y lista para operar.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='export'){b.disabled=true;try{const archive=await api('export?company_id='+cid);const link=document.createElement('a');link.href='/api/export?company_id='+cid;link.download=company().name.replace(/[^a-zA-Z0-9_-]/g,'_')+'-'+S.today+'.zero.json';document.body.appendChild(link);link.click();link.remove();toast('Archivo de empresa preparado para descargar.')}catch(err){toast(err.message)}finally{b.disabled=false}return;}if(a==='extend_contract'){const co=S.farm_contracts?.find(c=>c.id===id);if(co){const d=new Date(co.end_date+'T12:00:00');d.setDate(d.getDate()+7);const newEnd=d.toISOString().slice(0,10);b.disabled=true;try{await save('edit_farm_contract',{id:co.id,farm_id:co.farm_id,employee_id:co.employee_id,kind:co.kind,basis:co.basis,rate:co.rate/100,description:co.description,start_date:co.start_date,end_date:newEnd,status:'active'});toast(`Continuidad extendida hasta el ${displayDate(newEnd)}.`);}catch(err){toast(err.message);b.disabled=false;}return;}}if(a==='approve_job_direct'){b.disabled=true;try{await save('job_status',{id,status:'approved'});toast('Labor / horas aprobadas para nómina.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='discard_payroll'){if(!confirm('¿Desea descartar esta nómina pendiente? Los reportes y deducciones asociados quedarán liberados.'))return;b.disabled=true;try{await save('discard_payroll',{id});toast('Nómina descartada.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='discard_farm_payroll'){if(!confirm('¿Desea descartar esta nómina de labores? Los trabajos volverán a quedar pendientes en la cola.'))return;b.disabled=true;try{await save('discard_farm_payroll',{id});toast('Nómina descartada.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='archive_cash_account'){const acc=S.cash_accounts?.find(c=>c.id===id);const isArch=Boolean(acc?.archived);if(!confirm(`¿Desea ${isArch?'reactivar':'archivar'} la cuenta «${acc?.name||'seleccionada'}»?`))return;b.disabled=true;try{await save('archive_cash_account',{id,archived:isArch?0:1});toast(`Cuenta ${isArch?'reactivada':'archivada'}.`);}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='seed_demo_real_estate'){b.disabled=true;try{await save('seed_demo_real_estate',{});setActiveView('real_estate');toast('Datos de prueba de Bienes Raíces cargados con éxito.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='charge_lease_rent'){b.disabled=true;try{const res=await save('generate_re_lease_charge',{lease_id:id});toast(res.message||'Cuenta por cobrar generada para el inquilino.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='terminate_re_lease'){if(!confirm('¿Desea rescindir / finalizar este contrato de alquiler? La propiedad quedará disponible nuevamente para alquiler o venta.'))return;b.disabled=true;try{await save('terminate_re_lease',{id});toast('Contrato finalizado y propiedad liberada como disponible.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='resolve_re_maintenance'){b.disabled=true;try{await save('resolve_re_maintenance',{id});toast('Incidencia marcada como resuelta.');}catch(err){toast(err.message);b.disabled=false;}return;}if(['payment','expense_payment','edit_member','edit_expense','edit_employee','terminate_employee','view_termination','contract_status','pay_payroll','edit_department','edit_project','edit_task','edit_farm','edit_farm_contract','edit_farm_job','edit_company','edit_product','edit_customer','edit_worklog','edit_subscription','edit_farm_sale','edit_ncf_sequence','edit_re_property','edit_re_lease','edit_re_sale','edit_re_visit','edit_re_maintenance'].includes(a)){openForm(a,id);return}if(a==='reactivate_employee'){const emp=S.employees?.find(e=>e.id===id);if(!confirm(`¿Desea reactivar a «${emp?.name||'este colaborador'}» como personal activo? Volverá a estar disponible para asignaciones y nómina.`))return;b.disabled=true;try{await save('reactivate_employee',{id});toast('Colaborador reactivado con éxito.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='delete_employee'){const emp=S.employees?.find(e=>e.id===id);if(!confirm(`¿Está seguro de que desea eliminar la ficha de «${emp?.name||'este colaborador'}»? Solo es posible si no posee historial contable ni tareas asociadas.`))return;b.disabled=true;try{await save('delete_employee',{id});toast('Ficha de personal eliminada.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='cancel_subscription'){openForm('cancel_subscription',id);return}if(a.startsWith('delete_')){if(!confirm('¿Está seguro de que desea eliminar este registro permanentemente?'))return}b.disabled=true;try{if(a==='refresh')await refresh();else{const result=await save(a,{id});toast(a==='generate'?`${result.generated} cargo(s) nuevo(s). Los existentes se conservaron.`:'Operación guardada.')}}catch(err){toast(err.message);b.disabled=false}}
 function input(name,label,type='text',value='',extra=''){return `<div><label for="f-${name}">${label}</label><input id="f-${name}" name="${name}" type="${type}" value="${esc(value)}" ${extra}></div>`}
 function select(name,label,options,value='',extra=''){return `<div><label for="f-${name}">${label}</label><select id="f-${name}" name="${name}" ${extra}>${options.map(([v,t])=>`<option value="${esc(v)}" ${String(v)===String(value)?'selected':''}>${esc(t)}</option>`).join('')}</select></div>`}
 function area(name,label,value=''){return `<div class="wide"><label for="f-${name}">${label}</label><textarea id="f-${name}" name="${name}">${esc(value)}</textarea></div>`}
@@ -2917,18 +2975,112 @@ if(kind==='edit_department'){const d=S.departments?.find(x=>x.id===id);title=`Ed
 if(kind==='project'){title='Nuevo proyecto';fields=input('name','Nombre del proyecto','text','','required maxlength="100" placeholder="Ej. Expansión Este, Desarrollo Fase 2, Obras..."');help='Los proyectos permiten clasificar presupuestos y ejecuciones temporales o transversales.';submit='Crear proyecto';}
 if(kind==='edit_project'){const p=S.projects?.find(x=>x.id===id);title=`Editar proyecto: «${p?.name||''}»`;initial={id};fields=input('name','Nombre del proyecto','text',p?.name||'','required maxlength="100"');help='Al modificar el nombre del proyecto se actualiza en todas las fichas vinculadas.';submit='Guardar cambios';}
 if(kind==='company'){title='Agregar empresa';fields=input('name','Nombre de la empresa','text','','required maxlength="200"')+input('group_name','Grupo corporativo / Cuenta dependiente','text',company()?.group_name||'','maxlength="200"')+'<label><input type="checkbox" name="demo"> Empresa de demostración (datos ficticios)</label>';help='La empresa se crea con usted como administrador y quedará disponible en el directorio de empresas y el selector superior.'}
-if(kind==='edit_company'){const targetComp=me?.companies?.find(x=>x.id===id)||(id===Number(cid)?{...company(),...S.company_profile}:{id,name:''});const compProfile=(id===Number(cid)?S.company_profile:targetComp)||{};const uSingular=targetComp.unit_singular||compProfile.unit_singular||'Unidad operativa';const uPlural=targetComp.unit_plural||compProfile.unit_plural||'Unidades operativas';const presets=[['Unidad operativa|Unidades operativas','Unidad operativa / Multifuncional (Servicios, general)'],['Finca|Fincas','Finca / Agropecuaria (Agrícola, cacao, ganado)'],['Propiedad|Propiedades','Propiedad / Inmueble (Inmobiliaria, bienes raíces)'],['Sucursal|Sucursales','Sucursal / Agencia (Financiera, comercial, seguros)'],['Sede|Sedes','Sede / Centro (Corporativo, consultorías, clínicas)'],['Proyecto|Proyectos','Proyecto / Obra (Constructoras, proyectos de campo)'],['custom','Personalizado (Escribir término propio)']];const matched=presets.find(([val])=>val===`${uSingular}|${uPlural}`)?`${uSingular}|${uPlural}`:'custom';title=`Ficha y ajustes de empresa: ${esc(targetComp.name||'')}`;initial={id,target_company_id:id};fields=input('name','Nombre de la empresa','text',targetComp.name||'','required maxlength="200"')+input('group_name','Grupo corporativo / Cuenta dependiente','text',targetComp.group_name||'','maxlength="200"')+input('tax_id','Identificación fiscal / RNC','text',targetComp.tax_id||compProfile.tax_id||'')+input('phone','Teléfono de contacto','text',targetComp.phone||compProfile.phone||'')+input('email','Correo electrónico','email',targetComp.email||compProfile.email||'')+input('address','Dirección física / sede','text',targetComp.address||compProfile.address||'')+`<div><label for="f-unit-preset-modal">Tipo de negocio / Modelo operativo</label><select id="f-unit-preset-modal" name="unit_preset">${presets.map(([v,t])=>`<option value="${esc(v)}" ${v===matched?'selected':''}>${esc(t)}</option>`).join('')}</select></div>`+`<div id="custom-unit-fields-modal" style="${matched==='custom'?'':'display:none'}"><div class="form-grid" style="margin-top:8px">${input('unit_singular','Término en singular (ej. Finca, Sucursal)','text',uSingular,'maxlength="50"')}${input('unit_plural','Término en plural (ej. Fincas, Sucursales)','text',uPlural,'maxlength="50"')}</div></div>`+`<div><label><input type="checkbox" name="demo" ${targetComp.demo?'checked':''}> Empresa de demostración (datos ficticios)</label></div>`+`<div><label for="company-logo-modal">Logo de la empresa (PNG, JPEG o WebP, hasta 500 KB)</label><input id="company-logo-modal" type="file" accept="image/png,image/jpeg,image/webp">${(targetComp.logo||compProfile.logo)?`<div style="margin-top:6px"><img class="company-logo" src="${esc(targetComp.logo||compProfile.logo)}" alt="Logo" style="max-height:40px;display:block;margin-bottom:4px"><label><input type="checkbox" name="remove_logo"> Quitar logo actual</label></div>`:''}</div>`;help='Todas las dimensiones de la empresa son editables por el administrador. Los cambios aplican de inmediato en la cuenta.';submit='Guardar ficha de empresa'}
+if(kind==='edit_company'){const targetComp=me?.companies?.find(x=>x.id===id)||(id===Number(cid)?{...company(),...S.company_profile}:{id,name:''});const compProfile=(id===Number(cid)?S.company_profile:targetComp)||{};const uSingular=targetComp.unit_singular||compProfile.unit_singular||'Unidad operativa';const uPlural=targetComp.unit_plural||compProfile.unit_plural||'Unidades operativas';const presets=[['Unidad operativa|Unidades operativas','Unidad operativa / Multifuncional (Servicios, general)'],['Finca|Fincas','Finca / Agropecuaria (Agrícola, cacao, ganado)'],['Propiedad|Propiedades','Propiedad / Inmueble (Inmobiliaria, bienes raíces)'],['Sucursal|Sucursales','Sucursal / Agencia (Financiera, comercial, seguros)'],['Sede|Sedes','Sede / Centro (Corporativo, consultorías, clínicas)'],['Proyecto|Proyectos','Proyecto / Obra (Constructoras, proyectos de campo)'],['custom','Personalizado (Escribir término propio)']];const verticals=[['general','🏬 General / Comercial y Servicios'],['real_estate','🏢 Inmobiliaria y Bienes Raíces (Propiedades, Alquileres, Ventas)'],['agriculture','🌱 Agropecuaria y Fincas (Fincas, Cosechas, Labores)']];const matched=presets.find(([val])=>val===`${uSingular}|${uPlural}`)?`${uSingular}|${uPlural}`:'custom';title=`Ficha y ajustes de empresa: ${esc(targetComp.name||'')}`;initial={id,target_company_id:id};fields=input('name','Nombre de la empresa','text',targetComp.name||'','required maxlength="200"')+input('group_name','Grupo corporativo / Cuenta dependiente','text',targetComp.group_name||'','maxlength="200"')+select('business_vertical','Módulo especializado / Naturaleza del negocio',verticals,targetComp.business_vertical||compProfile.business_vertical||'general')+input('tax_id','Identificación fiscal / RNC','text',targetComp.tax_id||compProfile.tax_id||'')+input('phone','Teléfono de contacto','text',targetComp.phone||compProfile.phone||'')+input('email','Correo electrónico','email',targetComp.email||compProfile.email||'')+input('address','Dirección física / sede','text',targetComp.address||compProfile.address||'')+`<div><label for="f-unit-preset-modal">Tipo de negocio / Modelo operativo</label><select id="f-unit-preset-modal" name="unit_preset">${presets.map(([v,t])=>`<option value="${esc(v)}" ${v===matched?'selected':''}>${esc(t)}</option>`).join('')}</select></div>`+`<div id="custom-unit-fields-modal" style="${matched==='custom'?'':'display:none'}"><div class="form-grid" style="margin-top:8px">${input('unit_singular','Término en singular (ej. Finca, Sucursal)','text',uSingular,'maxlength="50"')}${input('unit_plural','Término en plural (ej. Fincas, Sucursales)','text',uPlural,'maxlength="50"')}</div></div>`+`<div><label><input type="checkbox" name="demo" ${targetComp.demo?'checked':''}> Empresa de demostración (datos ficticios)</label></div>`+`<div><label for="company-logo-modal">Logo de la empresa (PNG, JPEG o WebP, hasta 500 KB)</label><input id="company-logo-modal" type="file" accept="image/png,image/jpeg,image/webp">${(targetComp.logo||compProfile.logo)?`<div style="margin-top:6px"><img class="company-logo" src="${esc(targetComp.logo||compProfile.logo)}" alt="Logo" style="max-height:40px;display:block;margin-bottom:4px"><label><input type="checkbox" name="remove_logo"> Quitar logo actual</label></div>`:''}</div>`;help='Todas las dimensiones de la empresa son editables por el administrador. Los cambios aplican de inmediato en la cuenta.';submit='Guardar ficha de empresa'}
 if(['payment','expense_payment'].includes(kind)){const item=(kind==='payment'?S.charges:S.expenses).find(x=>x.id===id);title=kind==='payment'?'Registrar pago recibido':'Registrar pago de gasto';initial={id,[kind==='payment'?'charge_id':'expense_id']:id,request_key:operationKey()};fields=input('amount','Importe (RD$)','number',item.balance/100,`required min="0.01" max="${item.balance/100}" step="0.01"`)+input('paid_date','Fecha efectiva','date',S.today,`required max="${S.today}" min="${item.period_date||item.expense_date}"`)+input('reference','Referencia / recibo','text','','required');help=`Saldo actual: ${money(item.balance)}. Confirme únicamente dinero efectivamente recibido o pagado. El registro no realiza una transferencia bancaria.`;submit='Confirmar pago'}
 if(['payment','expense_payment','farm_sale'].includes(kind)&&S.cash_accounts?.length)fields+=select('account_id',['payment','farm_sale'].includes(kind)?'Ingresar en (DOP)':'Pagar desde (DOP)',accountOptions('DOP'),'','required');
 if(kind==='cancel_subscription'){title='Cancelar servicio';initial={id};fields='<div class="wide"><p>Se conservarán los cargos y pagos existentes. Se generan los períodos ya iniciados hasta hoy antes de detener los futuros. Los saldos pendientes siguen siendo cobrables.</p></div>';submit='Cancelar servicio';help='Esta cancelación queda registrada en el historial.'}
 if(kind==='password'){title='Cambiar mi contraseña';fields=input('current','Contraseña actual','password','','required autocomplete="current-password"')+input('password','Nueva contraseña','password','','required minlength="12" autocomplete="new-password"');help='Mínimo 12 caracteres. Se cerrarán sus otras sesiones.'}
 if(['member','edit_member'].includes(kind)){const member=S.members?.find(m=>m.id===id);title=member?'Editar permisos':'Nuevo usuario';fields=input('username','Usuario','text',member?.username||'',`required ${member?'readonly':''}`)+input('name','Nombre','text',member?.name||'','required')+(member?'':input('password','Contraseña inicial','password','','required minlength="12" autocomplete="new-password"'))+input('role_name','Puesto (gerente, supervisor, auxiliar…)','text',member?.role_name||'Colaborador','required')+input('hierarchy_rank','Orden jerárquico (1 = más alto)','number',member?.hierarchy_rank||3,'required min="1" max="99"')+select('role','Nivel acumulativo',[['register','Básico: registra'],['review','Revisor: registra y aprueba'],['admin','Administrador: todos los permisos de empresa']],member?.role||'register')+`<div><label><input type="checkbox" name="collections" ${member?.collections?'checked':''}> Permiso de cobros (toda la empresa)</label></div>`;for(const [table,label] of [['departments','Departamentos autorizados'],['projects','Proyectos autorizados']]){const selected=JSON.parse(member?.[table]||'[]');fields+=`<div><label>${label}</label><div class="check-list">${S[table].map(x=>`<label><input type="checkbox" name="${table}" value="${x.id}" ${selected.includes(x.id)?'checked':''}> ${esc(x.name)}</label>`).join('')}</div></div>`}help='La jerarquía ordena los puestos; los permisos dependen del nivel de acceso y las áreas seleccionadas. Sin selecciones = todos. Cuando se eligen departamentos y proyectos, ambos límites aplican. Administradores abarcan toda la empresa. Cobros tiene alcance empresarial independiente. Para editar un usuario existente, conserve su nombre de usuario.'}
+if(kind==='re_property'||kind==='edit_re_property'){
+  const p=kind==='edit_re_property'?(S.re_properties||[]).find(x=>x.id===id):null;
+  title=p?`Editar inmueble: «${p.title}»`:'Nuevo inmueble en cartera';
+  if(p) initial={id};
+  const propTypes=[['apartment','Apartamento'],['house','Casa'],['villa','Villa'],['commercial','Local comercial'],['office','Oficina'],['land','Solar / Terreno'],['industrial','Nave industrial'],['building','Edificio completo']];
+  const listTypes=[['both','Alquiler y Venta'],['rent','Solo Alquiler'],['sale','Solo Venta']];
+  const statuses=[['available','Disponible'],['rented','Alquilado'],['sold','Vendido'],['reserved','Reservado'],['maintenance','En mantenimiento']];
+  fields=input('title','Título / Nombre del inmueble','text',p?.title||'','required maxlength="200" placeholder="ej. Apartamento Torre Vista Bella"')+
+         input('code','Código de referencia','text',p?.code||'','placeholder="ej. PROP-101"')+
+         select('property_type','Tipo de inmueble',propTypes,p?.property_type||'apartment')+
+         select('listing_type','Modalidad de oferta',listTypes,p?.listing_type||'both')+
+         select('status','Estado del inmueble',statuses,p?.status||'available')+
+         input('address','Dirección / Calle y número','text',p?.address||'','required maxlength="500"')+
+         input('city','Ciudad / Sector','text',p?.city||'Santo Domingo','maxlength="200"')+
+         input('price_rent','Precio de renta mensual (RD$)', 'number', p?.price_rent?(p.price_rent/100):'', 'min="0" step="0.01"')+
+         input('price_sale','Precio de venta (RD$)', 'number', p?.price_sale?(p.price_sale/100):'', 'min="0" step="0.01"')+
+         input('area_sqm','Área (m²)', 'number', p?.area_sqm||'', 'min="0" step="0.1"')+
+         input('bedrooms','Habitaciones', 'number', p?.bedrooms||0, 'min="0"')+
+         input('bathrooms','Baños', 'number', p?.bathrooms||0, 'min="0" step="0.5"')+
+         input('parking_spots','Estacionamientos / Parqueos', 'number', p?.parking_spots||0, 'min="0"')+
+         input('owner_name','Propietario / Consignatario', 'text', p?.owner_name||'')+
+         input('owner_phone','Teléfono del propietario', 'text', p?.owner_phone||'')+
+         select('agent_id','Agente responsable',options('employees',true,true),p?.agent_id||'')+
+         dims(p?.department_id||'',p?.project_id||'')+
+         area('notes','Características, amenidades y notas adicionales',p?.notes||'');
+  help='Gestione el catálogo inmobiliario con precios de venta y renta en RD$.';
+}
+if(kind==='re_lease'||kind==='edit_re_lease'){
+  const l=kind==='edit_re_lease'?(S.re_leases||[]).find(x=>x.id===id):null;
+  title=l?`Editar contrato de alquiler · #${id}`:'Nuevo contrato de arrendamiento';
+  if(l) initial={id};
+  const propOpts=(S.re_properties||[]).map(p=>[p.id, `${p.code?p.code+' · ':''}${p.title} (${money(p.price_rent)}/mes)`]);
+  fields=select('property_id','Inmueble a arrendar',propOpts,l?.property_id||extraData?.property_id||'','required')+
+         input('tenant_name','Nombre completo del inquilino','text',l?.tenant_name||'','required maxlength="200"')+
+         input('tenant_document','Cédula / RNC / Pasaporte','text',l?.tenant_document||'')+
+         input('tenant_phone','Teléfono del inquilino','text',l?.tenant_phone||'','required')+
+         input('tenant_email','Correo electrónico','email',l?.tenant_email||'')+
+         input('start_date','Fecha de inicio','date',l?.start_date||S.today,'required')+
+         input('end_date','Fecha de vencimiento','date',l?.end_date||'','required')+
+         input('monthly_rent','Renta mensual (RD$)','number',l?.monthly_rent?(l.monthly_rent/100):'','required min="0.01" step="0.01"')+
+         input('deposit_amount','Depósito en garantía (RD$)','number',l?.deposit_amount?(l.deposit_amount/100):0,'min="0" step="0.01"')+
+         input('payment_day','Día de pago cada mes (1-31)','number',l?.payment_day||1,'required min="1" max="31"')+
+         select('agent_id','Agente comisionista / Gestor',options('employees',true,true),l?.agent_id||'')+
+         select('status','Estado del contrato',[['active','Activo'],['expired','Vencido'],['terminated','Finalizado']],l?.status||'active')+
+         area('notes','Términos, cláusulas y observaciones',l?.notes||'');
+  help='Al crear el contrato el inmueble pasa a "Alquilado". Podrá generar cobros mensuales automáticos en Contabilidad.';
+}
+if(kind==='re_sale'||kind==='edit_re_sale'){
+  const s=kind==='edit_re_sale'?(S.re_sales||[]).find(x=>x.id===id):null;
+  title=s?`Editar venta · #${id}`:'Registrar venta y cierre inmobiliario';
+  if(s) initial={id};
+  const propOpts=(S.re_properties||[]).map(p=>[p.id, `${p.code?p.code+' · ':''}${p.title} (Ref: ${money(p.price_sale)})`]);
+  fields=select('property_id','Inmueble vendido',propOpts,s?.property_id||extraData?.property_id||'','required')+
+         input('buyer_name','Nombre completo del comprador','text',s?.buyer_name||'','required maxlength="200"')+
+         input('buyer_document','Cédula / RNC del comprador','text',s?.buyer_document||'')+
+         input('buyer_phone','Teléfono del comprador','text',s?.buyer_phone||'')+
+         input('sale_price','Precio de venta final (RD$)','number',s?.sale_price?(s.sale_price/100):'','required min="0.01" step="0.01"')+
+         input('commission_rate','Porcentaje de comisión agencia (%)','number',s?.commission_rate||5.0,'min="0" step="0.1"')+
+         input('commission_amount','Monto comisión agencia (RD$, opcional)','number',s?.commission_amount?(s.commission_amount/100):'','min="0" step="0.01" placeholder="Calculado según el porcentaje si se omite"')+
+         input('closing_date','Fecha de cierre / firma','date',s?.closing_date||S.today,'required')+
+         select('agent_id','Agente de cierre',options('employees',true,true),s?.agent_id||'')+
+         select('status','Estado del cierre',[['closed','Cerrado / Finalizado'],['reserved','Reservado / En arras'],['cancelled','Cancelado']],s?.status||'closed')+
+         area('notes','Notas de cierre, fiduciaria o método de pago',s?.notes||'');
+  help='Al cerrar la venta el inmueble se marca como "Vendido" y se registra la comisión.';
+}
+if(kind==='re_visit'||kind==='edit_re_visit'){
+  const v=kind==='edit_re_visit'?(S.re_visits||[]).find(x=>x.id===id):null;
+  title=v?`Editar visita · #${id}`:'Agendar visita de cliente interesado';
+  if(v) initial={id};
+  const propOpts=(S.re_properties||[]).map(p=>[p.id, `${p.code?p.code+' · ':''}${p.title}`]);
+  fields=select('property_id','Inmueble a visitar',propOpts,v?.property_id||extraData?.property_id||'','required')+
+         input('client_name','Nombre del cliente interesado','text',v?.client_name||'','required maxlength="200"')+
+         input('client_phone','Teléfono de contacto','text',v?.client_phone||'')+
+         input('visit_date','Fecha de la visita','date',v?.visit_date||S.today,'required')+
+         select('interest_level','Nivel de interés mostrado',[['high','Alto interés'],['medium','Interés regular'],['low','Poco interés'],['offer_made','Oferta presentada']],v?.interest_level||'medium')+
+         select('agent_id','Agente que acompaña',options('employees',true,true),v?.agent_id||'')+
+         select('status','Estado de la visita',[['completed','Realizada'],['scheduled','Programada'],['cancelled','Cancelada']],v?.status||'completed')+
+         area('feedback','Comentarios, objeciones y próximos pasos',v?.feedback||'');
+  help='Permite dar seguimiento a prospectos interesados en propiedades.';
+}
+if(kind==='re_maintenance'||kind==='edit_re_maintenance'){
+  const m=kind==='edit_re_maintenance'?(S.re_maintenances||[]).find(x=>x.id===id):null;
+  title=m?`Editar mantenimiento · #${id}`:'Reportar mantenimiento o avería en inmueble';
+  if(m) initial={id};
+  const propOpts=(S.re_properties||[]).map(p=>[p.id, `${p.code?p.code+' · ':''}${p.title}`]);
+  fields=select('property_id','Inmueble con incidencia',propOpts,m?.property_id||extraData?.property_id||'','required')+
+         input('title','Descripción de la avería / labor','text',m?.title||'','required maxlength="300" placeholder="ej. Reparación de fuga en baño principal"')+
+         input('cost_estimate','Costo estimado o factura (RD$)','number',m?.cost_estimate?(m.cost_estimate/100):0,'min="0" step="0.01"')+
+         input('reported_date','Fecha del reporte','date',m?.reported_date||S.today,'required')+
+         input('contractor_technician','Técnico / Proveedor de servicio','text',m?.contractor_technician||'')+
+         select('status','Estado de atención',[['pending','Pendiente'],['in_progress','En progreso'],['resolved','Resuelto']],m?.status||'pending')+
+         area('notes','Detalle de los trabajos o piezas sustituidas',m?.notes||'');
+  help='Controle los mantenimientos preventivos y correctivos de sus propiedades.';
+}
 $('#modal-content').innerHTML=`<div class="modal-header"><h2>${esc(title)}</h2><button type="button" id="close-modal" aria-label="Cerrar">×</button></div><form id="record-form"><div class="form-grid">${fields}</div><p class="form-help">${esc(help)}</p><div class="error" id="form-error" role="alert"></div><div class="form-actions"><button type="button" id="cancel-modal">Volver</button><button class="primary" type="submit">${submit}</button></div></form>`;
 $('#modal').querySelectorAll('input,textarea,select').forEach(el=>{el.setAttribute('data-clarity-mask','true');el.setAttribute('data-recording-sensitive','true');el.classList.add('fs-mask','dd-privacy-hidden');});
 $('#modal').showModal();
 $('#close-modal').onclick=$('#cancel-modal').onclick=()=>$('#modal').close();
 if(kind==='subscription')$('#f-product_id').onchange=e=>{$('#f-amount').value=S.products.find(p=>p.id===Number(e.target.value)).amount/100};
-$('#record-form').onsubmit=async e=>{e.preventDefault();const btn=e.target.querySelector('[type=submit]');btn.disabled=true;const form=new FormData(e.target),data={...Object.fromEntries(form),...initial};if(form.has('allow_early_close'))data.allow_early_close=true;if(form.has('close_contracts'))data.close_contracts=true;if(kind==='view_termination'){$('#modal').close();return;}if(['member','edit_member'].includes(kind)){data.departments=form.getAll('departments').map(Number);data.projects=form.getAll('projects').map(Number);data.collections=form.has('collections')}try{if(['expense_payment','pay_payroll'].includes(kind)){const accId=data.account_id;const acc=S.cash_accounts?.find(a=>String(a.id)===String(accId));if(acc){let payAmount=0;if(kind==='expense_payment')payAmount=Math.round(Number(data.amount||0)*100);else if(kind==='pay_payroll'){const p=(S.farm_payrolls||[]).find(x=>x.id===Number(data.id));if(p)payAmount=p.amount;}if(payAmount>acc.balance){throw Error(`Saldo insuficiente en «${acc.name}». Saldo disponible: ${accountMoney(acc.balance,acc.currency)}.`);}}}if(kind==='password')await api('password',data);else if(kind==='company'){data.company_id=cid;const created=await api('company',data);$('#modal').close();await boot();setActiveCompany(created.company_id);await refresh();toast('Empresa creada correctamente.')}else if(kind==='edit_company'){const targetId=Number(initial.id||data.id||cid);data.id=targetId;data.target_company_id=targetId;data.demo=form.has('demo');const targetComp=me?.companies?.find(x=>x.id===targetId)||{};data.logo=targetComp.logo||(targetId===Number(cid)?S.company_profile?.logo:'')||'';if(data.remove_logo)data.logo='';const file=$('#company-logo-modal')?.files?.[0];if(file){if(file.size>500000)throw Error('El logo supera 500 KB.');data.logo=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(Error('No se pudo leer el logo.'));reader.readAsDataURL(file)})}await save('edit_company',data);me=await api('me');$('#modal').close();await refresh();toast('Ficha de empresa actualizada correctamente.')}else if(kind==='terminate_employee'){await save('terminate_employee',data);$('#modal').close();toast('Colaborador dado de baja correctamente.');}else{await save(kind==='edit_member'?'member':kind,data);$('#modal').close();toast('Guardado correctamente.')}}catch(err){$('#form-error').textContent=err.message;btn.disabled=false}}}
+$('#record-form').onsubmit=async e=>{e.preventDefault();const btn=e.target.querySelector('[type=submit]');btn.disabled=true;const form=new FormData(e.target),data={...Object.fromEntries(form),...initial};if(form.has('allow_early_close'))data.allow_early_close=true;if(form.has('close_contracts'))data.close_contracts=true;if(kind==='view_termination'){$('#modal').close();return;}if(['member','edit_member'].includes(kind)){data.departments=form.getAll('departments').map(Number);data.projects=form.getAll('projects').map(Number);data.collections=form.has('collections')}try{if(['expense_payment','pay_payroll'].includes(kind)){const accId=data.account_id;const acc=S.cash_accounts?.find(a=>String(a.id)===String(accId));if(acc){let payAmount=0;if(kind==='expense_payment')payAmount=Math.round(Number(data.amount||0)*100);else if(kind==='pay_payroll'){const p=(S.farm_payrolls||[]).find(x=>x.id===Number(data.id));if(p)payAmount=p.amount;}if(payAmount>acc.balance){throw Error(`Saldo insuficiente en «${acc.name}». Saldo disponible: ${accountMoney(acc.balance,acc.currency)}.`);}}}if(kind==='password')await api('password',data);else if(kind==='company'){data.company_id=cid;const created=await api('company',data);$('#modal').close();await boot();setActiveCompany(created.company_id);await refresh();toast('Empresa creada correctamente.')}else if(kind==='edit_company'){const targetId=Number(initial.id||data.id||cid);data.id=targetId;data.target_company_id=targetId;data.demo=form.has('demo');const targetComp=me?.companies?.find(x=>x.id===targetId)||{};data.logo=targetComp.logo||(targetId===Number(cid)?S.company_profile?.logo:'')||'';if(data.remove_logo)data.logo='';const file=$('#company-logo-modal')?.files?.[0];if(file){if(file.size>500000)throw Error('El logo supera 500 KB.');data.logo=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(Error('No se pudo leer el logo.'));reader.readAsDataURL(file)})}await save('edit_company',data);me=await api('me');$('#modal').close();await refresh();toast('Ficha de empresa actualizada correctamente.')}else if(kind==='terminate_employee'){await save('terminate_employee',data);$('#modal').close();toast('Colaborador dado de baja correctamente.');}else{const reActionMap={re_property:'create_re_property',re_lease:'create_re_lease',re_sale:'create_re_sale',re_visit:'create_re_visit',re_maintenance:'create_re_maintenance',edit_member:'member'};const actionName=reActionMap[kind]||kind;await save(actionName,data);$('#modal').close();toast('Guardado correctamente.')}}catch(err){$('#form-error').textContent=err.message;btn.disabled=false}}}
 let reportFilters={type:'expenses',start:'',end:'',department:'',project:'',person:'',status:'',search:''};
 let currentReport=null;
 function reportColumns(result){const type=reportFilters.type,op=result.definition.operational;const headers=['Fecha','Registro','Concepto',...(op?['Departamento','Proyecto']:['Cliente']),...(result.definition.person?['Persona']:[]),'Estado',...(type==='worklogs'?['Horas']:type==='tasks'?[]:['Importe RD$','Pagado RD$','Saldo RD$']),'Referencia / observaciones'];const values=r=>[r.date,r.id,r.concept,...(op?[r.department,r.project]:[r.customer]),...(result.definition.person?[r.person]:[]),statuses[r.status]||r.status,...(type==='worklogs'?[(r.minutes/60).toFixed(2)]:type==='tasks'?[]:[(r.amount/100).toFixed(2),(r.paid/100).toFixed(2),(r.balance/100).toFixed(2)]),r.reference||r.notes];return {headers,rows:result.records.map(values)}}
@@ -2962,7 +3114,7 @@ function filesButton(entity,id){return `<button class="small" data-action="files
 async function openFiles(entity,id){
  const selectedCompany=Number(cid);let result;
  try{result=await api('attachments?'+new URLSearchParams({company_id:selectedCompany,entity,entity_id:id}))}catch(err){toast(err.message);return}
- const labels={expenses:'Gasto',expense_payments:'Pago de gasto',charges:'Cargo por cobrar',payments:'Pago recibido',payrolls:'Nómina',payroll_payments:'Pago de nómina',farm_payrolls:'Nómina por '+unitLabel(false,true),employees:'Personal / Identificación',farms:unitLabel()+' / Documentos y planos'};
+ const labels={expenses:'Gasto',expense_payments:'Pago de gasto',charges:'Cargo por cobrar',payments:'Pago recibido',payrolls:'Nómina',payroll_payments:'Pago de nómina',farm_payrolls:'Nómina por '+unitLabel(false,true),employees:'Personal / Identificación',farms:unitLabel()+' / Documentos y planos',re_properties:'Inmueble / Título y fotos',re_leases:'Contrato de alquiler'};
  $('#modal-content').innerHTML=`<div class="modal-header"><h2>Comprobantes y adjuntos · ${labels[entity]||entity} #${id}</h2><button id="close-files" type="button" aria-label="Cerrar">×</button></div><p class="form-help">Fotos JPG, PNG, WebP o HEIC; documentos PDF o Word DOCX. Máximo 5 MB por archivo y 25 MB por empresa. Subir una factura no aprueba ni registra un pago.</p><div class="file-list">${result.files.length?result.files.map(f=>`<article class="file-card">${['image/jpeg','image/png','image/webp'].includes(f.mime)?`<img class="invoice-preview" src="/api/attachment?id=${f.id}&preview=1" alt="Vista previa de ${esc(f.filename)}">`:''}<div><strong>${esc(f.filename)}</strong><p class="muted">${(f.size/1024).toFixed(1)} KB · ${esc(new Date(f.created_at).toLocaleString('es-DO'))}</p><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px"><a href="/api/attachment?id=${f.id}" download>Descargar / abrir</a>${canReview()||canAdmin()?`<button type="button" class="small" data-file-edit="${f.id}" data-filename="${esc(f.filename)}">✏ Cambiar nombre</button><button type="button" class="small" data-file-delete="${f.id}">🗑 Eliminar</button>`:''}</div></div></article>`).join(''):'<div class="empty">Todavía no hay comprobantes adjuntos.</div>'}</div><form id="upload-files"><label for="invoice-files">Agregar fotos o documentos</label><input id="invoice-files" type="file" accept=".jpg,.jpeg,.png,.webp,.heic,.heif,.pdf,.docx" multiple required><div class="error" id="upload-error" role="alert"></div><div id="upload-progress" class="form-help" aria-live="polite"></div><div class="form-actions"><button class="primary" type="submit">Subir archivos</button></div></form>`;
  if(!$('#modal').open)$('#modal').showModal();$('#close-files').onclick=()=>$('#modal').close();
  document.querySelectorAll('[data-file-edit]').forEach(b=>b.onclick=async()=>{
@@ -4020,6 +4172,342 @@ function showReportQueueJobModal(jobId){
   };
 }
 
+function realEstateView(){
+  const properties = S.re_properties || [];
+  const leases = S.re_leases || [];
+  const sales = S.re_sales || [];
+  const visits = S.re_visits || [];
+  const maintenances = S.re_maintenances || [];
+
+  const propTypeLabels = {
+    apartment: 'Apartamento',
+    house: 'Casa',
+    villa: 'Villa',
+    commercial: 'Local comercial',
+    office: 'Oficina',
+    land: 'Solar / Terreno',
+    industrial: 'Nave industrial',
+    building: 'Edificio completo'
+  };
+  const propStatusBadges = {
+    available: '<span class="badge green">Disponible</span>',
+    rented: '<span class="badge" style="background:#0284c7;color:#fff">Alquilado</span>',
+    sold: '<span class="badge gray">Vendido</span>',
+    reserved: '<span class="badge orange">Reservado</span>',
+    maintenance: '<span class="badge orange">En mantenimiento</span>'
+  };
+  const propOpLabels = {
+    rent: 'Alquiler',
+    sale: 'Venta',
+    both: 'Alquiler / Venta'
+  };
+  const leaseStatusBadges = {
+    active: '<span class="badge green">Activo</span>',
+    expired: '<span class="badge orange">Vencido</span>',
+    terminated: '<span class="badge gray">Finalizado</span>'
+  };
+  const saleStatusBadges = {
+    closed: '<span class="badge green">Cerrado</span>',
+    reserved: '<span class="badge orange">Reservado</span>',
+    cancelled: '<span class="badge gray">Cancelado</span>'
+  };
+  const visitInterestBadges = {
+    high: '<span class="badge orange">Alto interés 🔥</span>',
+    medium: '<span class="badge blue">Interés regular</span>',
+    low: '<span class="badge gray">Poco interés</span>',
+    offer_made: '<span class="badge green">Oferta presentada 📝</span>'
+  };
+  const visitStatusBadges = {
+    completed: '<span class="badge green">Realizada</span>',
+    scheduled: '<span class="badge blue">Programada</span>',
+    cancelled: '<span class="badge gray">Cancelada</span>'
+  };
+  const maintStatusBadges = {
+    pending: '<span class="badge orange">Pendiente</span>',
+    in_progress: '<span class="badge blue">En progreso</span>',
+    resolved: '<span class="badge green">Resuelto ✓</span>'
+  };
+
+  const totalProps = properties.length;
+  const availProps = properties.filter(p => p.status === 'available').length;
+  const rentedProps = properties.filter(p => p.status === 'rented').length;
+  const soldProps = properties.filter(p => p.status === 'sold').length;
+
+  const activeLeases = leases.filter(l => l.status === 'active');
+  const totalMonthlyRent = activeLeases.reduce((sum, l) => sum + (l.monthly_rent || 0), 0);
+  const closedSales = sales.filter(s => s.status === 'closed');
+  const totalSalesVolume = closedSales.reduce((sum, s) => sum + (s.sale_price || 0), 0);
+  const totalCommissions = closedSales.reduce((sum, s) => sum + (s.commission_amount || 0), 0);
+  const pendingMaints = maintenances.filter(m => m.status !== 'resolved').length;
+
+  const headerActions = `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      ${openButton('+ Nuevo inmueble', 're_property')}
+      ${openButton('+ Contrato de alquiler', 're_lease')}
+      ${openButton('+ Registrar venta', 're_sale')}
+      <button type="button" class="small" data-open="re_visit">+ Agendar visita</button>
+      <button type="button" class="small" data-open="re_maintenance">+ Mantenimiento</button>
+      ${totalProps === 0 ? `<button type="button" class="primary small" data-action="seed_demo_real_estate">⚡ Cargar datos de prueba</button>` : ''}
+    </div>
+  `;
+
+  const kpis = `
+    <div class="cards" style="margin-bottom:16px">
+      <article class="card highlight">
+        <div class="card-title">Inmuebles en Cartera <span>🏢</span></div>
+        <div class="card-value">${totalProps}</div>
+        <div class="card-note">${availProps} disponibles · ${rentedProps} alquilados · ${soldProps} vendidos</div>
+      </article>
+      <article class="card">
+        <div class="card-title">Renta Mensual en Contratos <span>📑</span></div>
+        <div class="card-value">${money(totalMonthlyRent)}</div>
+        <div class="card-note">${activeLeases.length} contrato(s) activos de arrendamiento</div>
+      </article>
+      <article class="card">
+        <div class="card-title">Comisiones de Ventas <span>🤝</span></div>
+        <div class="card-value">${money(totalCommissions)}</div>
+        <div class="card-note">${closedSales.length} cierre(s) sobre ${money(totalSalesVolume)} en ventas</div>
+      </article>
+      <article class="card">
+        <div class="card-title">Incidencias y Visitas <span>🛠️</span></div>
+        <div class="card-value">${pendingMaints}</div>
+        <div class="card-note">${pendingMaints} mantenimiento(s) pendientes · ${visits.length} visitas</div>
+      </article>
+    </div>
+  `;
+
+  const demoNotice = totalProps === 0 ? `
+    <div class="notice" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:16px;background:rgba(15,118,110,0.08);border-left:4px solid var(--brand-accent,#0f766e);padding:14px 18px;border-radius:6px">
+      <div>
+        <strong style="font-size:15px;color:var(--brand-accent,#0f766e)">🏢 ¿Desea probar el módulo de Bienes Raíces de inmediato?</strong>
+        <div style="font-size:13px;margin-top:4px">Cargue con 1 clic 4 propiedades completas (Apartamento de lujo, Penthouse en venta, Local comercial, Villa de playa), contratos de alquiler con cobro directo a Contabilidad y visitas de prospectos.</div>
+      </div>
+      <button type="button" class="primary" data-action="seed_demo_real_estate" style="white-space:nowrap;padding:8px 16px;font-weight:600">⚡ Cargar datos de prueba de Bienes Raíces</button>
+    </div>
+  ` : '';
+
+  const subnav = `
+    <div class="sub-nav" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;align-items:center">
+      <button type="button" class="${reTab==='properties'?'primary':''}" data-re-tab="properties">🏢 Catálogo de Inmuebles (${properties.length})</button>
+      <button type="button" class="${reTab==='leases'?'primary':''}" data-re-tab="leases">📑 Alquileres y Contratos (${leases.length})</button>
+      <button type="button" class="${reTab==='sales'?'primary':''}" data-re-tab="sales">🤝 Ventas y Cierres (${sales.length})</button>
+      <button type="button" class="${reTab==='visits'?'primary':''}" data-re-tab="visits">🗓️ Visitas e Interesados (${visits.length})</button>
+      <button type="button" class="${reTab==='maintenance'?'primary':''}" data-re-tab="maintenance">🛠️ Mantenimiento (${maintenances.length})</button>
+      ${totalProps > 0 ? `<button type="button" class="small secondary" data-action="seed_demo_real_estate" title="Añadir o refrescar datos de prueba" style="margin-left:auto">+ Recargar demo</button>` : ''}
+    </div>
+  `;
+
+  let body = '';
+
+  if(reTab === 'properties'){
+    let filtered = properties;
+    if(reSearch){
+      const q = reSearch.toLowerCase();
+      filtered = filtered.filter(p => (p.title||'').toLowerCase().includes(q) || (p.code||'').toLowerCase().includes(q) || (p.address||'').toLowerCase().includes(q) || (p.city||'').toLowerCase().includes(q));
+    }
+    if(reTypeFilter) filtered = filtered.filter(p => p.property_type === reTypeFilter);
+    if(reStatusFilter) filtered = filtered.filter(p => p.status === reStatusFilter);
+    if(reOpFilter) filtered = filtered.filter(p => p.listing_type === reOpFilter || p.listing_type === 'both');
+
+    const filterToolbar = `
+      <div class="toolbar" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
+        <div class="field" style="flex:2;min-width:180px">
+          <label for="re-search">Buscar inmueble</label>
+          <input type="search" id="re-search" value="${esc(reSearch)}" placeholder="Título, código, sector, calle...">
+        </div>
+        <div class="field" style="flex:1;min-width:140px">
+          <label for="re-type-filter">Tipo</label>
+          <select id="re-type-filter">
+            <option value="">Todos los tipos</option>
+            <option value="apartment" ${reTypeFilter==='apartment'?'selected':''}>Apartamento</option>
+            <option value="house" ${reTypeFilter==='house'?'selected':''}>Casa</option>
+            <option value="villa" ${reTypeFilter==='villa'?'selected':''}>Villa</option>
+            <option value="commercial" ${reTypeFilter==='commercial'?'selected':''}>Local comercial</option>
+            <option value="office" ${reTypeFilter==='office'?'selected':''}>Oficina</option>
+            <option value="land" ${reTypeFilter==='land'?'selected':''}>Solar / Terreno</option>
+            <option value="industrial" ${reTypeFilter==='industrial'?'selected':''}>Nave industrial</option>
+            <option value="building" ${reTypeFilter==='building'?'selected':''}>Edificio</option>
+          </select>
+        </div>
+        <div class="field" style="flex:1;min-width:140px">
+          <label for="re-op-filter">Modalidad</label>
+          <select id="re-op-filter">
+            <option value="">Todas</option>
+            <option value="rent" ${reOpFilter==='rent'?'selected':''}>Alquiler</option>
+            <option value="sale" ${reOpFilter==='sale'?'selected':''}>Venta</option>
+          </select>
+        </div>
+        <div class="field" style="flex:1;min-width:140px">
+          <label for="re-status-filter">Estado</label>
+          <select id="re-status-filter">
+            <option value="">Todos los estados</option>
+            <option value="available" ${reStatusFilter==='available'?'selected':''}>Disponible</option>
+            <option value="rented" ${reStatusFilter==='rented'?'selected':''}>Alquilado</option>
+            <option value="sold" ${reStatusFilter==='sold'?'selected':''}>Vendido</option>
+            <option value="reserved" ${reStatusFilter==='reserved'?'selected':''}>Reservado</option>
+            <option value="maintenance" ${reStatusFilter==='maintenance'?'selected':''}>En mantenimiento</option>
+          </select>
+        </div>
+      </div>
+    `;
+
+    const cardsHtml = filtered.length ? `
+      <div class="property-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px">
+        ${filtered.map(p => {
+          const specs = [];
+          if(p.bedrooms) specs.push(`🛏️ ${p.bedrooms} hab`);
+          if(p.bathrooms) specs.push(`🚿 ${p.bathrooms} baños`);
+          if(p.parking_spots) specs.push(`🚗 ${p.parking_spots} parq`);
+          if(p.area_sqm) specs.push(`📐 ${p.area_sqm} m²`);
+          const agentName = lookup('employees', p.agent_id);
+
+          return `
+            <article class="property-card" style="border:1px solid var(--border);border-radius:12px;padding:16px;background:var(--card);display:flex;flex-direction:column;gap:10px;box-shadow:0 2px 5px rgba(0,0,0,0.03)">
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:6px">
+                <span style="font-weight:700;font-size:13px;color:var(--brand-accent,#0f766e)">${esc(p.code||'PROP-'+p.id)}</span>
+                <div style="display:flex;gap:4px">${propStatusBadges[p.status]||badge(p.status)}</div>
+              </div>
+              <h3 style="margin:0;font-size:16px;line-height:1.3">${esc(p.title)}</h3>
+              <div style="font-size:13px;color:var(--muted);display:flex;align-items:center;gap:4px">
+                <span>📍</span> <span>${esc(p.address||'Sin dirección')}${p.city ? ' · '+esc(p.city) : ''}</span>
+              </div>
+              <div style="font-size:12px;font-weight:600;color:var(--muted)">
+                ${propTypeLabels[p.property_type]||p.property_type} · ${propOpLabels[p.listing_type]||p.listing_type}
+              </div>
+              ${specs.length ? `<div style="display:flex;gap:8px;flex-wrap:wrap;font-size:12px;background:var(--surface,#f8fafc);padding:6px 10px;border-radius:6px;color:var(--text,#334155)">${specs.join(' · ')}</div>` : ''}
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:auto;padding-top:6px;border-top:1px solid var(--border)">
+                <div>
+                  ${p.price_rent > 0 ? `<div><span style="font-size:11px;color:var(--muted)">Renta:</span> <strong style="color:var(--brand-accent,#0f766e)">${money(p.price_rent)}/m</strong></div>` : ''}
+                  ${p.price_sale > 0 ? `<div><span style="font-size:11px;color:var(--muted)">Venta:</span> <strong>${money(p.price_sale)}</strong></div>` : ''}
+                </div>
+                ${agentName !== 'Sin asignar' ? `<div style="font-size:11px;color:var(--muted);text-align:right">Agente:<br><strong>${esc(agentName)}</strong></div>` : ''}
+              </div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">
+                <button type="button" class="small" data-action="edit_re_property" data-id="${p.id}">✏️ Editar</button>
+                ${p.status==='available' && ['rent','both'].includes(p.listing_type) ? `<button type="button" class="small primary" data-open="re_lease" data-property-id="${p.id}">📑 Alquilar</button>` : ''}
+                ${p.status==='available' && ['sale','both'].includes(p.listing_type) ? `<button type="button" class="small" data-open="re_sale" data-property-id="${p.id}">🤝 Vender</button>` : ''}
+                <button type="button" class="small" data-open="re_visit" data-property-id="${p.id}">🗓️ Visita</button>
+                <button type="button" class="small" data-open="re_maintenance" data-property-id="${p.id}">🛠️</button>
+                ${filesButton('re_properties', p.id)}
+                <button type="button" class="small danger" data-action="delete_re_property" data-id="${p.id}" title="Eliminar inmueble">🗑️</button>
+              </div>
+            </article>
+          `;
+        }).join('')}
+      </div>
+    ` : '<div class="empty">No hay inmuebles que coincidan con la búsqueda. Haga clic en «+ Nuevo inmueble» o en «Cargar datos de prueba».</div>';
+
+    body = panel('Catálogo de Inmuebles', filterToolbar + cardsHtml, openButton('+ Nuevo inmueble', 're_property'));
+  }
+
+  else if(reTab === 'leases'){
+    const rows = leases.map(l => {
+      const prop = properties.find(p => p.id === l.property_id);
+      const propTitle = prop ? `${prop.code ? prop.code+' · ' : ''}${prop.title}` : `Inmueble #${l.property_id}`;
+      return `
+        <tr>
+          <td><strong>${esc(propTitle)}</strong><div class="muted">${esc(prop?.city||'')}</div></td>
+          <td><strong>${esc(l.tenant_name)}</strong><div class="muted">${esc(l.tenant_phone||'')} ${l.tenant_document ? '· Doc: '+esc(l.tenant_document) : ''}</div></td>
+          <td><strong>${money(l.monthly_rent)}</strong></td>
+          <td>${money(l.deposit_amount)}</td>
+          <td>${displayDate(l.start_date)} – ${displayDate(l.end_date)}</td>
+          <td>Día ${l.payment_day} de mes</td>
+          <td>${leaseStatusBadges[l.status]||badge(l.status)}</td>
+          <td>
+            <div style="display:flex;gap:4px;flex-wrap:wrap">
+              ${l.status==='active' ? `<button class="small primary" data-action="charge_lease_rent" data-id="${l.id}" title="Generar cuenta por cobrar mensual en Contabilidad">⚡ Cobrar mes</button>` : ''}
+              <button class="small" data-action="edit_re_lease" data-id="${l.id}">✏️ Editar</button>
+              ${l.status==='active' ? `<button class="small" data-action="terminate_re_lease" data-id="${l.id}" title="Finalizar contrato y liberar inmueble">⏹️ Rescindir</button>` : ''}
+              ${filesButton('re_leases', l.id)}
+              <button class="small danger" data-action="delete_re_lease" data-id="${l.id}">🗑️</button>
+            </div>
+          </td>
+        </tr>
+      `;
+    });
+    body = panel('Contratos de Arrendamiento / Alquiler', table(['Inmueble','Inquilino / Contacto','Renta Mensual','Depósito','Vigencia','Día de Pago','Estado','Acciones'], rows, 'Todavía no hay contratos de alquiler registrados.'), openButton('+ Contrato de alquiler', 're_lease'));
+  }
+
+  else if(reTab === 'sales'){
+    const rows = sales.map(s => {
+      const prop = properties.find(p => p.id === s.property_id);
+      const propTitle = prop ? `${prop.code ? prop.code+' · ' : ''}${prop.title}` : `Inmueble #${s.property_id}`;
+      const agentName = lookup('employees', s.agent_id);
+      return `
+        <tr>
+          <td>${displayDate(s.closing_date)}</td>
+          <td><strong>${esc(propTitle)}</strong></td>
+          <td><strong>${esc(s.buyer_name)}</strong><div class="muted">${esc(s.buyer_phone||'')} ${s.buyer_document ? '· RNC/Doc: '+esc(s.buyer_document) : ''}</div></td>
+          <td><strong>${money(s.sale_price)}</strong></td>
+          <td><strong>${money(s.commission_amount)}</strong><div class="muted">${s.commission_rate ? s.commission_rate+'%' : ''}</div></td>
+          <td>${esc(agentName)}</td>
+          <td>${saleStatusBadges[s.status]||badge(s.status)}</td>
+          <td>
+            <div style="display:flex;gap:4px;flex-wrap:wrap">
+              <button class="small" data-action="edit_re_sale" data-id="${s.id}">✏️ Editar</button>
+              <button class="small danger" data-action="delete_re_sale" data-id="${s.id}">🗑️</button>
+            </div>
+          </td>
+        </tr>
+      `;
+    });
+    body = panel('Ventas y Cierres Inmobiliarios', table(['Fecha Cierre','Inmueble','Comprador / Contacto','Precio de Venta','Comisión Agencia','Agente Responsable','Estado','Acciones'], rows, 'Todavía no hay ventas registradas.'), openButton('+ Registrar venta', 're_sale'));
+  }
+
+  else if(reTab === 'visits'){
+    const rows = visits.map(v => {
+      const prop = properties.find(p => p.id === v.property_id);
+      const propTitle = prop ? `${prop.code ? prop.code+' · ' : ''}${prop.title}` : `Inmueble #${v.property_id}`;
+      const agentName = lookup('employees', v.agent_id);
+      return `
+        <tr>
+          <td>${displayDate(v.visit_date)}</td>
+          <td><strong>${esc(propTitle)}</strong></td>
+          <td><strong>${esc(v.client_name)}</strong><div class="muted">${esc(v.client_phone||'')}</div></td>
+          <td>${visitInterestBadges[v.interest_level]||v.interest_level}</td>
+          <td>${esc(agentName)}</td>
+          <td style="max-width:240px"><div style="font-size:13px">${esc(v.feedback||'Sin observaciones')}</div></td>
+          <td>${visitStatusBadges[v.status]||badge(v.status)}</td>
+          <td>
+            <div style="display:flex;gap:4px;flex-wrap:wrap">
+              <button class="small" data-action="edit_re_visit" data-id="${v.id}">✏️ Editar</button>
+              <button class="small danger" data-action="delete_re_visit" data-id="${v.id}">🗑️</button>
+            </div>
+          </td>
+        </tr>
+      `;
+    });
+    body = panel('Visitas e Interesados en Propiedades', table(['Fecha','Inmueble','Cliente Interesado','Nivel de Interés','Agente','Comentarios / Feedback','Estado','Acciones'], rows, 'Todavía no hay visitas agendadas.'), openButton('+ Agendar visita', 're_visit'));
+  }
+
+  else if(reTab === 'maintenance'){
+    const rows = maintenances.map(m => {
+      const prop = properties.find(p => p.id === m.property_id);
+      const propTitle = prop ? `${prop.code ? prop.code+' · ' : ''}${prop.title}` : `Inmueble #${m.property_id}`;
+      return `
+        <tr>
+          <td>${displayDate(m.reported_date)}</td>
+          <td><strong>${esc(propTitle)}</strong></td>
+          <td><strong>${esc(m.title)}</strong><div class="muted">${esc(m.notes||'')}</div></td>
+          <td>${money(m.cost_estimate)}</td>
+          <td>${esc(m.contractor_technician||'Sin asignar')}</td>
+          <td>${maintStatusBadges[m.status]||badge(m.status)}</td>
+          <td>
+            <div style="display:flex;gap:4px;flex-wrap:wrap">
+              ${m.status !== 'resolved' ? `<button class="small primary" data-action="resolve_re_maintenance" data-id="${m.id}">✓ Resuelto</button>` : ''}
+              <button class="small" data-action="edit_re_maintenance" data-id="${m.id}">✏️ Editar</button>
+              <button class="small danger" data-action="delete_re_maintenance" data-id="${m.id}">🗑️</button>
+            </div>
+          </td>
+        </tr>
+      `;
+    });
+    body = panel('Mantenimiento e Incidencias en Inmuebles', table(['Fecha Reporte','Inmueble','Incidencia / Labor','Costo Estimado','Técnico / Proveedor','Estado','Acciones'], rows, 'No hay incidencias de mantenimiento registradas.'), openButton('+ Reportar mantenimiento', 're_maintenance'));
+  }
+
+  return heading('🏢 Gestión Inmobiliaria y Bienes Raíces', 'Catálogo de propiedades, contratos de arrendamiento, ventas, visitas y mantenimiento.', headerActions) + kpis + demoNotice + subnav + body;
+}
+
 function agricultureView(){
  if(!agFrom){agFrom=start;agTo=end}
  const inPeriod=(day)=>(!agFrom||day>=agFrom)&&(!agTo||day<=agTo);
@@ -4369,8 +4857,13 @@ function companyProfilePanel(){
   ['Proyecto|Proyectos','Proyecto / Obra (Constructoras, proyectos de campo)'],
   ['custom','Personalizado (Escribir término propio)']
  ];
+ const verticals=[
+  ['general','🏬 General / Comercial y Servicios'],
+  ['real_estate','🏢 Inmobiliaria y Bienes Raíces (Propiedades, Alquileres, Ventas)'],
+  ['agriculture','🌱 Agropecuaria y Fincas (Fincas, Cosechas, Labores)']
+ ];
  const matched=presets.find(([val])=>val===`${uSingular}|${uPlural}`)?`${uSingular}|${uPlural}`:'custom';
- return panel('Datos de la empresa activa',`<form id="company-profile-form" class="definition"><div class="form-grid">${input('name','Nombre de empresa','text',company().name,'required maxlength="200"')}${input('group_name','Grupo corporativo / Cuenta dependiente','text',company().group_name||'','maxlength="200"')}${input('tax_id','Identificación / RNC','text',p.tax_id)}${input('phone','Teléfono','text',p.phone)}${input('email','Correo electrónico','email',p.email)}${input('address','Dirección','text',p.address)}<div><label for="f-unit-preset">Tipo de negocio / Modelo operativo</label><select id="f-unit-preset">${presets.map(([v,t])=>`<option value="${esc(v)}" ${v===matched?'selected':''}>${esc(t)}</option>`).join('')}</select></div><div id="custom-unit-fields" style="${matched==='custom'?'':'display:none'}"><div class="form-grid" style="margin-top:8px">${input('unit_singular','Término en singular (ej. Finca, Sucursal, Propiedad)','text',uSingular,'maxlength="50"')}${input('unit_plural','Término en plural (ej. Fincas, Sucursales, Propiedades)','text',uPlural,'maxlength="50"')}</div></div><div><label><input type="checkbox" name="demo" ${company().demo?'checked':''}> Empresa de demostración (datos ficticios)</label></div><div><label for="company-logo">Logo (PNG, JPEG o WebP, hasta 500 KB)</label><input id="company-logo" type="file" accept="image/png,image/jpeg,image/webp">${p.logo?`<img class="company-logo" src="${esc(p.logo)}" alt="Logo de la empresa">`:''}<label><input type="checkbox" name="remove_logo"> Quitar logo</label></div></div><div class="form-actions" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><button class="primary" type="submit">Guardar datos de empresa</button><button type="button" class="secondary" id="btn-reset-company-profile">🔄 Restablecer valores predeterminados del perfil</button></div><p id="company-profile-error" class="error" role="alert"></p></form>`)
+ return panel('Datos de la empresa activa',`<form id="company-profile-form" class="definition"><div class="form-grid">${input('name','Nombre de empresa','text',company().name,'required maxlength="200"')}${input('group_name','Grupo corporativo / Cuenta dependiente','text',company().group_name||'','maxlength="200"')}${select('business_vertical','Módulo especializado / Naturaleza del negocio',verticals,p.business_vertical||'general')}${input('tax_id','Identificación / RNC','text',p.tax_id)}${input('phone','Teléfono','text',p.phone)}${input('email','Correo electrónico','email',p.email)}${input('address','Dirección','text',p.address)}<div><label for="f-unit-preset">Tipo de término operativo</label><select id="f-unit-preset">${presets.map(([v,t])=>`<option value="${esc(v)}" ${v===matched?'selected':''}>${esc(t)}</option>`).join('')}</select></div><div id="custom-unit-fields" style="${matched==='custom'?'':'display:none'}"><div class="form-grid" style="margin-top:8px">${input('unit_singular','Término en singular (ej. Finca, Sucursal, Propiedad)','text',uSingular,'maxlength="50"')}${input('unit_plural','Término en plural (ej. Fincas, Sucursales, Propiedades)','text',uPlural,'maxlength="50"')}</div></div><div><label><input type="checkbox" name="demo" ${company().demo?'checked':''}> Empresa de demostración (datos ficticios)</label></div><div><label for="company-logo">Logo (PNG, JPEG o WebP, hasta 500 KB)</label><input id="company-logo" type="file" accept="image/png,image/jpeg,image/webp">${p.logo?`<img class="company-logo" src="${esc(p.logo)}" alt="Logo de la empresa">`:''}<label><input type="checkbox" name="remove_logo"> Quitar logo</label></div></div><div class="form-actions" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><button class="primary" type="submit">Guardar datos de empresa</button><button type="button" class="secondary" id="btn-reset-company-profile">🔄 Restablecer valores predeterminados del perfil</button></div><p id="company-profile-error" class="error" role="alert"></p></form>`)
 }
 let catalogSearch='',cart={},cartCompany=null,invoiceDraft={};
 function keepInvoiceDraft(){if($('#invoice-form'))invoiceDraft=Object.fromEntries(new FormData($('#invoice-form')))}
@@ -4390,6 +4883,18 @@ function bindCommerce(){
     if($('#f-unit_plural'))$('#f-unit_plural').value=plu;
    }
   };
+  const vertSel=$('#f-business_vertical');
+  if(vertSel){
+   vertSel.onchange=e=>{
+    if(e.target.value==='real_estate' && presetSel.value.startsWith('Unidad operativa')){
+     presetSel.value='Propiedad|Propiedades';
+     presetSel.dispatchEvent(new Event('change'));
+    } else if(e.target.value==='agriculture' && presetSel.value.startsWith('Unidad operativa')){
+     presetSel.value='Finca|Fincas';
+     presetSel.dispatchEvent(new Event('change'));
+    }
+   };
+  }
  }
 
  const form=$('#company-profile-form');if(form)form.onsubmit=async e=>{e.preventDefault();const button=form.querySelector('button[type=submit]')||form.querySelector('button');button.disabled=true;try{const d=Object.fromEntries(new FormData(form));d.logo=S.company_profile?.logo||'';if(d.remove_logo)d.logo='';const file=$('#company-logo').files[0];if(file){if(file.size>500000)throw Error('El logo supera 500 KB.');d.logo=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(Error('No se pudo leer el logo.'));reader.readAsDataURL(file)})}await api('action',{...d,company_id:cid,action:'company_profile'});me=await api('me');await refresh();toast('Empresa actualizada.')}catch(err){$('#company-profile-error').textContent=err.message;button.disabled=false}};

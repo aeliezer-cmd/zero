@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import agriculture, commerce, fiscal, payroll, treasury, ecf, dmca, mailer, gdrive
+import agriculture, commerce, fiscal, payroll, treasury, ecf, dmca, mailer, gdrive, real_estate
 import sys, transfer, report_export, attachments, base64, webbrowser
 import argparse, calendar, datetime as dt, hashlib, hmac, json, os, secrets, sqlite3, threading, time
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
@@ -85,7 +85,7 @@ CREATE INDEX IF NOT EXISTS charges_company ON charges(company_id,due_date);
 CREATE INDEX IF NOT EXISTS audit_company ON audit(company_id,id);
 '''
 
-SCHEMA += agriculture.SCHEMA + commerce.SCHEMA + treasury.SCHEMA + payroll.SCHEMA + ecf.SCHEMA + dmca.SCHEMA + gdrive.SCHEMA
+SCHEMA += agriculture.SCHEMA + commerce.SCHEMA + treasury.SCHEMA + payroll.SCHEMA + ecf.SCHEMA + dmca.SCHEMA + gdrive.SCHEMA + real_estate.SCHEMA
 
 def initialize(seed=True):
     new_directory=not DB.parent.exists()
@@ -100,6 +100,7 @@ def initialize(seed=True):
         attachments.migrate(c)
         commerce.migrate(c)
         agriculture.migrate(c)
+        real_estate.migrate(c)
         ecf.migrate(c)
         gdrive.migrate(c)
         task_cols = {row[1] for row in c.execute("PRAGMA table_info(tasks)").fetchall()}
@@ -251,6 +252,7 @@ def state(c,uid,cid):
         result['invoices']=rows(c,'SELECT id,charge_id,ncf_asignado,tipo_ncf FROM sales_invoices WHERE company_id=? ORDER BY id DESC',(cid,))
     if m['collections'] or m['role']=='admin': result['secuencias_ncf']=fiscal.sequences(sys.modules[__name__],c,cid)
     result.update(agriculture.state(sys.modules[__name__],c,uid,cid,m))
+    result.update(real_estate.state(sys.modules[__name__],c,uid,cid,m))
     result.update(payroll.state(sys.modules[__name__],c,cid,m))
     result.update(treasury.state(sys.modules[__name__],c,cid,m))
     if m['collections'] or m['role']=='admin': result.update(ecf.state(sys.modules[__name__],c,cid,m))
@@ -330,6 +332,7 @@ def mutate(c,uid,cid,action,d):
     if action=='gdrive_test': return gdrive.test_connection(sys.modules[__name__],c,uid,cid,d)
     if action=='gdrive_upload': return gdrive.upload_backup(sys.modules[__name__],c,uid,cid,d)
     if action in agriculture.ACTIONS: return agriculture.mutate(sys.modules[__name__],c,uid,cid,action,d)
+    if action in real_estate.ACTIONS: return real_estate.mutate(sys.modules[__name__],c,uid,cid,action,d)
     if action=='edit_expense':
         m=membership(c,uid,cid,2)
         item=ref(c,'expenses',d.get('id'),cid);assert_scope(m,item)

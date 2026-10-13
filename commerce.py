@@ -8,7 +8,7 @@ import attachments
 import fiscal
 TABLES=('company_profiles','secuencias_ncf','sales_invoices')
 SCHEMA=fiscal.SCHEMA+'''
-CREATE TABLE IF NOT EXISTS company_profiles(id INTEGER PRIMARY KEY,company_id INTEGER NOT NULL UNIQUE REFERENCES companies(id),phone TEXT NOT NULL DEFAULT '',email TEXT NOT NULL DEFAULT '',address TEXT NOT NULL DEFAULT '',tax_id TEXT NOT NULL DEFAULT '',logo TEXT NOT NULL DEFAULT '',unit_singular TEXT NOT NULL DEFAULT 'Unidad operativa',unit_plural TEXT NOT NULL DEFAULT 'Unidades operativas');
+CREATE TABLE IF NOT EXISTS company_profiles(id INTEGER PRIMARY KEY,company_id INTEGER NOT NULL UNIQUE REFERENCES companies(id),phone TEXT NOT NULL DEFAULT '',email TEXT NOT NULL DEFAULT '',address TEXT NOT NULL DEFAULT '',tax_id TEXT NOT NULL DEFAULT '',logo TEXT NOT NULL DEFAULT '',unit_singular TEXT NOT NULL DEFAULT 'Unidad operativa',unit_plural TEXT NOT NULL DEFAULT 'Unidades operativas',business_vertical TEXT NOT NULL DEFAULT 'general');
 CREATE TABLE IF NOT EXISTS sales_invoices(id INTEGER PRIMARY KEY,company_id INTEGER NOT NULL REFERENCES companies(id),charge_id INTEGER NOT NULL UNIQUE REFERENCES charges(id),request_key TEXT NOT NULL UNIQUE,snapshot TEXT NOT NULL,ncf_asignado TEXT,tipo_ncf TEXT,fecha_facturacion TEXT,secuencia_ncf_id INTEGER REFERENCES secuencias_ncf(id),created_by INTEGER NOT NULL REFERENCES users(id),UNIQUE(company_id,ncf_asignado));
 '''
 def migrate(c):
@@ -17,12 +17,14 @@ def migrate(c):
         c.execute("ALTER TABLE company_profiles ADD COLUMN unit_singular TEXT NOT NULL DEFAULT 'Unidad operativa'")
     if cols and 'unit_plural' not in cols:
         c.execute("ALTER TABLE company_profiles ADD COLUMN unit_plural TEXT NOT NULL DEFAULT 'Unidades operativas'")
+    if cols and 'business_vertical' not in cols:
+        c.execute("ALTER TABLE company_profiles ADD COLUMN business_vertical TEXT NOT NULL DEFAULT 'general'")
 
 def profile(core,c,cid):
     p=core.one(c,'SELECT * FROM company_profiles WHERE company_id=?',(cid,))
     if p:
-        return dict(phone=p.get('phone',''),email=p.get('email',''),address=p.get('address',''),tax_id=p.get('tax_id',''),logo=p.get('logo',''),unit_singular=p.get('unit_singular') or 'Unidad operativa',unit_plural=p.get('unit_plural') or 'Unidades operativas')
-    return dict(phone='',email='',address='',tax_id='',logo='',unit_singular='Unidad operativa',unit_plural='Unidades operativas')
+        return dict(phone=p.get('phone',''),email=p.get('email',''),address=p.get('address',''),tax_id=p.get('tax_id',''),logo=p.get('logo',''),unit_singular=p.get('unit_singular') or 'Unidad operativa',unit_plural=p.get('unit_plural') or 'Unidades operativas',business_vertical=p.get('business_vertical') or 'general')
+    return dict(phone='',email='',address='',tax_id='',logo='',unit_singular='Unidad operativa',unit_plural='Unidades operativas',business_vertical='general')
 
 def mutate(core,c,uid,cid,action,d):
     target_cid = int(d.get('id') or d.get('target_company_id') or cid)
@@ -46,11 +48,13 @@ def mutate(core,c,uid,cid,action,d):
         name=core.text(d.get('name'),'Nombre de empresa')
         if any(x['name'].casefold()==name.casefold() for x in core.rows(c,'SELECT name FROM companies WHERE id<>?',(target_cid,))): raise ValueError('Ya existe otra empresa con ese nombre.')
         current_co=core.one(c,'SELECT * FROM companies WHERE id=?',(target_cid,))
+        before=profile(core,c,target_cid)
         group_name=str(d.get('group_name') if 'group_name' in d else (current_co.get('group_name') or '')).strip()[:200]
         unit_singular=core.text(d.get('unit_singular') or 'Unidad operativa','Término singular',100)
         unit_plural=core.text(d.get('unit_plural') or (unit_singular+'s'),'Término plural',100)
+        business_vertical=str(d.get('business_vertical') or before.get('business_vertical') or 'general').strip().lower()[:50]
+        if business_vertical not in ('general','real_estate','agriculture','services','construction'): business_vertical='general'
         values={k:str(d.get(k,'')).strip()[:500] for k in ('phone','email','address','tax_id')}
-        before=profile(core,c,target_cid)
         demo=int(bool(d['demo'])) if 'demo' in d else current_co['demo']
         logo=str(d.get('logo',''))
         if d.get('remove_logo'):
@@ -66,15 +70,21 @@ def mutate(core,c,uid,cid,action,d):
             except (ValueError,KeyError): raise ValueError('Seleccione un logo PNG, JPEG o WebP válido.')
         values['logo']=logo
         c.execute('UPDATE companies SET name=?, group_name=?, demo=? WHERE id=?',(name,group_name,demo,target_cid))
-        c.execute('INSERT INTO company_profiles(company_id,phone,email,address,tax_id,logo,unit_singular,unit_plural) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(company_id) DO UPDATE SET phone=excluded.phone,email=excluded.email,address=excluded.address,tax_id=excluded.tax_id,logo=excluded.logo,unit_singular=excluded.unit_singular,unit_plural=excluded.unit_plural',(target_cid,values['phone'],values['email'],values['address'],values['tax_id'],logo,unit_singular,unit_plural))
-        core.audit(c,uid,target_cid,'editar empresa','companies',target_cid,{'name':name,'group_name':group_name,'demo':demo,'contact':{k:v for k,v in values.items() if k!='logo'},'unit_singular':unit_singular,'unit_plural':unit_plural,'logo_changed':before.get('logo')!=logo})
+        c.execute('''INSERT INTO company_profiles(company_id,phone,email,address,tax_id,logo,unit_singular,unit_plural,business_vertical)
+                     VALUES(?,?,?,?,?,?,?,?,?)
+                     ON CONFLICT(company_id) DO UPDATE SET
+                        phone=excluded.phone,email=excluded.email,address=excluded.address,tax_id=excluded.tax_id,
+                        logo=excluded.logo,unit_singular=excluded.unit_singular,unit_plural=excluded.unit_plural,
+                        business_vertical=excluded.business_vertical''',
+                  (target_cid,values['phone'],values['email'],values['address'],values['tax_id'],logo,unit_singular,unit_plural,business_vertical))
+        core.audit(c,uid,target_cid,'editar empresa','companies',target_cid,{'name':name,'group_name':group_name,'demo':demo,'contact':{k:v for k,v in values.items() if k!='logo'},'unit_singular':unit_singular,'unit_plural':unit_plural,'business_vertical':business_vertical,'logo_changed':before.get('logo')!=logo})
         return {'ok':True,'company_id':target_cid}
     if action=='reset_company_profile':
         before=profile(core,c,target_cid)
-        c.execute('''INSERT INTO company_profiles(company_id,phone,email,address,tax_id,logo,unit_singular,unit_plural)
-                     VALUES(?,?,?,?,?,?,?,?)
-                     ON CONFLICT(company_id) DO UPDATE SET phone='',email='',address='',tax_id='',logo='',unit_singular='Unidad operativa',unit_plural='Unidades operativas'
-                  ''',(target_cid,'','','','','','Unidad operativa','Unidades operativas'))
+        c.execute('''INSERT INTO company_profiles(company_id,phone,email,address,tax_id,logo,unit_singular,unit_plural,business_vertical)
+                     VALUES(?,?,?,?,?,?,?,?,?)
+                     ON CONFLICT(company_id) DO UPDATE SET phone='',email='',address='',tax_id='',logo='',unit_singular='Unidad operativa',unit_plural='Unidades operativas',business_vertical='general'
+                  ''',(target_cid,'','','','','','Unidad operativa','Unidades operativas','general'))
         c.execute('''UPDATE companies SET
                      accent_color='#185b4d',surface_color='#f4f6f3',card_color='#ffffff',text_color='#172f2d',font_scale='100'
                      WHERE id=?''',(target_cid,))
@@ -181,6 +191,7 @@ def mutate(core,c,uid,cid,action,d):
         for t in [
             'gdrive_backups',
             'dmca_notices','ecf_documents','ecf_receptions','ecf_config',
+            're_visits','re_maintenances','re_leases','re_sales','re_properties',
             'farm_payrolls','farm_contracts','farm_jobs','farm_sales','farms',
             'payroll_payments','payroll_adjustments','payrolls','work_contracts','employee_pay_settings','employee_account_entries',
             'cash_movements','cash_accounts',
@@ -195,10 +206,10 @@ def mutate(core,c,uid,cid,action,d):
             try: c.execute(f'DELETE FROM {t} WHERE company_id=?',(target_cid,))
             except sqlite3.OperationalError: pass
 
-        c.execute('''INSERT INTO company_profiles(company_id,phone,email,address,tax_id,logo,unit_singular,unit_plural)
-                     VALUES(?,?,?,?,?,?,?,?)
-                     ON CONFLICT(company_id) DO UPDATE SET phone='',email='',address='',tax_id='',logo='',unit_singular='Unidad operativa',unit_plural='Unidades operativas'
-                  ''',(target_cid,'','','','','','Unidad operativa','Unidades operativas'))
+        c.execute('''INSERT INTO company_profiles(company_id,phone,email,address,tax_id,logo,unit_singular,unit_plural,business_vertical)
+                     VALUES(?,?,?,?,?,?,?,?,?)
+                     ON CONFLICT(company_id) DO UPDATE SET phone='',email='',address='',tax_id='',logo='',unit_singular='Unidad operativa',unit_plural='Unidades operativas',business_vertical='general'
+                  ''',(target_cid,'','','','','','Unidad operativa','Unidades operativas','general'))
 
         c.execute('''UPDATE companies SET
                      accent_color='#185b4d',surface_color='#f4f6f3',card_color='#ffffff',text_color='#172f2d',font_scale='100'
