@@ -259,11 +259,48 @@ function render(){
   const contabPending = ((S.expenses || []).filter(e => e.status === 'proposed').length);
   const activeVertical = S?.company_profile?.business_vertical || 'general';
   const rePropsCount = (S.re_properties || []).length;
+  const reLeasesCount = (S.re_leases || []).length;
+  const farmsCount = (S.farms || []).length;
+
+  let specializedPill = '';
+  if(currentCategory === 'real_estate' || view === 'real_estate' || activeVertical === 'real_estate' || rePropsCount > 0){
+    specializedPill = `
+      <button type="button" class="glass-pill-btn ${currentCategory === 'real_estate' ? 'active' : ''}" data-master-cat="real_estate" title="Bienes Raíces: Inmuebles, alquileres, ventas y visitas">
+        <span class="glass-pill-icon">🏢</span>
+        <div class="glass-pill-text">
+          <span class="glass-pill-title"><span class="title-full">Bienes Raíces</span><span class="title-short">Inmuebles</span></span>
+          <span class="glass-pill-desc">Inmuebles y Rentas</span>
+        </div>
+        ${rePropsCount > 0 ? `<span class="glass-pill-badge" title="${rePropsCount} inmuebles en cartera">${rePropsCount}</span>` : ''}
+      </button>
+    `;
+  } else if(view === 'agriculture' || activeVertical === 'agriculture' || farmsCount > 0){
+    specializedPill = `
+      <button type="button" class="glass-pill-btn ${view === 'agriculture' ? 'active' : ''}" data-view="agriculture" title="Agropecuaria: Fincas, cosechas y labores de campo">
+        <span class="glass-pill-icon">🌱</span>
+        <div class="glass-pill-text">
+          <span class="glass-pill-title"><span class="title-full">Agropecuaria</span><span class="title-short">Fincas</span></span>
+          <span class="glass-pill-desc">Fincas y Campo</span>
+        </div>
+        ${farmsCount > 0 ? `<span class="glass-pill-badge" title="${farmsCount} fincas activas">${farmsCount}</span>` : ''}
+      </button>
+    `;
+  } else {
+    specializedPill = `
+      <button type="button" class="glass-pill-btn" id="btn-master-modules-pill" title="Módulos especializados y adaptativos">
+        <span class="glass-pill-icon">🧩</span>
+        <div class="glass-pill-text">
+          <span class="glass-pill-title"><span class="title-full">Módulos</span><span class="title-short">Módulos</span></span>
+          <span class="glass-pill-desc">Circunstanciales</span>
+        </div>
+      </button>
+    `;
+  }
 
   const floatingMasterBar = `
     <div class="floating-master-bar-container">
       <nav class="floating-master-bar" role="navigation" aria-label="Categorías principales">
-        <button type="button" class="glass-pill-btn ${currentCategory === 'rrhh' ? 'active' : ''}" data-master-cat="rrhh" title="Recursos Humanos: Personal, nóminas y tareas">
+        <button type="button" class="glass-pill-btn ${currentCategory === 'rrhh' && view !== 'agriculture' ? 'active' : ''}" data-master-cat="rrhh" title="Recursos Humanos: Personal, nóminas y tareas">
           <span class="glass-pill-icon">👥</span>
           <div class="glass-pill-text">
             <span class="glass-pill-title"><span class="title-full">Recursos Humanos</span><span class="title-short">RRHH</span></span>
@@ -279,20 +316,16 @@ function render(){
           </div>
           ${contabPending > 0 ? `<span class="glass-pill-badge orange" title="${contabPending} gastos por aprobar">${contabPending}</span>` : ''}
         </button>
-        <button type="button" class="glass-pill-btn ${currentCategory === 'real_estate' ? 'active' : ''}" data-master-cat="real_estate" title="Bienes Raíces: Inmuebles, alquileres, ventas y visitas">
-          <span class="glass-pill-icon">🏢</span>
-          <div class="glass-pill-text">
-            <span class="glass-pill-title"><span class="title-full">Bienes Raíces</span><span class="title-short">Inmuebles</span></span>
-            <span class="glass-pill-desc">Inmuebles y Rentas</span>
-          </div>
-          ${rePropsCount > 0 ? `<span class="glass-pill-badge" title="${rePropsCount} inmuebles en cartera">${rePropsCount}</span>` : ''}
-        </button>
+        ${specializedPill}
         <button type="button" class="glass-pill-btn ${currentCategory === 'administracion' ? 'active' : ''}" data-master-cat="administracion" title="Administración: Empresas, usuarios, red y sistema">
           <span class="glass-pill-icon">⚙️</span>
           <div class="glass-pill-text">
             <span class="glass-pill-title"><span class="title-full">Administración</span><span class="title-short">Admin</span></span>
             <span class="glass-pill-desc">Empresa y Sistema</span>
           </div>
+        </button>
+        <button type="button" class="glass-pill-btn icon-only" id="btn-floating-modules" title="Centro de módulos adaptativos y circunstanciales">
+          <span class="glass-pill-icon">🧩</span>
         </button>
       </nav>
     </div>
@@ -322,6 +355,24 @@ function render(){
       </div>
       <div class="nav-label">ESPACIO DE TRABAJO</div>
       <nav class="nav">${sidebarButtons}</nav>
+
+      <div class="nav-label" style="margin-top:16px">MÓDULOS ESPECIALIZADOS</div>
+      <nav class="nav">
+        <button data-view="real_estate" class="${view==='real_estate'?'active':''}" title="Módulo circunstancial: Inmuebles, alquileres y ventas">
+          <span class="nav-symbol">🏢</span>
+          <span class="nav-text">Bienes Raíces ${rePropsCount>0?`(${rePropsCount})`:''}</span>
+        </button>
+        ${(activeVertical==='agriculture'||farmsCount>0)?`
+        <button data-view="agriculture" class="${view==='agriculture'?'active':''}" title="Módulo adaptativo: Fincas, parcelas y labores">
+          <span class="nav-symbol">🌱</span>
+          <span class="nav-text">Fincas y Campo ${farmsCount>0?`(${farmsCount})`:''}</span>
+        </button>`:''}
+        <button type="button" id="btn-sidebar-modules" class="nav-subtle-btn" title="Explorar y configurar módulos adaptativos">
+          <span class="nav-symbol">🧩</span>
+          <span class="nav-text">Módulos adaptativos…</span>
+        </button>
+      </nav>
+
       <div class="sidebar-bottom">
         <span class="badge">PILOTO LOCAL</span><br>
         Guardado inmediato en SQLite<br>
@@ -337,6 +388,12 @@ function render(){
             ${me.companies.map(c=>`<option value="${c.id}" ${c.id==cid?'selected':''}>${esc(c.name)}</option>`).join('')}
             ${canAdmin()?'<option value="__add_company__">＋ Agregar empresa…</option>':''}
           </select>
+          <button type="button" id="btn-topbar-real-estate" class="small ${view==='real_estate'?'primary':'secondary'} topbar-re-btn" title="Abrir módulo circunstancial de Bienes Raíces (Inmuebles y Rentas)">
+            <span style="font-size:13px">🏢</span> <span class="hide-mobile">Bienes Raíces ${rePropsCount>0?`(${rePropsCount})`:''}</span>
+          </button>
+          <button type="button" id="btn-topbar-modules" class="small secondary topbar-modules-btn" title="Centro de módulos especializados y adaptativos">
+            <span style="font-size:13px">🧩</span> <span class="hide-mobile">Módulos</span>
+          </button>
           <button type="button" id="btn-help-modal" class="small topbar-help-btn" title="Ayuda y Guía">
             <span style="font-size:14px">💡</span> <span class="help-btn-text">Ayuda</span>
           </button>
@@ -372,7 +429,46 @@ function dashboardView(){
     const isAdmin = canAdminCompany(c.id);
     return `<tr><td><strong>${esc(c.name)}</strong> ${isActive ? '<span class="badge green">Activa</span>' : ''}<div class="muted">${esc(c.group_name||'Empresa independiente')}${c.restricted?' · alcance limitado':''}</div></td><td>${money(c.expenses)}</td><td>${money(c.payable)}</td><td>${money(c.collected)}</td><td>${money(c.receivable)}</td><td>${c.hours} h</td><td>${c.late_tasks?badge(c.late_tasks+' pendientes'):'0'}</td><td>${!isActive ? `<button class="small" data-switch-company="${c.id}">Ir a empresa</button>` : ''} ${isAdmin ? action('✏ Ficha / Ajustes', 'edit_company', c.id) : ''}</td></tr>`;
   });
-  return heading('Una mirada a toda la operación',`${esc(company().name)} · Empresa seleccionada`,`<button data-action="refresh">↻ Actualizar</button>`)+`<form id="period-form" class="toolbar"><div class="field"><label for="period-start">Desde</label><input type="date" id="period-start" name="start" value="${start}" required></div><div class="field"><label for="period-end">Hasta</label><input type="date" id="period-end" name="end" value="${end}" required></div><button>Aplicar período</button><span class="muted">Corte: ${displayDate(end)} · actualizado ${esc(new Date(D.updated_at).toLocaleTimeString('es-DO',{timeZone:'America/Santo_Domingo'}))}</span></form><div class="cards">${cards.map(([t,v,n],i)=>`<article class="card ${i===2?'highlight':''}"><div class="card-title">${t}<span>↗</span></div><div class="card-value">${v}</div><div class="card-note">${n}</div></article>`).join('')}</div>`+panel('Empresas de la cuenta y resultados',table(['Empresa / Grupo','Gastos','Por pagar','Cobrado','Por cobrar','Horas','Atrasadas','Acciones'],allRows))+`<div class="two-col">${panel('Cobros que requieren atención',alertList())}${panel('Cómo leer este panel',`<div class="definition">Gastos = importes aprobados, no necesariamente pagados. Pagos pendientes = saldo de gastos aprobados, nóminas y trabajo liberado acumulado al cierre. Cobrado = pagos efectivamente registrados en el período; generar un cargo no aumenta esta cifra.<br><br>Por cobrar = saldo acumulado de cargos iniciados hasta el cierre, descontando pagos fechados hasta ese día. Horas = reportes aprobados. Atrasadas = tareas abiertas vencidas a la fecha actual (${displayDate(D.today)}).<br><br>Los filtros de departamento y proyecto limitan la información operativa; cobros es un permiso independiente de alcance empresarial. Las aprobaciones y estados reflejan su estado actual: este piloto no reconstruye estados históricos de aprobación.</div>`)}</div>`+dashboardPayrollSection()}
+  return heading('Una mirada a toda la operación',`${esc(company().name)} · Empresa seleccionada`,`<button data-action="refresh">↻ Actualizar</button>`)+`<form id="period-form" class="toolbar"><div class="field"><label for="period-start">Desde</label><input type="date" id="period-start" name="start" value="${start}" required></div><div class="field"><label for="period-end">Hasta</label><input type="date" id="period-end" name="end" value="${end}" required></div><button>Aplicar período</button><span class="muted">Corte: ${displayDate(end)} · actualizado ${esc(new Date(D.updated_at).toLocaleTimeString('es-DO',{timeZone:'America/Santo_Domingo'}))}</span></form><div class="cards">${cards.map(([t,v,n],i)=>`<article class="card ${i===2?'highlight':''}"><div class="card-title">${t}<span>↗</span></div><div class="card-value">${v}</div><div class="card-note">${n}</div></article>`).join('')}</div>`+panel('Empresas de la cuenta y resultados',table(['Empresa / Grupo','Gastos','Por pagar','Cobrado','Por cobrar','Horas','Atrasadas','Acciones'],allRows))+`<div class="two-col">${panel('Cobros que requieren atención',alertList())}${panel('Cómo leer este panel',`<div class="definition">Gastos = importes aprobados, no necesariamente pagados. Pagos pendientes = saldo de gastos aprobados, nóminas y trabajo liberado acumulado al cierre. Cobrado = pagos efectivamente registrados en el período; generar un cargo no aumenta esta cifra.<br><br>Por cobrar = saldo acumulado de cargos iniciados hasta el cierre, descontando pagos fechados hasta ese día. Horas = reportes aprobados. Atrasadas = tareas abiertas vencidas a la fecha actual (${displayDate(D.today)}).<br><br>Los filtros de departamento y proyecto limitan la información operativa; cobros es un permiso independiente de alcance empresarial. Las aprobaciones y estados reflejan su estado actual: este piloto no reconstruye estados históricos de aprobación.</div>`)}</div>`+dashboardPayrollSection()+dashboardAdaptiveModulesSection()}
+function dashboardAdaptiveModulesSection(){
+  const activeVertical = S?.company_profile?.business_vertical || 'general';
+  const rePropsCount = (S.re_properties || []).length;
+  const reLeasesCount = (S.re_leases || []).length;
+  const farmsCount = (S.farms || []).length;
+  const farmJobsCount = (S.farm_jobs || []).length;
+
+  return `
+    <div class="panel" style="margin-top:20px">
+      <div class="panel-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <div>
+          <div class="eyebrow">ARQUITECTURA EMPRESARIAL ADAPTATIVA</div>
+          <h3 style="margin:2px 0 0">Módulos Especializados y Circunstanciales</h3>
+          <p class="muted" style="margin:2px 0 0;font-size:12.5px">Módulos de sector que se adaptan a la naturaleza del negocio o se abren de forma circunstancial.</p>
+        </div>
+        <button type="button" class="small secondary" id="btn-dash-modules">🧩 Centro de Módulos</button>
+      </div>
+      <div class="cards" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-top:12px">
+        <article class="card ${activeVertical==='real_estate'?'highlight':''}">
+          <div class="card-title">🏢 Bienes Raíces e Inmobiliaria <span class="badge ${activeVertical==='real_estate'?'green':'blue'}">${activeVertical==='real_estate'?'Naturaleza Principal':'Módulo Circunstancial'}</span></div>
+          <div class="card-value" style="font-size:18px">${rePropsCount} propiedad(es) · ${reLeasesCount} contrato(s)</div>
+          <div class="card-note">Inmuebles en venta y alquiler, cobros de renta en RD$, visitas y reparaciones.</div>
+          <div style="margin-top:12px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+            <button type="button" class="primary small" data-view="real_estate">🏢 Abrir Bienes Raíces →</button>
+            ${rePropsCount===0?`<button type="button" class="secondary small" data-action="seed_demo_real_estate">⚡ Cargar 4 Inmuebles Demo</button>`:''}
+          </div>
+        </article>
+        <article class="card ${activeVertical==='agriculture'?'highlight':''}">
+          <div class="card-title">🌱 Agropecuaria y Labores <span class="badge ${activeVertical==='agriculture'?'green':'blue'}">${activeVertical==='agriculture'?'Naturaleza Principal':'Módulo Circunstancial'}</span></div>
+          <div class="card-value" style="font-size:18px">${farmsCount} finca(s) · ${farmJobsCount} labores</div>
+          <div class="card-note">Parcelas agrícolas, cosechas en quintales/cajas y liquidación de jornales de campo.</div>
+          <div style="margin-top:12px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+            <button type="button" class="secondary small" data-view="agriculture">🌱 Abrir Fincas y Labores →</button>
+          </div>
+        </article>
+      </div>
+    </div>
+  `;
+}
 function dashboardPayrollSection(){
   const farmPayrolls=S.farm_payrolls||[],regPayrolls=S.payrolls||[];
   const farmPending=farmPayrolls.filter(p=>p.status==='pending').reduce((n,p)=>n+p.amount,0);
@@ -2225,6 +2321,40 @@ function bind(){
   $('#logout').onclick=async()=>{await api('logout',{});me=null;login()};
   const btnHelp = $('#btn-help-modal');
   if(btnHelp) btnHelp.onclick = () => openHelpModal();
+  const btnTopbarRe = $('#btn-topbar-real-estate');
+  if(btnTopbarRe) btnTopbarRe.onclick = () => { setActiveView('real_estate'); reTab = 'properties'; render(); };
+  const btnTopbarMod = $('#btn-topbar-modules');
+  if(btnTopbarMod) btnTopbarMod.onclick = () => openAdaptiveModulesModal();
+  const btnSidebarMod = $('#btn-sidebar-modules');
+  if(btnSidebarMod) btnSidebarMod.onclick = () => openAdaptiveModulesModal();
+  const btnMasterPill = $('#btn-master-modules-pill');
+  if(btnMasterPill) btnMasterPill.onclick = () => openAdaptiveModulesModal();
+  const btnFloatingMod = $('#btn-floating-modules');
+  if(btnFloatingMod) btnFloatingMod.onclick = () => openAdaptiveModulesModal();
+  const btnDashMod = $('#btn-dash-modules');
+  if(btnDashMod) btnDashMod.onclick = () => openAdaptiveModulesModal();
+  const btnReOpenMod = $('#btn-re-open-modules-center');
+  if(btnReOpenMod) btnReOpenMod.onclick = () => openAdaptiveModulesModal();
+  const btnReSetPrimary = $('#btn-re-set-as-primary');
+  if(btnReSetPrimary) btnReSetPrimary.onclick = async () => {
+    btnReSetPrimary.disabled = true;
+    try {
+      await save('edit_company', {
+        id: cid,
+        name: company().name,
+        group_name: company().group_name || '',
+        business_vertical: 'real_estate',
+        unit_singular: 'Propiedad',
+        unit_plural: 'Propiedades',
+        demo: company().demo ? 1 : 0
+      });
+      await refresh();
+      toast('✓ Bienes Raíces configurado como naturaleza principal de esta empresa.');
+    } catch(err) {
+      toast(err.message);
+      btnReSetPrimary.disabled = false;
+    }
+  };
   document.querySelectorAll('[data-open]').forEach(b=>{
     b.onclick=()=>{
       const extra = b.dataset.propertyId ? {property_id: Number(b.dataset.propertyId)} : null;
@@ -2961,6 +3091,226 @@ function showResetCompanyModal(targetId, targetName){
   };
 }
 
+function openAdaptiveModulesModal(){
+  const activeComp = company() || {};
+  const activeVertical = S?.company_profile?.business_vertical || 'general';
+  const reProps = (S.re_properties || []).length;
+  const reLeases = (S.re_leases || []).length;
+  const farmsCount = (S.farms || []).length;
+  const farmJobsCount = (S.farm_jobs || []).length;
+  const isAdmin = canAdmin();
+
+  const verticalLabels = {
+    general: '🏬 General / Comercial y Servicios',
+    real_estate: '🏢 Bienes Raíces e Inmobiliaria',
+    agriculture: '🌱 Agropecuaria y Fincas'
+  };
+
+  const isRE = activeVertical === 'real_estate';
+  const isAg = activeVertical === 'agriculture';
+
+  $('#modal-content').innerHTML = `
+    <div class="modal-header">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:22px">🧩</span>
+        <div>
+          <h2 style="margin:0;font-size:18px">Centro de Módulos Adaptativos y Circunstanciales</h2>
+          <div class="muted" style="font-size:12px;margin-top:2px">
+            Empresa activa: <strong>${esc(activeComp.name)}</strong> · Naturaleza: <strong>${esc(verticalLabels[activeVertical]||activeVertical)}</strong>
+          </div>
+        </div>
+      </div>
+      <button type="button" id="close-modal" aria-label="Cerrar">×</button>
+    </div>
+
+    <div class="definition" style="margin:14px 0;background:color-mix(in srgb, var(--brand-accent) 8%, var(--card));border-left:4px solid var(--brand-accent);padding:10px 14px;border-radius:4px;font-size:13px;line-height:1.5">
+      <strong>¿Qué es un módulo circunstancial en Zero?</strong><br>
+      Los pilares de <strong>Recursos Humanos</strong>, <strong>Contabilidad</strong> y <strong>Administración</strong> aplican universalmente a todas las empresas del grupo. Los módulos especializados (como <em>Bienes Raíces</em> o <em>Agropecuaria</em>) son <strong>circunstanciales y adaptativos</strong>: se ajustan al giro del negocio. Puede abrirlos libremente en cualquier momento bajo demanda, o fijarlos como la naturaleza principal de su empresa.
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <!-- MÓDULO BIENES RAÍCES -->
+      <div class="card" style="border:1.5px solid ${isRE?'var(--brand-accent)':'var(--border)'};padding:14px;border-radius:8px;background:var(--card)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:6px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:24px">🏢</span>
+            <div>
+              <strong style="font-size:15px">Bienes Raíces e Inmobiliaria</strong>
+              <div class="muted" style="font-size:12px">Inmuebles, alquileres con cobro recurrente en RD$, ventas y comisiones</div>
+            </div>
+          </div>
+          <span class="badge ${isRE?'green':'blue'}">${isRE?'Naturaleza Principal':'Módulo Circunstancial'}</span>
+        </div>
+        <p class="muted" style="font-size:12.5px;margin:4px 0 10px;line-height:1.4">
+          Cartera de apartamentos, casas, locales, villas y solares. Generación automática de cobros de renta en la contabilidad, registro de visitas con calificación de interés, y seguimiento de mantenimiento técnico.
+        </p>
+        <div style="font-size:12px;margin-bottom:12px;display:flex;gap:12px;color:var(--ink);flex-wrap:wrap">
+          <span><strong>Inmuebles:</strong> ${reProps}</span>
+          <span><strong>Contratos de renta:</strong> ${reLeases}</span>
+          <span><strong>Ventas registradas:</strong> ${(S.re_sales||[]).length}</span>
+          <span><strong>Visitas:</strong> ${(S.re_visits||[]).length}</span>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <button type="button" class="primary small" id="btn-modal-open-re">
+            🏢 Abrir Bienes Raíces →
+          </button>
+          <button type="button" class="secondary small" id="btn-modal-seed-re" data-action="seed_demo_real_estate">
+            ⚡ ${reProps>0?'Recargar':'Cargar'} 4 Inmuebles Demo
+          </button>
+          ${isAdmin && !isRE ? `
+          <button type="button" class="small" id="btn-modal-set-re" style="margin-left:auto" title="Establecer Bienes Raíces como la naturaleza principal de ${esc(activeComp.name)}">
+            🎯 Establecer como principal
+          </button>` : ''}
+        </div>
+      </div>
+
+      <!-- MÓDULO AGROPECUARIA -->
+      <div class="card" style="border:1.5px solid ${isAg?'var(--brand-accent)':'var(--border)'};padding:14px;border-radius:8px;background:var(--card)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:6px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:24px">🌱</span>
+            <div>
+              <strong style="font-size:15px">Agropecuaria y Campo</strong>
+              <div class="muted" style="font-size:12px">Fincas, parcelas, tareas, labores de jornaleros y cosechas</div>
+            </div>
+          </div>
+          <span class="badge ${isAg?'green':'blue'}">${isAg?'Naturaleza Principal':'Módulo Circunstancial'}</span>
+        </div>
+        <p class="muted" style="font-size:12.5px;margin:4px 0 10px;line-height:1.4">
+          Control por fincas y parcelas, liquidación semanal de jornales de campo, registro de cosechas por quintales o cajas, y avance de labores agronómicas.
+        </p>
+        <div style="font-size:12px;margin-bottom:12px;display:flex;gap:12px;color:var(--ink);flex-wrap:wrap">
+          <span><strong>Fincas:</strong> ${farmsCount}</span>
+          <span><strong>Labores:</strong> ${farmJobsCount}</span>
+          <span><strong>Contratos de campo:</strong> ${(S.farm_contracts||[]).length}</span>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <button type="button" class="secondary small" id="btn-modal-open-ag">
+            🌱 Abrir Fincas y Labores →
+          </button>
+          ${isAdmin && !isAg ? `
+          <button type="button" class="small" id="btn-modal-set-ag" style="margin-left:auto" title="Establecer Agropecuaria como la naturaleza principal de ${esc(activeComp.name)}">
+            🎯 Establecer como principal
+          </button>` : ''}
+        </div>
+      </div>
+
+      <!-- COMERCIAL Y SERVICIOS -->
+      <div class="card" style="padding:12px 14px;border-radius:8px;background:var(--card);border:1px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:20px">🏬</span>
+            <div>
+              <strong style="font-size:14px">Comercial y Servicios Generales</strong>
+              <div class="muted" style="font-size:12px">Facturación estándar, compras, gastos y tesorería corporativa</div>
+            </div>
+          </div>
+          ${isAdmin && activeVertical !== 'general' ? `
+          <button type="button" class="small secondary" id="btn-modal-set-gen">
+            Fijar como principal
+          </button>` : (activeVertical==='general'?'<span class="badge green">Naturaleza Principal</span>':'')}
+        </div>
+      </div>
+    </div>
+
+    <div class="form-actions" style="margin-top:16px;display:flex;justify-content:flex-end">
+      <button type="button" id="cancel-modal">Cerrar</button>
+    </div>
+  `;
+
+  if(!$('#modal').open) $('#modal').showModal();
+  $('#close-modal').onclick = $('#cancel-modal').onclick = () => $('#modal').close();
+
+  const btnOpenRe = $('#btn-modal-open-re');
+  if(btnOpenRe) btnOpenRe.onclick = () => {
+    $('#modal').close();
+    setActiveView('real_estate');
+    reTab = 'properties';
+    render();
+  };
+
+  const btnSeedRe = $('#btn-modal-seed-re');
+  if(btnSeedRe) btnSeedRe.onclick = () => {
+    $('#modal').close();
+    handleAction(btnSeedRe);
+  };
+
+  const btnSetRe = $('#btn-modal-set-re');
+  if(btnSetRe) btnSetRe.onclick = async () => {
+    btnSetRe.disabled = true;
+    try {
+      await save('edit_company', {
+        id: cid,
+        name: company().name,
+        group_name: company().group_name || '',
+        business_vertical: 'real_estate',
+        unit_singular: 'Propiedad',
+        unit_plural: 'Propiedades',
+        demo: company().demo ? 1 : 0
+      });
+      $('#modal').close();
+      setActiveView('real_estate');
+      await refresh();
+      toast('✓ Bienes Raíces configurado como naturaleza principal de esta empresa.');
+    } catch(err) {
+      toast(err.message);
+      btnSetRe.disabled = false;
+    }
+  };
+
+  const btnOpenAg = $('#btn-modal-open-ag');
+  if(btnOpenAg) btnOpenAg.onclick = () => {
+    $('#modal').close();
+    setActiveView('agriculture');
+    render();
+  };
+
+  const btnSetAg = $('#btn-modal-set-ag');
+  if(btnSetAg) btnSetAg.onclick = async () => {
+    btnSetAg.disabled = true;
+    try {
+      await save('edit_company', {
+        id: cid,
+        name: company().name,
+        group_name: company().group_name || '',
+        business_vertical: 'agriculture',
+        unit_singular: 'Finca',
+        unit_plural: 'Fincas',
+        demo: company().demo ? 1 : 0
+      });
+      $('#modal').close();
+      setActiveView('agriculture');
+      await refresh();
+      toast('✓ Agropecuaria configurado como naturaleza principal de esta empresa.');
+    } catch(err) {
+      toast(err.message);
+      btnSetAg.disabled = false;
+    }
+  };
+
+  const btnSetGen = $('#btn-modal-set-gen');
+  if(btnSetGen) btnSetGen.onclick = async () => {
+    btnSetGen.disabled = true;
+    try {
+      await save('edit_company', {
+        id: cid,
+        name: company().name,
+        group_name: company().group_name || '',
+        business_vertical: 'general',
+        unit_singular: 'Unidad operativa',
+        unit_plural: 'Unidades operativas',
+        demo: company().demo ? 1 : 0
+      });
+      $('#modal').close();
+      await refresh();
+      toast('✓ Naturaleza de la empresa establecida a General / Comercial.');
+    } catch(err) {
+      toast(err.message);
+      btnSetGen.disabled = false;
+    }
+  };
+}
+
 function openHelpModal(){
   let activeHelpTab = 'quick';
 
@@ -2976,6 +3326,8 @@ function openHelpModal(){
       {icon:'👥', title:'Ficha de Colaborador', desc:'Agregue empleados fijos o temporeros/jornaleros con su tarifa.', action:'open_form:employee', keywords:'empleado personal colaborador jornalero salario puesto vinculacion'},
       {icon:'♧', title:'Calcular Nómina', desc:'Procese el corte de nómina semanal, quincenal o mensual.', action:'payroll_dialog:payroll', keywords:'nomina liquidacion pago corte sueldo salario dinero'},
       {icon:'▣', title:'Crear Caja / Cuenta', desc:'Habilite cuentas bancarias o cajas en DOP, USD o EUR.', action:'open_form:create_default_cash_account', keywords:'caja banco cuenta dinero tesoreria fondos'},
+      {icon:'🏢', title:'Bienes Raíces e Inmuebles', desc:'Abra la cartera inmobiliaria, gestione alquileres, ventas y visitas.', action:'view:real_estate', keywords:'inmueble propiedad alquiler venta renta bienes raices apartamento casa'},
+      {icon:'🧩', title:'Módulos Adaptativos', desc:'Centro de módulos especializados por naturaleza de negocio.', action:'adaptive_modules', keywords:'modulos adaptativos circunstanciales bienes raices fincas naturaleza'},
       {icon:'☷', title:'Nueva Tarea de Equipo', desc:'Programe tareas con responsables y fechas límite en el calendario.', action:'open_form:task', keywords:'tarea actividad pendiente calendario responsable soporte'},
       {icon:'📦', title:'Exportar Respaldo de Empresa', desc:'Descargue una copia completa de seguridad en formato Zero (.json).', action:'export_company', keywords:'backup respaldo exportar copia seguridad json archivo'}
     ];
@@ -2988,6 +3340,7 @@ function openHelpModal(){
       {view:'treasury', icon:'▣', title:'Caja y Bancos', desc:'Tesorería multimoneda (DOP/USD/EUR), saldos y movimientos conciliados.'},
       {view:'payroll', icon:'♧', title:'Nóminas y Compensación', desc:'Cortes semanales, quincenales y mensuales; horas, deducciones y pagos de nómina.'},
       {view:'team', icon:'👥', title:'Personal y Reportes', desc:'Fichas de empleados fijos vs jornaleros, horas supervisadas y expedientes.'},
+      {view:'real_estate', icon:'🏢', title:'Bienes Raíces (Inmobiliaria)', desc:'Módulo circunstancial: Catálogo de propiedades, contratos de renta, ventas, visitas y mantenimiento.'},
       {view:'agriculture', icon:'🌱', title:`${unitLabel(true)} y Labores`, desc:'Gestión operativa de fincas/unidades, contratos, avance de labores y cosechas.'},
       {view:'tasks', icon:'☷', title:'Tareas y Calendario', desc:'Planificador operativo, calendario mensual interactivo y seguimiento de pendientes.'},
       {view:'reports', icon:'▥', title:'Reportes y Extractos', desc:'Libro diario, extractos por departamento/proyecto y exportación a Excel/CSV.'},
@@ -3049,6 +3402,17 @@ function openHelpModal(){
           '3. Al finalizar la jornada, use <code>Respaldar.bat</code> o el botón <strong>Exportar empresa</strong> para guardar una copia externa.'
         ],
         keywords:'red servidor intranet compartir equipos backup respaldo'
+      },
+      {
+        id:'tut_real_estate',
+        title:'🏢 Módulo Adaptativo: Bienes Raíces e Inmobiliaria',
+        steps:[
+          '1. Puede abrir Bienes Raíces en cualquier momento desde la barra lateral (sección <em>Módulos Especializados</em>), la barra superior o el botón de Módulos.',
+          '2. Para practicar con una cartera lista, use el botón <strong>⚡ Cargar 4 Inmuebles Demo</strong> para generar apartamentos, locales, contratos de alquiler y cierres de venta.',
+          '3. Los contratos de alquiler generan automáticamente cuentas por cobrar en la contabilidad en RD$.',
+          '4. Este módulo es circunstancial: puede usarlo libremente en empresas agropecuarias o de servicios sin alterar su naturaleza nativa.'
+        ],
+        keywords:'bienes raices inmuebles propiedades alquiler renta venta visitas'
       }
     ];
 
@@ -3213,6 +3577,8 @@ function openHelpModal(){
         link.click();
         link.remove();
         toast('Archivo de empresa preparado para descargar.');
+      } else if(act === 'adaptive_modules'){
+        openAdaptiveModulesModal();
       }
     });
 
@@ -4792,7 +5158,40 @@ function realEstateView(){
     body = panel('Mantenimiento e Incidencias en Inmuebles', table(['Fecha Reporte','Inmueble','Incidencia / Labor','Costo Estimado','Técnico / Proveedor','Estado','Acciones'], rows, 'No hay incidencias de mantenimiento registradas.'), openButton('+ Reportar mantenimiento', 're_maintenance'));
   }
 
-  return heading('🏢 Gestión Inmobiliaria y Bienes Raíces', 'Catálogo de propiedades, contratos de arrendamiento, ventas, visitas y mantenimiento.', headerActions) + kpis + demoNotice + subnav + body;
+  const activeVertical = S?.company_profile?.business_vertical || 'general';
+  const verticalLabels = {
+    general: 'General / Comercial y Servicios',
+    real_estate: 'Inmobiliaria y Bienes Raíces',
+    agriculture: 'Agropecuaria y Fincas'
+  };
+  const isCircumstantial = activeVertical !== 'real_estate';
+
+  const circumstantialBanner = `
+    <div class="circumstantial-module-banner">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <span class="badge ${isCircumstantial?'blue':'green'}">${isCircumstantial?'MÓDULO CIRCUNSTANCIAL':'NATURALEZA PRINCIPAL'}</span>
+            <strong style="font-size:13px">Bienes Raíces e Inmobiliaria · ${esc(company().name)}</strong>
+          </div>
+          <div class="muted" style="font-size:12px;margin-top:2px">
+            ${isCircumstantial 
+              ? `Operando de forma adaptativa y circunstancial para esta empresa (Naturaleza principal: ${verticalLabels[activeVertical]||activeVertical}). Puede gestionar inmuebles, cobros de renta en RD$ y contratos sin alterar la contabilidad ni las labores nativas.` 
+              : 'Módulo principal activo para esta empresa inmobiliaria.'}
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <button type="button" class="small secondary" id="btn-re-open-modules-center">🧩 Centro de Módulos</button>
+          ${isCircumstantial && canAdmin() ? `
+          <button type="button" class="small" id="btn-re-set-as-primary" title="Establecer Bienes Raíces como la naturaleza principal de esta empresa">
+            🎯 Establecer como principal
+          </button>` : ''}
+        </div>
+      </div>
+    </div>
+  `;
+
+  return heading('🏢 Gestión Inmobiliaria y Bienes Raíces', 'Catálogo de propiedades, contratos de arrendamiento, ventas, visitas y mantenimiento.', headerActions) + circumstantialBanner + kpis + demoNotice + subnav + body;
 }
 
 function agricultureView(){

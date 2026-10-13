@@ -50,11 +50,11 @@ def mutate(core,c,uid,cid,action,d):
         current_co=core.one(c,'SELECT * FROM companies WHERE id=?',(target_cid,))
         before=profile(core,c,target_cid)
         group_name=str(d.get('group_name') if 'group_name' in d else (current_co.get('group_name') or '')).strip()[:200]
-        unit_singular=core.text(d.get('unit_singular') or 'Unidad operativa','Término singular',100)
-        unit_plural=core.text(d.get('unit_plural') or (unit_singular+'s'),'Término plural',100)
+        unit_singular=core.text(d.get('unit_singular') or before.get('unit_singular') or 'Unidad operativa','Término singular',100)
+        unit_plural=core.text(d.get('unit_plural') or before.get('unit_plural') or (unit_singular+'s'),'Término plural',100)
         business_vertical=str(d.get('business_vertical') or before.get('business_vertical') or 'general').strip().lower()[:50]
         if business_vertical not in ('general','real_estate','agriculture','services','construction'): business_vertical='general'
-        values={k:str(d.get(k,'')).strip()[:500] for k in ('phone','email','address','tax_id')}
+        values={k:str(d.get(k) if k in d else before.get(k,'')).strip()[:500] for k in ('phone','email','address','tax_id')}
         demo=int(bool(d['demo'])) if 'demo' in d else current_co['demo']
         logo=str(d.get('logo',''))
         if d.get('remove_logo'):

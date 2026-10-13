@@ -479,15 +479,21 @@ def mutate(core, c, uid, cid, action, d):
 
     if action == 'seed_demo_real_estate':
         core.membership(c, uid, cid, 2)
-        # Set company profile to real estate
-        c.execute('''
-            INSERT INTO company_profiles(company_id,phone,email,address,tax_id,logo,unit_singular,unit_plural,business_vertical)
-            VALUES(?,?,?,?,?,?,?,?,?)
-            ON CONFLICT(company_id) DO UPDATE SET
-                business_vertical='real_estate',
-                unit_singular='Propiedad',
-                unit_plural='Propiedades'
-        ''', (cid, '809-555-0199', 'contacto@inmobiliaria.com.do', 'Av. Abraham Lincoln #1002, Piantini', '132-45678-9', '', 'Propiedad', 'Propiedades', 'real_estate'))
+        prof = c.execute('SELECT * FROM company_profiles WHERE company_id=?', (cid,)).fetchone()
+        set_vert = bool(d.get('set_vertical', not prof or prof['business_vertical'] in ('general', 'real_estate', '')))
+        if not prof:
+            c.execute('''
+                INSERT INTO company_profiles(company_id,phone,email,address,tax_id,logo,unit_singular,unit_plural,business_vertical)
+                VALUES(?,?,?,?,?,?,?,?,?)
+            ''', (cid, '809-555-0199', 'contacto@inmobiliaria.com.do', 'Av. Abraham Lincoln #1002, Piantini', '132-45678-9', '', 'Propiedad', 'Propiedades', 'real_estate'))
+        elif set_vert:
+            c.execute('''
+                UPDATE company_profiles SET
+                    business_vertical='real_estate',
+                    unit_singular=CASE WHEN unit_singular='' OR unit_singular='Unidad operativa' THEN 'Propiedad' ELSE unit_singular END,
+                    unit_plural=CASE WHEN unit_plural='' OR unit_plural='Unidades operativas' THEN 'Propiedades' ELSE unit_plural END
+                WHERE company_id=?
+            ''', (cid,))
 
         force = bool(d.get('force'))
         existing = c.execute('SELECT COUNT(*) FROM re_properties WHERE company_id=?', (cid,)).fetchone()[0]
