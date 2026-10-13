@@ -189,5 +189,11 @@ class RealEstateTests(unittest.TestCase):
         self.assertEqual(st['company_profile']['unit_singular'], 'Propiedad')
         self.assertEqual(st['company_profile']['unit_plural'], 'Propiedades')
 
+        # Test force re-seeding works idempotently
+        res2 = self.save('seed_demo_real_estate', force=True)
+        self.assertTrue(res2['ok'])
+        st2 = app.state(self.c, 1, 1)
+        self.assertEqual(len(st2['re_properties']), 4)
+
 if __name__ == '__main__':
     unittest.main()

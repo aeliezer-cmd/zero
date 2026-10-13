@@ -103,14 +103,14 @@ function setCategory(cat){
     localStorage.setItem('zero-last-category', cat);
   }catch{}
   const currentViewCat = getCategoryForView(view);
-  if(currentViewCat !== cat){
+  if(cat === 'real_estate'){
+    setActiveView('real_estate');
+    reTab = 'properties';
+  } else if(currentViewCat !== cat){
     if(cat === 'rrhh'){
       setActiveView('payroll');
     } else if(cat === 'contabilidad'){
       setActiveView('dashboard');
-    } else if(cat === 'real_estate'){
-      setActiveView('real_estate');
-      if(!reTab) reTab = 'properties';
     } else if(cat === 'administracion'){
       setActiveView('settings');
       if(!settingsTab) settingsTab = 'server';
@@ -279,7 +279,7 @@ function render(){
           <span class="glass-pill-icon">🏢</span>
           <div class="glass-pill-text">
             <span class="glass-pill-title"><span class="title-full">Bienes Raíces</span><span class="title-short">Inmuebles</span></span>
-            <span class="glass-pill-desc">${activeVertical === 'real_estate' ? 'Propiedades y Rentas' : 'Probar Inmobiliaria'}</span>
+            <span class="glass-pill-desc">Inmuebles y Rentas</span>
           </div>
           ${rePropsCount > 0 ? `<span class="glass-pill-badge" title="${rePropsCount} inmuebles en cartera">${rePropsCount}</span>` : ''}
         </button>
@@ -1040,6 +1040,7 @@ function companiesDirectoryPanel(){
   const actions = `
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
       ${canAdmin() ? openButton('＋ Agregar empresa', 'company') : ''}
+      ${canAdmin() ? `<button type="button" class="small secondary" id="btn-create-re-demo-company" title="Crear una empresa dedicada con catálogo y contratos de bienes raíces">🏢 Crear Empresa Inmobiliaria de Prueba</button>` : ''}
       ${canAdmin() ? `<button type="button" class="small secondary" id="btn-restore-company-file">📥 Restaurar desde respaldo (.json)</button>` : ''}
     </div>
   `;
@@ -2251,6 +2252,47 @@ function bind(){
   });
   const btnRestoreFile = $('#btn-restore-company-file');
   if(btnRestoreFile) btnRestoreFile.onclick = () => openRestoreCompanyFromFileDialog();
+  const btnCreateReCompany = $('#btn-create-re-demo-company');
+  if(btnCreateReCompany){
+    btnCreateReCompany.onclick = async () => {
+      btnCreateReCompany.disabled = true;
+      btnCreateReCompany.textContent = '⏳ Creando empresa inmobiliaria...';
+      try {
+        const demoName = 'Inmobiliaria Demo SRL';
+        const created = await api('company', {
+          name: demoName,
+          group_name: company()?.group_name || 'Demostración',
+          demo: 1,
+          company_id: cid
+        });
+        await api('action', {
+          company_id: created.company_id,
+          action: 'edit_company',
+          id: created.company_id,
+          name: demoName,
+          business_vertical: 'real_estate',
+          unit_singular: 'Propiedad',
+          unit_plural: 'Propiedades',
+          demo: 1
+        });
+        await api('action', {
+          company_id: created.company_id,
+          action: 'seed_demo_real_estate',
+          force: true
+        });
+        await boot();
+        setActiveCompany(created.company_id);
+        setActiveView('real_estate');
+        reTab = 'properties';
+        await refresh();
+        toast('✓ Empresa «Inmobiliaria Demo SRL» creada y activada con 4 propiedades y contratos.');
+      } catch(err) {
+        toast(err.message);
+        btnCreateReCompany.disabled = false;
+        btnCreateReCompany.textContent = '🏢 Crear Empresa Inmobiliaria de Prueba';
+      }
+    };
+  }
   const btnRestoreFile2 = $('#btn-restore-company-file-2');
   if(btnRestoreFile2) btnRestoreFile2.onclick = () => openRestoreCompanyFromFileDialog();
   const btnOpenRestoreDb = $('#btn-open-restore-db');
@@ -3181,7 +3223,7 @@ function openHelpModal(){
   renderHelpModal();
 }
 async function save(actionName,data){const result=await api('action',{company_id:Number(cid),action:actionName,...data});await refresh();return result}
-async function handleAction(b){const a=b.dataset.action,id=Number(b.dataset.id);if(a==='view_employee_account'){showEmployeeAccountModal(id);return}if(a==='assign_queue_job'){showAssignQueueJobModal(id||null);return}if(a==='add_labor_to_farm'){showAddLaborToFarmModal(id||null);return}if(a==='add_employee_to_farm'){openForm('employee',null,{farm_id:id});return}if(a==='report_queue_job'){showReportQueueJobModal(id);return}if(a==='approve_queue_job'){b.disabled=true;try{const res=await save('approve_queue_job',{id});toast(`Trabajo aprobado. Se acreditaron ${money(res.job?.earned_amount||0)} a la cuenta del colaborador.`);}catch(err){toast(err.message);b.disabled=false;}return;}if(payrollKinds.includes(a)){payrollDialog(a,id);return}if(a==='payroll_single'){payrollDialog('payroll',{employee_id:id,cadence:b.dataset.cadence});return}if(a==='payroll_deduction'){payrollDialog('payroll_adjustment',{employee_id:id||'',kind:'deduction'});return}if(a==='assign_custom_days'){openForm('farm_job',id);return}if(a==='reset-branding'){await save('branding',{accent_color:'#185b4d',surface_color:'#f4f6f3',card_color:'#ffffff',text_color:'#172f2d',font_scale:'100'});return}if(a==='files'){await openFiles(b.dataset.entity,id);return}if(a==='approve_all_worklogs'){b.disabled=true;try{const work_date=b.dataset.date||null;const res=await save('approve_all_worklogs',{work_date});toast(`${res.approved_count||'Todas las'} hora(s) aprobada(s) correctamente.`);}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='approve_all_farm_jobs'){b.disabled=true;try{const work_date=b.dataset.date||null;const res=await save('approve_all_farm_jobs',{work_date});toast(`${res.approved_count||'Todas las'} labore(s) aprobada(s) correctamente.`);}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='create_default_cash_account'){b.disabled=true;try{await save('create_default_cash_account',{});toast('Caja General (DOP) creada y lista para operar.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='export'){b.disabled=true;try{const archive=await api('export?company_id='+cid);const link=document.createElement('a');link.href='/api/export?company_id='+cid;link.download=company().name.replace(/[^a-zA-Z0-9_-]/g,'_')+'-'+S.today+'.zero.json';document.body.appendChild(link);link.click();link.remove();toast('Archivo de empresa preparado para descargar.')}catch(err){toast(err.message)}finally{b.disabled=false}return;}if(a==='extend_contract'){const co=S.farm_contracts?.find(c=>c.id===id);if(co){const d=new Date(co.end_date+'T12:00:00');d.setDate(d.getDate()+7);const newEnd=d.toISOString().slice(0,10);b.disabled=true;try{await save('edit_farm_contract',{id:co.id,farm_id:co.farm_id,employee_id:co.employee_id,kind:co.kind,basis:co.basis,rate:co.rate/100,description:co.description,start_date:co.start_date,end_date:newEnd,status:'active'});toast(`Continuidad extendida hasta el ${displayDate(newEnd)}.`);}catch(err){toast(err.message);b.disabled=false;}return;}}if(a==='approve_job_direct'){b.disabled=true;try{await save('job_status',{id,status:'approved'});toast('Labor / horas aprobadas para nómina.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='discard_payroll'){if(!confirm('¿Desea descartar esta nómina pendiente? Los reportes y deducciones asociados quedarán liberados.'))return;b.disabled=true;try{await save('discard_payroll',{id});toast('Nómina descartada.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='discard_farm_payroll'){if(!confirm('¿Desea descartar esta nómina de labores? Los trabajos volverán a quedar pendientes en la cola.'))return;b.disabled=true;try{await save('discard_farm_payroll',{id});toast('Nómina descartada.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='archive_cash_account'){const acc=S.cash_accounts?.find(c=>c.id===id);const isArch=Boolean(acc?.archived);if(!confirm(`¿Desea ${isArch?'reactivar':'archivar'} la cuenta «${acc?.name||'seleccionada'}»?`))return;b.disabled=true;try{await save('archive_cash_account',{id,archived:isArch?0:1});toast(`Cuenta ${isArch?'reactivada':'archivada'}.`);}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='seed_demo_real_estate'){b.disabled=true;try{await save('seed_demo_real_estate',{});setActiveView('real_estate');toast('Datos de prueba de Bienes Raíces cargados con éxito.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='charge_lease_rent'){b.disabled=true;try{const res=await save('generate_re_lease_charge',{lease_id:id});toast(res.message||'Cuenta por cobrar generada para el inquilino.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='terminate_re_lease'){if(!confirm('¿Desea rescindir / finalizar este contrato de alquiler? La propiedad quedará disponible nuevamente para alquiler o venta.'))return;b.disabled=true;try{await save('terminate_re_lease',{id});toast('Contrato finalizado y propiedad liberada como disponible.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='resolve_re_maintenance'){b.disabled=true;try{await save('resolve_re_maintenance',{id});toast('Incidencia marcada como resuelta.');}catch(err){toast(err.message);b.disabled=false;}return;}if(['payment','expense_payment','edit_member','edit_expense','edit_employee','terminate_employee','view_termination','contract_status','pay_payroll','edit_department','edit_project','edit_task','edit_farm','edit_farm_contract','edit_farm_job','edit_company','edit_product','edit_customer','edit_worklog','edit_subscription','edit_farm_sale','edit_ncf_sequence','edit_re_property','edit_re_lease','edit_re_sale','edit_re_visit','edit_re_maintenance'].includes(a)){openForm(a,id);return}if(a==='reactivate_employee'){const emp=S.employees?.find(e=>e.id===id);if(!confirm(`¿Desea reactivar a «${emp?.name||'este colaborador'}» como personal activo? Volverá a estar disponible para asignaciones y nómina.`))return;b.disabled=true;try{await save('reactivate_employee',{id});toast('Colaborador reactivado con éxito.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='delete_employee'){const emp=S.employees?.find(e=>e.id===id);if(!confirm(`¿Está seguro de que desea eliminar la ficha de «${emp?.name||'este colaborador'}»? Solo es posible si no posee historial contable ni tareas asociadas.`))return;b.disabled=true;try{await save('delete_employee',{id});toast('Ficha de personal eliminada.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='cancel_subscription'){openForm('cancel_subscription',id);return}if(a.startsWith('delete_')){if(!confirm('¿Está seguro de que desea eliminar este registro permanentemente?'))return}b.disabled=true;try{if(a==='refresh')await refresh();else{const result=await save(a,{id});toast(a==='generate'?`${result.generated} cargo(s) nuevo(s). Los existentes se conservaron.`:'Operación guardada.')}}catch(err){toast(err.message);b.disabled=false}}
+async function handleAction(b){const a=b.dataset.action,id=Number(b.dataset.id);if(a==='view_employee_account'){showEmployeeAccountModal(id);return}if(a==='assign_queue_job'){showAssignQueueJobModal(id||null);return}if(a==='add_labor_to_farm'){showAddLaborToFarmModal(id||null);return}if(a==='add_employee_to_farm'){openForm('employee',null,{farm_id:id});return}if(a==='report_queue_job'){showReportQueueJobModal(id);return}if(a==='approve_queue_job'){b.disabled=true;try{const res=await save('approve_queue_job',{id});toast(`Trabajo aprobado. Se acreditaron ${money(res.job?.earned_amount||0)} a la cuenta del colaborador.`);}catch(err){toast(err.message);b.disabled=false;}return;}if(payrollKinds.includes(a)){payrollDialog(a,id);return}if(a==='payroll_single'){payrollDialog('payroll',{employee_id:id,cadence:b.dataset.cadence});return}if(a==='payroll_deduction'){payrollDialog('payroll_adjustment',{employee_id:id||'',kind:'deduction'});return}if(a==='assign_custom_days'){openForm('farm_job',id);return}if(a==='reset-branding'){await save('branding',{accent_color:'#185b4d',surface_color:'#f4f6f3',card_color:'#ffffff',text_color:'#172f2d',font_scale:'100'});return}if(a==='files'){await openFiles(b.dataset.entity,id);return}if(a==='approve_all_worklogs'){b.disabled=true;try{const work_date=b.dataset.date||null;const res=await save('approve_all_worklogs',{work_date});toast(`${res.approved_count||'Todas las'} hora(s) aprobada(s) correctamente.`);}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='approve_all_farm_jobs'){b.disabled=true;try{const work_date=b.dataset.date||null;const res=await save('approve_all_farm_jobs',{work_date});toast(`${res.approved_count||'Todas las'} labore(s) aprobada(s) correctamente.`);}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='create_default_cash_account'){b.disabled=true;try{await save('create_default_cash_account',{});toast('Caja General (DOP) creada y lista para operar.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='export'){b.disabled=true;try{const archive=await api('export?company_id='+cid);const link=document.createElement('a');link.href='/api/export?company_id='+cid;link.download=company().name.replace(/[^a-zA-Z0-9_-]/g,'_')+'-'+S.today+'.zero.json';document.body.appendChild(link);link.click();link.remove();toast('Archivo de empresa preparado para descargar.')}catch(err){toast(err.message)}finally{b.disabled=false}return;}if(a==='extend_contract'){const co=S.farm_contracts?.find(c=>c.id===id);if(co){const d=new Date(co.end_date+'T12:00:00');d.setDate(d.getDate()+7);const newEnd=d.toISOString().slice(0,10);b.disabled=true;try{await save('edit_farm_contract',{id:co.id,farm_id:co.farm_id,employee_id:co.employee_id,kind:co.kind,basis:co.basis,rate:co.rate/100,description:co.description,start_date:co.start_date,end_date:newEnd,status:'active'});toast(`Continuidad extendida hasta el ${displayDate(newEnd)}.`);}catch(err){toast(err.message);b.disabled=false;}return;}}if(a==='approve_job_direct'){b.disabled=true;try{await save('job_status',{id,status:'approved'});toast('Labor / horas aprobadas para nómina.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='discard_payroll'){if(!confirm('¿Desea descartar esta nómina pendiente? Los reportes y deducciones asociados quedarán liberados.'))return;b.disabled=true;try{await save('discard_payroll',{id});toast('Nómina descartada.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='discard_farm_payroll'){if(!confirm('¿Desea descartar esta nómina de labores? Los trabajos volverán a quedar pendientes en la cola.'))return;b.disabled=true;try{await save('discard_farm_payroll',{id});toast('Nómina descartada.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='archive_cash_account'){const acc=S.cash_accounts?.find(c=>c.id===id);const isArch=Boolean(acc?.archived);if(!confirm(`¿Desea ${isArch?'reactivar':'archivar'} la cuenta «${acc?.name||'seleccionada'}»?`))return;b.disabled=true;try{await save('archive_cash_account',{id,archived:isArch?0:1});toast(`Cuenta ${isArch?'reactivada':'archivada'}.`);}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='seed_demo_real_estate'){b.disabled=true;const orig=b.innerHTML;b.innerHTML='⏳ Cargando demo...';try{const res=await save('seed_demo_real_estate',{force:true});setActiveView('real_estate');reTab='properties';render();toast(res?.message||'✓ Portafolio de prueba de Bienes Raíces cargado con éxito.');}catch(err){toast(err.message);b.disabled=false;b.innerHTML=orig;}return;}if(a==='charge_lease_rent'){b.disabled=true;try{const res=await save('generate_re_lease_charge',{lease_id:id});toast(res.message||'Cuenta por cobrar generada para el inquilino.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='terminate_re_lease'){if(!confirm('¿Desea rescindir / finalizar este contrato de alquiler? La propiedad quedará disponible nuevamente para alquiler o venta.'))return;b.disabled=true;try{await save('terminate_re_lease',{id});toast('Contrato finalizado y propiedad liberada como disponible.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='resolve_re_maintenance'){b.disabled=true;try{await save('resolve_re_maintenance',{id});toast('Incidencia marcada como resuelta.');}catch(err){toast(err.message);b.disabled=false;}return;}if(['payment','expense_payment','edit_member','edit_expense','edit_employee','terminate_employee','view_termination','contract_status','pay_payroll','edit_department','edit_project','edit_task','edit_farm','edit_farm_contract','edit_farm_job','edit_company','edit_product','edit_customer','edit_worklog','edit_subscription','edit_farm_sale','edit_ncf_sequence','edit_re_property','edit_re_lease','edit_re_sale','edit_re_visit','edit_re_maintenance'].includes(a)){openForm(a,id);return}if(a==='reactivate_employee'){const emp=S.employees?.find(e=>e.id===id);if(!confirm(`¿Desea reactivar a «${emp?.name||'este colaborador'}» como personal activo? Volverá a estar disponible para asignaciones y nómina.`))return;b.disabled=true;try{await save('reactivate_employee',{id});toast('Colaborador reactivado con éxito.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='delete_employee'){const emp=S.employees?.find(e=>e.id===id);if(!confirm(`¿Está seguro de que desea eliminar la ficha de «${emp?.name||'este colaborador'}»? Solo es posible si no posee historial contable ni tareas asociadas.`))return;b.disabled=true;try{await save('delete_employee',{id});toast('Ficha de personal eliminada.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='cancel_subscription'){openForm('cancel_subscription',id);return}if(a.startsWith('delete_')){if(!confirm('¿Está seguro de que desea eliminar este registro permanentemente?'))return}b.disabled=true;try{if(a==='refresh')await refresh();else{const result=await save(a,{id});toast(a==='generate'?`${result.generated} cargo(s) nuevo(s). Los existentes se conservaron.`:'Operación guardada.')}}catch(err){toast(err.message);b.disabled=false}}
 function input(name,label,type='text',value='',extra=''){return `<div><label for="f-${name}">${label}</label><input id="f-${name}" name="${name}" type="${type}" value="${esc(value)}" ${extra}></div>`}
 function select(name,label,options,value='',extra=''){return `<div><label for="f-${name}">${label}</label><select id="f-${name}" name="${name}" ${extra}>${options.map(([v,t])=>`<option value="${esc(v)}" ${String(v)===String(value)?'selected':''}>${esc(t)}</option>`).join('')}</select></div>`}
 function area(name,label,value=''){return `<div class="wide"><label for="f-${name}">${label}</label><textarea id="f-${name}" name="${name}">${esc(value)}</textarea></div>`}
@@ -4511,12 +4553,19 @@ function realEstateView(){
   `;
 
   const demoNotice = totalProps === 0 ? `
-    <div class="notice" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:16px;background:rgba(15,118,110,0.08);border-left:4px solid var(--brand-accent,#0f766e);padding:14px 18px;border-radius:6px">
-      <div>
-        <strong style="font-size:15px;color:var(--brand-accent,#0f766e)">🏢 ¿Desea probar el módulo de Bienes Raíces de inmediato?</strong>
-        <div style="font-size:13px;margin-top:4px">Cargue con 1 clic 4 propiedades completas (Apartamento de lujo, Penthouse en venta, Local comercial, Villa de playa), contratos de alquiler con cobro directo a Contabilidad y visitas de prospectos.</div>
+    <div class="empty-state-card" style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:20px;background:linear-gradient(135deg, rgba(15,118,110,0.1), rgba(15,118,110,0.02));border:2px dashed var(--brand-accent,#0f766e);padding:18px 22px;border-radius:10px">
+      <div style="flex:1;min-width:260px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <span style="font-size:24px">🏢</span>
+          <strong style="font-size:16px;color:var(--brand-accent,#0f766e)">¿Desea probar el módulo de Bienes Raíces con datos de ejemplo?</strong>
+        </div>
+        <div style="font-size:13.5px;line-height:1.5;color:var(--ink,#1e293b)">
+          Cargue en 1 clic <strong>4 inmuebles completos</strong> (Apartamento de lujo en Bella Vista, Penthouse en Piantini, Local comercial en 27 de Febrero, Villa de golf en Punta Cana) con <strong>contratos de alquiler</strong> enlazados a cobros contables, <strong>cierres de venta</strong> con comisión, <strong>visitas agendadas</strong> y <strong>mantenimientos</strong>.
+        </div>
       </div>
-      <button type="button" class="primary" data-action="seed_demo_real_estate" style="white-space:nowrap;padding:8px 16px;font-weight:600">⚡ Cargar datos de prueba de Bienes Raíces</button>
+      <button type="button" class="primary" data-action="seed_demo_real_estate" style="white-space:nowrap;padding:10px 20px;font-weight:700;font-size:14px;display:inline-flex;align-items:center;gap:6px">
+        <span>⚡</span> Cargar y probar Bienes Raíces
+      </button>
     </div>
   ` : '';
 
@@ -4527,7 +4576,7 @@ function realEstateView(){
       <button type="button" class="${reTab==='sales'?'primary':''}" data-re-tab="sales">🤝 Ventas y Cierres (${sales.length})</button>
       <button type="button" class="${reTab==='visits'?'primary':''}" data-re-tab="visits">🗓️ Visitas e Interesados (${visits.length})</button>
       <button type="button" class="${reTab==='maintenance'?'primary':''}" data-re-tab="maintenance">🛠️ Mantenimiento (${maintenances.length})</button>
-      ${totalProps > 0 ? `<button type="button" class="small secondary" data-action="seed_demo_real_estate" title="Añadir o refrescar datos de prueba" style="margin-left:auto">+ Recargar demo</button>` : ''}
+      ${totalProps > 0 ? `<button type="button" class="small secondary" data-action="seed_demo_real_estate" title="Recargar o restaurar las 4 propiedades demo" style="margin-left:auto">🔄 Recargar demo inmobiliario</button>` : ''}
     </div>
   `;
 

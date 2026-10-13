@@ -478,7 +478,7 @@ def mutate(core, c, uid, cid, action, d):
         return {'ok': True, 'charge_id': ch_id, 'message': f'Cuenta por cobrar generada para {lease["tenant_name"]} por {lease["monthly_rent"]/100:,.2f} DOP.'}
 
     if action == 'seed_demo_real_estate':
-        core.membership(c, uid, cid, 3)
+        core.membership(c, uid, cid, 2)
         # Set company profile to real estate
         c.execute('''
             INSERT INTO company_profiles(company_id,phone,email,address,tax_id,logo,unit_singular,unit_plural,business_vertical)
@@ -489,8 +489,26 @@ def mutate(core, c, uid, cid, action, d):
                 unit_plural='Propiedades'
         ''', (cid, '809-555-0199', 'contacto@inmobiliaria.com.do', 'Av. Abraham Lincoln #1002, Piantini', '132-45678-9', '', 'Propiedad', 'Propiedades', 'real_estate'))
 
-        # Check existing properties
+        force = bool(d.get('force'))
         existing = c.execute('SELECT COUNT(*) FROM re_properties WHERE company_id=?', (cid,)).fetchone()[0]
+
+        if force and existing > 0:
+            demo_prop_ids = [r[0] for r in c.execute('SELECT id FROM re_properties WHERE company_id=? AND code IN ("PROP-BV01","PROP-PT02","PROP-LC03","PROP-PC04")', (cid,)).fetchall()]
+            if demo_prop_ids:
+                for pid in demo_prop_ids:
+                    c.execute('DELETE FROM re_visits WHERE property_id=? AND company_id=?', (pid, cid))
+                    c.execute('DELETE FROM re_maintenances WHERE property_id=? AND company_id=?', (pid, cid))
+                    c.execute('DELETE FROM re_leases WHERE property_id=? AND company_id=?', (pid, cid))
+                    c.execute('DELETE FROM re_sales WHERE property_id=? AND company_id=?', (pid, cid))
+                    c.execute('DELETE FROM re_properties WHERE id=? AND company_id=?', (pid, cid))
+            else:
+                c.execute('DELETE FROM re_visits WHERE company_id=?', (cid,))
+                c.execute('DELETE FROM re_maintenances WHERE company_id=?', (cid,))
+                c.execute('DELETE FROM re_leases WHERE company_id=?', (cid,))
+                c.execute('DELETE FROM re_sales WHERE company_id=?', (cid,))
+                c.execute('DELETE FROM re_properties WHERE company_id=?', (cid,))
+            existing = c.execute('SELECT COUNT(*) FROM re_properties WHERE company_id=?', (cid,)).fetchone()[0]
+
         if existing == 0:
             p1 = c.execute('''
                 INSERT INTO re_properties(company_id,title,code,property_type,listing_type,status,address,city,
@@ -558,7 +576,7 @@ def mutate(core, c, uid, cid, action, d):
                 VALUES(?,?,?,?,?,?,?,?,?)
             ''', (cid, p1, 'Mantenimiento preventivo aires inverter', 850000, core.today().isoformat(), 'resolved', 'Climatización Dominicana SRL', 'Limpieza profunda de filtros y recarga de gas R410A.', uid))
 
-        core.audit(c, uid, cid, 'cargar demo bienes raices', 'companies', cid, {})
-        return {'ok': True, 'message': 'Datos de prueba de Bienes Raíces cargados con éxito.'}
+        core.audit(c, uid, cid, 'cargar demo bienes raices', 'companies', cid, {'force': force})
+        return {'ok': True, 'message': 'Portafolio de prueba de Bienes Raíces cargado con éxito.'}
 
     raise ValueError(f'Acción de bienes raíces desconocida: {action}')
