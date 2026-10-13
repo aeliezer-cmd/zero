@@ -128,6 +128,20 @@ def initialize(seed=True):
             c.execute("DROP TABLE employees")
             c.execute("ALTER TABLE employees_new RENAME TO employees")
             c.execute("PRAGMA foreign_keys=ON")
+        # Ensure user 'monarca' and 'admin' always have admin access to Grupo Monarca and all real companies
+        try:
+            monarca_u = one(c, "SELECT id FROM users WHERE username='monarca'")
+            admin_u = one(c, "SELECT id FROM users WHERE username='admin'")
+            real_cos = rows(c, "SELECT id FROM companies WHERE (deleted_at IS NULL OR deleted_at='')")
+            for u in (monarca_u, admin_u):
+                if not u: continue
+                for co in real_cos:
+                    c.execute("""
+                        INSERT INTO memberships(user_id, company_id, role, role_name, collections)
+                        VALUES(?, ?, 'admin', 'Administrador', 1)
+                        ON CONFLICT(user_id, company_id) DO UPDATE SET role='admin', role_name='Administrador', collections=1
+                    """, (u['id'], co['id']))
+        except Exception: pass
         user_count = c.execute('SELECT count(*) FROM users').fetchone()[0]
         if user_count:
             return
@@ -158,7 +172,13 @@ def initialize(seed=True):
                 try:
                     import json
                     bundle = json.loads(seed_path.read_text(encoding='utf-8'))
-                    transfer.restore_company_for_user(sys.modules[__name__], c, 2, bundle, new_name='Grupo Monarca GM SRL')
+                    res_monarca = transfer.restore_company_for_user(sys.modules[__name__], c, 2, bundle, new_name='Grupo Monarca GM SRL')
+                    cid_monarca = res_monarca['company_id']
+                    c.execute("""
+                        INSERT INTO memberships(user_id, company_id, role, role_name, collections)
+                        VALUES(3, ?, 'admin', 'Administrador', 1)
+                        ON CONFLICT(user_id, company_id) DO UPDATE SET role='admin', role_name='Administrador', collections=1
+                    """, (cid_monarca,))
                 except Exception as err:
                     print('Aviso seed Monarca:', err)
         creds = ROOT / 'data' / 'ACCESOS.txt'
@@ -822,7 +842,9 @@ class Handler(BaseHTTPRequestHandler):
                         JOIN memberships m ON m.company_id=co.id
                         LEFT JOIN company_profiles cp ON cp.company_id=co.id
                         WHERE m.user_id=? AND (co.deleted_at IS NULL OR co.deleted_at='')
-                        ORDER BY co.demo,co.name''',(s['uid'],))
+                        ORDER BY co.demo,
+                                 CASE WHEN LOWER(co.name) LIKE '%' || LOWER(?) || '%' THEN 0 ELSE 1 END,
+                                 co.name''',(s['uid'], user['username']))
                     deleted_companies=rows(c,'''SELECT co.*,m.role,m.role_name,
                         COALESCE(cp.phone,'') AS phone,
                         COALESCE(cp.email,'') AS email,
