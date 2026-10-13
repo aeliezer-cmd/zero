@@ -897,13 +897,12 @@ class Handler(BaseHTTPRequestHandler):
                 if path=='/api/database/download':
                     admin_ok = bool(one(c, 'SELECT 1 FROM memberships WHERE user_id=? AND role="admin"', (s['uid'],)))
                     if not admin_ok: raise Denied('Solo administradores pueden descargar la base de datos.')
-                    c.execute('PRAGMA wal_checkpoint(TRUNCATE)')
                     import tempfile
                     with tempfile.NamedTemporaryFile(suffix='.sqlite3', delete=False) as tmp:
                         tmp_path = Path(tmp.name)
                     try:
-                        with connect() as src, sqlite3.connect(tmp_path) as dst:
-                            src.backup(dst)
+                        with sqlite3.connect(tmp_path) as dst:
+                            c.backup(dst)
                         body = tmp_path.read_bytes()
                         stamp = now().replace(':','').replace('-','').replace('T','_')[:15]
                         filename = f"zero_real_{stamp}.sqlite3"
