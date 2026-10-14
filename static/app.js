@@ -196,6 +196,15 @@ async function boot(){
       view=savedCat==='rrhh'?'payroll':savedCat==='administracion'?'settings':savedCat==='real_estate'?'real_estate':'dashboard';
     }
     await refresh();
+    try {
+      const onboardKey = 'zero-onboarding-v1-' + cid + '-' + me.user.id;
+      const isCompleted = localStorage.getItem(onboardKey) === '1';
+      const isFreshCompany = (!S.employees || S.employees.length === 0) && (!S.departments || S.departments.length === 0);
+      const isMonarca = (me.user?.username || '').toLowerCase() === 'monarca';
+      if(!isCompleted && (isFreshCompany || isMonarca)){
+        setTimeout(() => openOnboardingWizard(1), 350);
+      }
+    } catch(e){}
   }catch(err){
     me=null;
     login();
@@ -415,6 +424,9 @@ function render(){
           </button>
           <button type="button" id="btn-topbar-modules" class="small secondary topbar-modules-btn" title="Centro de módulos especializados y adaptativos">
             <span style="font-size:13px">🧩</span> <span class="hide-mobile">Módulos</span>
+          </button>
+          <button type="button" id="btn-onboarding-wizard" class="small secondary topbar-wizard-btn" title="Guía interactiva de inicio paso a paso">
+            <span style="font-size:13px">🚀</span> <span class="hide-mobile">Paso a paso</span>
           </button>
           <button type="button" id="btn-help-modal" class="small topbar-help-btn" title="Ayuda y Guía">
             <span style="font-size:14px">💡</span> <span class="help-btn-text">Ayuda</span>
@@ -2358,6 +2370,8 @@ function bind(){
   $('#logout').onclick=async()=>{await api('logout',{});me=null;login()};
   const btnHelp = $('#btn-help-modal');
   if(btnHelp) btnHelp.onclick = () => openHelpModal();
+  const btnWizard = $('#btn-onboarding-wizard');
+  if(btnWizard) btnWizard.onclick = () => openOnboardingWizard(1);
   const btnTopbarRe = $('#btn-topbar-real-estate');
   if(btnTopbarRe) btnTopbarRe.onclick = () => { setActiveView('real_estate'); reTab = 'properties'; render(); };
   const btnTopbarMod = $('#btn-topbar-modules');
@@ -3133,6 +3147,387 @@ function showResetCompanyModal(targetId, targetName){
   };
 }
 
+function openOnboardingWizard(initialStep=1){
+  let currentStep = initialStep || 1;
+  const totalSteps = 5;
+
+  function renderWizard(){
+    const p = S?.company_profile || {};
+    const comp = company() || {};
+    const activeVertical = p.business_vertical || 'general';
+    const verticalLabels = {
+      general: '🏬 General / Comercial y Servicios',
+      real_estate: '🏢 Inmobiliaria y Bienes Raíces',
+      agriculture: '🌱 Agropecuaria y Fincas'
+    };
+    const cashAccs = (S.cash_accounts || []).filter(a => !a.archived);
+    const deps = S.departments || [];
+    const emps = S.employees || [];
+
+    const stepsMeta = [
+      { num: 1, title: 'Empresa', icon: '🏢' },
+      { num: 2, title: 'Tesorería', icon: '🏦' },
+      { num: 3, title: 'Estructura', icon: '🏛️' },
+      { num: 4, title: 'Equipo', icon: '👥' },
+      { num: 5, title: 'Módulos', icon: '🚀' }
+    ];
+
+    const progressPct = Math.round((currentStep / totalSteps) * 100);
+
+    let stepBody = '';
+
+    // STEP 1: EMPRESA
+    if(currentStep === 1){
+      stepBody = `
+        <div class="onboarding-step-card">
+          <div class="onboarding-welcome-banner">
+            <div style="font-size:32px">👋</div>
+            <div>
+              <div style="font-weight:700;font-size:15px;color:var(--text)">¡Bienvenido a bordo${me?.user?.name ? ', ' + esc(me.user.name) : ''}!</div>
+              <div class="muted" style="font-size:13px;line-height:1.4">Su cuenta y empresa han sido iniciadas desde cero. Este asistente interactivo de 5 pasos le guiará para configurar su operación de forma clara y ordenada.</div>
+            </div>
+          </div>
+
+          <div class="onboarding-step-badge">PASO 1 DE 5 · IDENTIDAD CORPORATIVA</div>
+          <h3>🏢 Identidad y Naturaleza de su Empresa</h3>
+          <p class="muted">El primer paso para operar en Zero es registrar los datos de su empresa, su RNC o identificación tributaria y la naturaleza de sus actividades.</p>
+          
+          <div class="onboarding-summary-box">
+            <div class="onboarding-info-row">
+              <span class="muted">Nombre Comercial:</span>
+              <strong>${esc(p.name || comp.name || 'Sin nombre')}</strong>
+            </div>
+            <div class="onboarding-info-row">
+              <span class="muted">RNC / Cédula Fiscal:</span>
+              <strong>${esc(p.tax_id || '⚠️ Pendiente de configurar')}</strong>
+            </div>
+            <div class="onboarding-info-row">
+              <span class="muted">Naturaleza / Sector:</span>
+              <span class="badge blue">${verticalLabels[activeVertical] || activeVertical}</span>
+            </div>
+            <div class="onboarding-info-row">
+              <span class="muted">Moneda del Sistema:</span>
+              <strong>Pesos Dominicanos (RD$ / DOP)</strong>
+            </div>
+          </div>
+
+          <div class="onboarding-action-cta">
+            <button type="button" class="primary" id="wizard-btn-edit-company">✏️ Configurar Ficha de Empresa</button>
+            <span class="onboarding-hint">Actualice el RNC, sector, teléfono y logotipo de la empresa activa.</span>
+          </div>
+        </div>
+      `;
+    }
+
+    // STEP 2: TESORERÍA
+    else if(currentStep === 2){
+      stepBody = `
+        <div class="onboarding-step-card">
+          <div class="onboarding-step-badge">PASO 2 DE 5 · TESORERÍA Y BANCOS</div>
+          <h3>🏦 Cuentas de Fondos, Caja y Bancos</h3>
+          <p class="muted">Para cobrar facturas a clientes, percibir cuotas de condominios o desembolsar pagos de nómina y gastos, su empresa requiere al menos una cuenta de Tesorería en Pesos Dominicanos (DOP).</p>
+
+          <div class="onboarding-summary-box">
+            <div class="onboarding-info-row">
+              <span class="muted">Cuentas Registradas:</span>
+              <strong>${cashAccs.length} cuenta(s) activa(s)</strong>
+            </div>
+            ${cashAccs.length ? `
+              <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+                ${cashAccs.map(a => `
+                  <div style="display:flex;justify-content:space-between;align-items:center;background:var(--surface,#f8fafc);padding:8px 12px;border-radius:6px;border:1px solid var(--border)">
+                    <span>🏦 <strong>${esc(a.name)}</strong> (${a.currency})</span>
+                    <strong style="color:var(--brand-accent,#0f766e)">${accountMoney(a.balance, a.currency)}</strong>
+                  </div>
+                `).join('')}
+              </div>
+            ` : `
+              <div class="onboarding-alert-warn">
+                ⚠️ Aún no tiene cuentas de caja o banco creadas. Cree su «Caja General» en un solo clic para comenzar a operar.
+              </div>
+            `}
+          </div>
+
+          <div class="onboarding-action-cta">
+            <button type="button" class="primary" id="wizard-btn-create-cash">⚡ Crear Caja General (DOP)</button>
+            <button type="button" class="secondary" id="wizard-btn-view-treasury">Ir a Caja y Bancos →</button>
+          </div>
+        </div>
+      `;
+    }
+
+    // STEP 3: ESTRUCTURA (DEPARTAMENTOS)
+    else if(currentStep === 3){
+      stepBody = `
+        <div class="onboarding-step-card">
+          <div class="onboarding-step-badge">PASO 3 DE 5 · ESTRUCTURA ORGANIZATIVA</div>
+          <h3>🏛️ Departamentos, Áreas y Proyectos</h3>
+          <p class="muted">Organice los centros de costo y áreas operativas de su empresa (ej. Administración, Ventas, Operaciones, Mantenimiento). Esto permite clasificar gastos y asignar tareas al personal.</p>
+
+          <div class="onboarding-summary-box">
+            <div class="onboarding-info-row">
+              <span class="muted">Departamentos Existentes:</span>
+              <strong>${deps.length} departamento(s)</strong>
+            </div>
+            ${deps.length ? `
+              <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
+                ${deps.map(d => `<span class="badge gray">🏛️ ${esc(d.name)}</span>`).join('')}
+              </div>
+            ` : `
+              <div class="onboarding-alert-warn">
+                No hay departamentos registrados. Agregue el primero para ordenar la operación de su equipo.
+              </div>
+            `}
+          </div>
+
+          <div class="onboarding-action-cta">
+            <button type="button" class="primary" id="wizard-btn-create-dept">+ Crear Departamento / Área</button>
+            <button type="button" class="secondary" id="wizard-btn-view-depts">Ver Estructura Organizativa →</button>
+          </div>
+        </div>
+      `;
+    }
+
+    // STEP 4: EQUIPO (PERSONAL)
+    else if(currentStep === 4){
+      stepBody = `
+        <div class="onboarding-step-card">
+          <div class="onboarding-step-badge">PASO 4 DE 5 · EQUIPO Y COLABORADORES</div>
+          <h3>👥 Fichas de Personal y Colaboradores</h3>
+          <p class="muted">Registre a sus colaboradores, administradores o agentes. Podrá definir si son empleados fijos con salario mensual o quincenal, o personal temporal/jornalero con tarifa por día o por horas.</p>
+
+          <div class="onboarding-summary-box">
+            <div class="onboarding-info-row">
+              <span class="muted">Colaboradores Registrados:</span>
+              <strong>${emps.length} persona(s)</strong>
+            </div>
+            ${emps.length ? `
+              <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
+                ${emps.slice(0, 6).map(e => `<span class="badge blue">👤 ${esc(e.name)}</span>`).join('')}
+                ${emps.length > 6 ? `<span class="muted">+${emps.length - 6} más</span>` : ''}
+              </div>
+            ` : `
+              <div class="onboarding-alert-warn">
+                Todavía no hay colaboradores registrados. Registre a su primer colaborador para vincular tareas o liquidar nóminas.
+              </div>
+            `}
+          </div>
+
+          <div class="onboarding-action-cta">
+            <button type="button" class="primary" id="wizard-btn-create-emp">+ Registrar Primer Colaborador</button>
+            <button type="button" class="secondary" id="wizard-btn-view-team">Ir a Personal y Nómina →</button>
+          </div>
+        </div>
+      `;
+    }
+
+    // STEP 5: MÓDULOS ESPECIALIZADOS
+    else if(currentStep === 5){
+      stepBody = `
+        <div class="onboarding-step-card">
+          <div class="onboarding-step-badge">PASO 5 DE 5 · MÓDULOS ESPECIALIZADOS</div>
+          <h3>🚀 Módulos Especializados y Comienzo de Operación</h3>
+          <p class="muted">Zero se adapta a la naturaleza de su empresa sin alterar la contabilidad estándar. Explore y active las herramientas específicas de su sector:</p>
+
+          <div class="onboarding-modules-grid">
+            <div class="onboarding-mod-tile ${activeVertical==='real_estate'?'active-tile':''}">
+              <div class="onboarding-mod-icon">🏢</div>
+              <div>
+                <strong>Bienes Raíces, Ventas y Condominios</strong>
+                <p class="muted">Catálogo de inmuebles, CRM de compradores, contratos de financiamiento con amortización de cuotas y administración de condominios.</p>
+              </div>
+              <button type="button" class="small primary" id="wizard-btn-open-re">Abrir Bienes Raíces →</button>
+            </div>
+
+            <div class="onboarding-mod-tile ${activeVertical==='agriculture'?'active-tile':''}">
+              <div class="onboarding-mod-icon">🌱</div>
+              <div>
+                <strong>Agropecuaria, Fincas y Labores</strong>
+                <p class="muted">Gestión de parcelas agrícolas, jornales temporeros, cosechas y liquidación de nóminas de campo.</p>
+              </div>
+              <button type="button" class="small secondary" id="wizard-btn-open-ag">Abrir Fincas y Campo →</button>
+            </div>
+
+            <div class="onboarding-mod-tile">
+              <div class="onboarding-mod-icon">📊</div>
+              <div>
+                <strong>Facturación Fiscal e-CF y Cobros</strong>
+                <p class="muted">Emisión de facturas comerciales y comprobantes fiscales electrónicos (DGII), cuentas por cobrar y tesorería multimoneda.</p>
+              </div>
+              <button type="button" class="small secondary" id="wizard-btn-open-col">Ir a Facturación →</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    const wizardHtml = `
+      <div class="onboarding-modal-wrapper">
+        <div class="onboarding-header">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="font-size:26px">🚀</span>
+            <div>
+              <h2 style="margin:0;font-size:18px;letter-spacing:-0.3px">Bienvenido a Zero · Guía de Inicio Paso a Paso</h2>
+              <div class="muted" style="font-size:12.5px">Configuración inicial y buenas prácticas para su empresa</div>
+            </div>
+          </div>
+          <button type="button" id="close-wizard-btn" class="close-x" aria-label="Cerrar">×</button>
+        </div>
+
+        <div class="onboarding-progress-container">
+          <div class="onboarding-step-pills">
+            ${stepsMeta.map(s => `
+              <button type="button" class="onboarding-pill ${s.num === currentStep ? 'active' : s.num < currentStep ? 'done' : ''}" data-wizard-jump="${s.num}">
+                <span class="pill-num">${s.num < currentStep ? '✓' : s.num}</span>
+                <span class="pill-name">${s.icon} ${s.title}</span>
+              </button>
+            `).join('')}
+          </div>
+          <div class="onboarding-progress-bar">
+            <div class="onboarding-progress-fill" style="width:${progressPct}%"></div>
+          </div>
+        </div>
+
+        <div class="onboarding-content-body">
+          ${stepBody}
+        </div>
+
+        <div class="onboarding-footer">
+          <button type="button" class="secondary" id="wizard-btn-prev" ${currentStep === 1 ? 'disabled style="opacity:0.4"' : ''}>
+            ← Anterior
+          </button>
+          
+          <button type="button" class="subtle" id="wizard-btn-dismiss">
+            Omitir recorrido
+          </button>
+
+          ${currentStep < totalSteps ? `
+            <button type="button" class="primary" id="wizard-btn-next">
+              Siguiente paso (${currentStep + 1} de ${totalSteps}) →
+            </button>
+          ` : `
+            <button type="button" class="primary" id="wizard-btn-finish" style="background:#059669!important;border-color:transparent!important">
+              ✓ ¡Todo listo! Comenzar a operar
+            </button>
+          `}
+        </div>
+      </div>
+    `;
+
+    $('#modal-content').innerHTML = wizardHtml;
+    $('#modal').showModal();
+
+    $('#close-wizard-btn').onclick = () => $('#modal').close();
+    $('#wizard-btn-dismiss').onclick = () => {
+      try {
+        localStorage.setItem('zero-onboarding-v1-' + cid + '-' + me.user.id, '1');
+      } catch{}
+      $('#modal').close();
+      toast('Recorrido omitido. Puede volver a abrirlo en cualquier momento desde «🚀 Paso a paso» o en «💡 Ayuda».');
+    };
+
+    document.querySelectorAll('[data-wizard-jump]').forEach(b => {
+      b.onclick = () => {
+        currentStep = Number(b.dataset.wizardJump);
+        renderWizard();
+      };
+    });
+
+    const btnPrev = $('#wizard-btn-prev');
+    if(btnPrev) btnPrev.onclick = () => {
+      if(currentStep > 1){
+        currentStep--;
+        renderWizard();
+      }
+    };
+
+    const btnNext = $('#wizard-btn-next');
+    if(btnNext) btnNext.onclick = () => {
+      if(currentStep < totalSteps){
+        currentStep++;
+        renderWizard();
+      }
+    };
+
+    const btnFinish = $('#wizard-btn-finish');
+    if(btnFinish) btnFinish.onclick = () => {
+      try {
+        localStorage.setItem('zero-onboarding-v1-' + cid + '-' + me.user.id, '1');
+      } catch{}
+      $('#modal').close();
+      toast('🎉 ¡Empresa configurada con éxito! Ya puede comenzar a operar en Zero.');
+    };
+
+    const btnEditComp = $('#wizard-btn-edit-company');
+    if(btnEditComp) btnEditComp.onclick = () => openForm('edit_company', cid);
+
+    const btnCreateCash = $('#wizard-btn-create-cash');
+    if(btnCreateCash) btnCreateCash.onclick = async () => {
+      btnCreateCash.disabled = true;
+      try {
+        await save('create_default_cash_account', {});
+        await refresh();
+        toast('✓ Caja General (DOP) creada con éxito.');
+        renderWizard();
+      } catch(err){
+        toast(err.message);
+        btnCreateCash.disabled = false;
+      }
+    };
+
+    const btnViewTreasury = $('#wizard-btn-view-treasury');
+    if(btnViewTreasury) btnViewTreasury.onclick = () => {
+      $('#modal').close();
+      setActiveView('treasury');
+      render();
+    };
+
+    const btnCreateDept = $('#wizard-btn-create-dept');
+    if(btnCreateDept) btnCreateDept.onclick = () => openForm('department');
+
+    const btnViewDepts = $('#wizard-btn-view-depts');
+    if(btnViewDepts) btnViewDepts.onclick = () => {
+      $('#modal').close();
+      setActiveView('departments');
+      render();
+    };
+
+    const btnCreateEmp = $('#wizard-btn-create-emp');
+    if(btnCreateEmp) btnCreateEmp.onclick = () => openForm('employee');
+
+    const btnViewTeam = $('#wizard-btn-view-team');
+    if(btnViewTeam) btnViewTeam.onclick = () => {
+      $('#modal').close();
+      setActiveView('team');
+      render();
+    };
+
+    const btnOpenRe = $('#wizard-btn-open-re');
+    if(btnOpenRe) btnOpenRe.onclick = () => {
+      $('#modal').close();
+      setActiveView('real_estate');
+      reTab = 'properties';
+      render();
+    };
+
+    const btnOpenAg = $('#wizard-btn-open-ag');
+    if(btnOpenAg) btnOpenAg.onclick = () => {
+      $('#modal').close();
+      setActiveView('agriculture');
+      render();
+    };
+
+    const btnOpenCol = $('#wizard-btn-open-col');
+    if(btnOpenCol) btnOpenCol.onclick = () => {
+      $('#modal').close();
+      setActiveView('collections');
+      render();
+    };
+  }
+
+  renderWizard();
+}
+
 function openAdaptiveModulesModal(){
   const activeComp = company() || {};
   const activeVertical = S?.company_profile?.business_vertical || 'general';
@@ -3360,6 +3755,7 @@ function openHelpModal(){
     const q = filterText.trim().toLowerCase();
 
     const quickActions = [
+      {icon:'🚀', title:'Guía de Inicio Paso a Paso', desc:'Asistente interactivo para configurar su empresa desde cero en 5 pasos.', action:'onboarding_wizard', keywords:'inicio paso a paso guia bienvenida onboarding configurar cero primer empezar'},
       {icon:'🏛️', title:'Departamentos y Áreas', desc:'Agregue, edite o retire departamentos y proyectos de la empresa.', action:'view:departments', keywords:'departamento area estructura organigrama agregar editar borrar quitar'},
       {icon:'↗', title:'Nueva Factura / Venta', desc:'Emita una factura comercial o con comprobante fiscal a un cliente.', action:'open_form:product', keywords:'factura venta cobrar cobro cliente catalogo'},
       {icon:'🧾', title:'Facturación Fiscal e-CF', desc:'Comprobantes fiscales electrónicos bajo la Ley 32-23 (DGII).', action:'view:settings:fiscal', keywords:'ecf dgii fiscal ncf comprobante b01 b02'},
@@ -3621,6 +4017,8 @@ function openHelpModal(){
         toast('Archivo de empresa preparado para descargar.');
       } else if(act === 'adaptive_modules'){
         openAdaptiveModulesModal();
+      } else if(act === 'onboarding_wizard'){
+        openOnboardingWizard(1);
       }
     });
 
