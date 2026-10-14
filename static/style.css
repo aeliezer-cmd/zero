@@ -691,17 +691,31 @@ dialog::backdrop {
   align-items: center;
 }
 .tabs button {
-  padding: 8px 14px;
-  border-radius: 8px;
+  padding: 8px 16px;
+  border-radius: 10px;
   font-size: 13px;
   font-weight: 600;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--ink);
+  cursor: pointer;
+  transition: all 0.16s ease;
+}
+.tabs button:hover {
+  background: var(--btn-hover);
+  color: var(--ink);
 }
 .tabs button.active {
-  background: color-mix(in srgb, var(--brand-accent) 12%, var(--card));
-  border-color: var(--brand-accent);
-  color: var(--brand-accent);
-  font-weight: 700;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  background: var(--brand-accent) !important;
+  border-color: var(--brand-accent) !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+  box-shadow: 0 4px 14px -2px color-mix(in srgb, var(--brand-accent) 55%, transparent),
+              inset 0 1px 1px 0 rgba(255, 255, 255, 0.4) !important;
+  transform: translateY(-1px);
+}
+.tabs button.active * {
+  color: #ffffff !important;
 }
 
 .compact-text { max-width: 310px; white-space: normal; }
@@ -864,8 +878,12 @@ dialog::backdrop {
 }
 
 [data-theme=dark] .tabs button.active {
-  background: color-mix(in srgb, var(--brand-accent) 25%, #141c24) !important;
-  border-color: var(--brand-accent) !important;
+  background: var(--brand-accent) !important;
+  border-color: rgba(255, 255, 255, 0.3) !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 16px -2px rgba(0, 0, 0, 0.75), inset 0 1px 1px rgba(255, 255, 255, 0.3) !important;
+}
+[data-theme=dark] .tabs button.active * {
   color: #ffffff !important;
 }
 
@@ -2346,45 +2364,65 @@ html { font-size: calc(16px * var(--font-scale, 1)); }
 .glass-pill-btn {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   padding: 7px 18px;
   border-radius: 9999px;
-  border: 1px solid transparent;
-  background: transparent;
+  border: 1px solid var(--glass-border, rgba(0, 0, 0, 0.08));
+  background: var(--glass-bg-subtle, rgba(255, 255, 255, 0.5));
+  -webkit-backdrop-filter: var(--glass-blur-subtle, blur(16px));
+  backdrop-filter: var(--glass-blur-subtle, blur(16px));
   color: var(--ink);
   cursor: pointer;
   font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
   transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
   text-decoration: none;
   user-select: none;
   outline: none;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
 }
 
 .glass-pill-btn:hover {
-  background: rgba(0, 0, 0, 0.05);
+  background: var(--glass-bg-elevated, rgba(255, 255, 255, 0.9));
+  border-color: var(--glass-border);
   color: var(--ink);
   transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
 }
 
 [data-theme="dark"] .glass-pill-btn:hover {
-  background: rgba(255, 255, 255, 0.09);
+  background: rgba(255, 255, 255, 0.12);
   color: #ffffff;
 }
 
-.glass-pill-btn.active {
-  background: var(--brand-accent, #185b4d);
+.glass-pill-btn.active,
+.floating-master-bar .glass-pill-btn.active {
+  background: var(--brand-accent, #185b4d) !important;
   color: #ffffff !important;
-  border-color: rgba(255, 255, 255, 0.35);
-  box-shadow: 0 4px 16px -2px color-mix(in srgb, var(--brand-accent, #185b4d) 50%, transparent),
-              inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  border-color: rgba(255, 255, 255, 0.4) !important;
+  box-shadow: 0 4px 18px -2px color-mix(in srgb, var(--brand-accent, #185b4d) 65%, transparent),
+              inset 0 1px 1px 0 rgba(255, 255, 255, 0.45) !important;
+  transform: translateY(-1px);
 }
 
-[data-theme="dark"] .glass-pill-btn.active {
-  background: var(--brand-accent, #185b4d);
+.glass-pill-btn.active *,
+.floating-master-bar .glass-pill-btn.active * {
   color: #ffffff !important;
-  border-color: rgba(255, 255, 255, 0.3);
-  box-shadow: 0 4px 16px -2px rgba(0, 0, 0, 0.65),
-              inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+
+[data-theme="dark"] .glass-pill-btn.active,
+[data-theme="dark"] .floating-master-bar .glass-pill-btn.active {
+  background: var(--brand-accent, #185b4d) !important;
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.35) !important;
+  box-shadow: 0 4px 18px -2px rgba(0, 0, 0, 0.75),
+              inset 0 1px 1px 0 rgba(255, 255, 255, 0.3) !important;
+}
+
+[data-theme="dark"] .glass-pill-btn.active *,
+[data-theme="dark"] .floating-master-bar .glass-pill-btn.active * {
+  color: #ffffff !important;
 }
 
 .glass-pill-icon {
@@ -2406,17 +2444,20 @@ html { font-size: calc(16px * var(--font-scale, 1)); }
   font-size: 13px;
   font-weight: 700;
   letter-spacing: -0.01em;
+  color: inherit;
 }
 
 .glass-pill-desc {
   font-size: 10px;
-  opacity: 0.72;
+  opacity: 0.75;
   font-weight: 500;
+  color: inherit;
 }
 
-.glass-pill-btn.active .glass-pill-desc {
-  opacity: 0.92;
-  color: rgba(255, 255, 255, 0.9);
+.glass-pill-btn.active .glass-pill-desc,
+.floating-master-bar .glass-pill-btn.active .glass-pill-desc {
+  opacity: 0.95 !important;
+  color: rgba(255, 255, 255, 0.92) !important;
 }
 
 .glass-pill-badge {
@@ -2433,10 +2474,11 @@ html { font-size: calc(16px * var(--font-scale, 1)); }
   background: #e08436;
 }
 
-.glass-pill-btn.active .glass-pill-badge {
-  background: rgba(255, 255, 255, 0.28);
-  color: #ffffff;
-  border: 1px solid rgba(255, 255, 255, 0.45);
+.glass-pill-btn.active .glass-pill-badge,
+.floating-master-bar .glass-pill-btn.active .glass-pill-badge {
+  background: rgba(255, 255, 255, 0.28) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(255, 255, 255, 0.5) !important;
 }
 
 /* Sidebar category indicator */
@@ -2583,29 +2625,77 @@ body {
   box-shadow: var(--glass-shadow-elevated), var(--glass-specular) !important;
 }
 
-/* Glass pill buttons */
-.glass-pill-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: var(--glass-bg-subtle) !important;
-  -webkit-backdrop-filter: var(--glass-blur-subtle) !important;
-  backdrop-filter: var(--glass-blur-subtle) !important;
+/* ==========================================================================
+   ADAPTIVE ARCHITECTURE PANEL (ARQUITECTURA EMPRESARIAL ADAPTATIVA)
+   ========================================================================== */
+.adaptive-architecture-panel {
+  margin-top: 24px !important;
+  margin-bottom: 28px !important;
+  border-radius: 22px !important;
+  background: var(--glass-bg) !important;
+  -webkit-backdrop-filter: var(--glass-blur) !important;
+  backdrop-filter: var(--glass-blur) !important;
   border: 1px solid var(--glass-border) !important;
-  border-radius: 9999px !important;
-  padding: 7px 16px !important;
-  font-size: 12.5px !important;
-  font-weight: 600 !important;
-  color: var(--ink) !important;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03), var(--glass-specular) !important;
-  transition: all 0.16s ease !important;
-  text-decoration: none;
-  cursor: pointer;
+  box-shadow: var(--glass-shadow), var(--glass-specular) !important;
+  overflow: hidden !important;
 }
-.glass-pill-btn:hover {
-  background: var(--glass-bg-elevated) !important;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08), var(--glass-specular) !important;
+.adaptive-panel-header {
+  padding: 22px 28px 18px !important;
+  border-bottom: 1px solid var(--border-subtle) !important;
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  flex-wrap: wrap !important;
+  gap: 12px !important;
+}
+.adaptive-panel-title {
+  margin: 3px 0 0 !important;
+  font-size: 16.5px !important;
+  font-weight: 700 !important;
+  color: var(--ink) !important;
+  letter-spacing: -0.25px !important;
+}
+.adaptive-panel-desc {
+  margin: 4px 0 0 !important;
+  font-size: 12.5px !important;
+  line-height: 1.4 !important;
+}
+.adaptive-panel-body {
+  padding: 22px 28px 28px !important;
+}
+.adaptive-cards-grid {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)) !important;
+  gap: 16px !important;
+}
+.adaptive-card {
+  padding: 22px 24px !important;
+  margin-bottom: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  border-radius: 18px !important;
+}
+.adaptive-card-actions {
+  margin-top: auto !important;
+  padding-top: 14px !important;
+  display: flex !important;
+  gap: 8px !important;
+  flex-wrap: wrap !important;
+  align-items: center !important;
+}
+
+/* Generic panel header and body padding fallback */
+.panel-header {
+  padding: 22px 28px 18px !important;
+  border-bottom: 1px solid var(--border-subtle) !important;
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  flex-wrap: wrap !important;
+  gap: 12px !important;
+}
+.panel-body {
+  padding: 22px 28px 28px !important;
 }
 
 /* FLOATING GLASS SUBNAV (DOCK) */
@@ -2627,7 +2717,7 @@ body {
   background: transparent !important;
   border: 1px solid transparent !important;
   border-radius: 12px !important;
-  padding: 8px 14px !important;
+  padding: 8px 16px !important;
   font-size: 13px !important;
   font-weight: 600 !important;
   color: var(--ink) !important;
@@ -2639,14 +2729,21 @@ body {
   background: var(--glass-bg) !important;
   border-color: var(--glass-border) !important;
   transform: translateY(-1px);
+  color: var(--ink) !important;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
 }
-.sub-nav button.primary {
+.sub-nav button.primary,
+.sub-nav button.active {
   background: var(--brand-accent) !important;
   color: #ffffff !important;
   border-color: var(--brand-accent) !important;
-  box-shadow: 0 4px 14px -2px color-mix(in srgb, var(--brand-accent) 45%, transparent), inset 0 1px 1px rgba(255, 255, 255, 0.35) !important;
+  font-weight: 700 !important;
+  box-shadow: 0 4px 14px -2px color-mix(in srgb, var(--brand-accent) 55%, transparent), inset 0 1px 1px rgba(255, 255, 255, 0.4) !important;
   transform: translateY(-1px);
+}
+.sub-nav button.primary *,
+.sub-nav button.active * {
+  color: #ffffff !important;
 }
 
 /* GLASS KPI CARDS */

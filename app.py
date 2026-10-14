@@ -638,7 +638,7 @@ def mutate(c,uid,cid,action,d):
         c.execute('UPDATE companies SET accent_color=?,surface_color=?,card_color=?,text_color=?,font_scale=? WHERE id=?',(*values.values(),cid));audit(c,uid,cid,'cambiar marca','companies',cid,values);return {'ok':True,'branding':values}
     if action=='generate':
         through=date(d.get('through',today().isoformat()))
-        if through>today(): raise ValueError('El piloto solo genera períodos iniciados hasta hoy.')
+        if through>today(): raise ValueError('El sistema solo genera períodos iniciados hasta hoy.')
         return {'generated':generate(c,uid,cid,through)}
     table=None; record={}
     if action in ('department','project'):
@@ -777,7 +777,7 @@ def mutate(c,uid,cid,action,d):
     return {'id':ident}
 
 class Handler(BaseHTTPRequestHandler):
-    server_version='ZeroPilot/1.0'
+    server_version='Zero/1.0.1a'
     def log_message(self,fmt,*args): pass
     def respond(self,status,data,headers=None):
         body=json.dumps(data,ensure_ascii=False).encode()
@@ -1120,7 +1120,7 @@ def backup(target):
 if __name__=='__main__':
     default_port = int(os.environ.get('PORT', 8000))
     default_host = os.environ.get('HOST', '0.0.0.0')
-    parser=argparse.ArgumentParser(description='Zero — piloto local')
+    parser=argparse.ArgumentParser(description='Zero — Ver. 1.0.1a')
     parser.add_argument('--port',type=int,default=default_port);parser.add_argument('--host',default=default_host);parser.add_argument('--db',type=Path);parser.add_argument('--backup',type=Path)
     args=parser.parse_args()
     if args.db: DB=args.db

@@ -50,14 +50,14 @@ function calculateTaskImpact(task){
 }
 function login(error='',mode='login'){
 const importing=mode==='import',registering=mode!=='login';
-$('#app').innerHTML=`<main class="login"><section class="login-art"><div class="brand"><span class="brand-mark"></span>zero<span class="badge">PILOTO</span></div><div><div class="eyebrow">SU EMPRESA EMPIEZA AQUÍ</div><h1>Cada empresa.<br>Cada detalle.<br>En un solo lugar.</h1><p>Cree su espacio de trabajo, continúe con una empresa existente o recupere los datos de un archivo Zero.</p><div class="login-lines"><span></span><span></span><span></span><span></span><span></span></div></div><div class="bottom muted">Gestión local · America/Santo_Domingo</div></section><section class="login-form"><div class="login-box"><div class="login-theme">${themeButton()}</div><div class="eyebrow">BIENVENIDO A ZERO</div><div class="tabs access-tabs"><button data-access="login" class="${mode==='login'?'active':''}">Iniciar sesión</button><button data-access="register" class="${mode==='register'?'active':''}">Crear empresa</button><button data-access="import" class="${importing?'active':''}">Importar empresa</button></div><h1>${importing?'Recuperar una empresa':registering?'Crear empresa y usuario':'Entrar a mi empresa'}</h1><p class="muted">${importing?'Seleccione un archivo .zero.json exportado desde Zero. Se creará una empresa independiente; las existentes se conservan.':registering?'Su empresa tendrá sus propios datos y un usuario administrador.':'Use sus credenciales. Dentro podrá elegir entre las empresas a las que tiene acceso.'}</p><form id="login-form">
+$('#app').innerHTML=`<main class="login"><section class="login-art"><div class="brand"><span class="brand-mark"></span>zero<span class="badge">Ver. 1.0.1a</span></div><div><div class="eyebrow">SU EMPRESA EMPIEZA AQUÍ</div><h1>Cada empresa.<br>Cada detalle.<br>En un solo lugar.</h1><p>Cree su espacio de trabajo, continúe con una empresa existente o recupere los datos de un archivo Zero.</p><div class="login-lines"><span></span><span></span><span></span><span></span><span></span></div></div><div class="bottom muted">Gestión local · America/Santo_Domingo</div></section><section class="login-form"><div class="login-box"><div class="login-theme">${themeButton()}</div><div class="eyebrow">BIENVENIDO A ZERO</div><div class="tabs access-tabs"><button data-access="login" class="${mode==='login'?'active':''}">Iniciar sesión</button><button data-access="register" class="${mode==='register'?'active':''}">Crear empresa</button><button data-access="import" class="${importing?'active':''}">Importar empresa</button></div><h1>${importing?'Recuperar una empresa':registering?'Crear empresa y usuario':'Entrar a mi empresa'}</h1><p class="muted">${importing?'Seleccione un archivo .zero.json exportado desde Zero. Se creará una empresa independiente; las existentes se conservan.':registering?'Su empresa tendrá sus propios datos y un usuario administrador.':'Use sus credenciales. Dentro podrá elegir entre las empresas a las que tiene acceso.'}</p><form id="login-form">
 ${importing?'<label for="archive-file">Archivo de empresa (.zero.json)</label><input id="archive-file" type="file" accept=".json,application/json" required><div id="archive-preview" class="form-help" aria-live="polite">Máximo 50 MB. No acepta bases SQLite ni archivos de otros programas.</div>':''}
 ${registering?'<label for="company-name">Nombre de la empresa</label><input id="company-name" name="company_name" maxlength="200" required><label for="person-name">Nombre del administrador</label><input id="person-name" name="name" maxlength="200" autocomplete="name" required>':''}
 <label for="username">${registering?'Nuevo usuario administrador':'Usuario'}</label><input id="username" name="username" autocomplete="username" ${registering?'pattern="[a-zA-Z0-9][a-zA-Z0-9_.\\-]{2,79}" title="3–80 letras sin acentos, números, puntos, guiones o guiones bajos"':''} required><label for="password">${registering?'Nueva contraseña':'Contraseña'}</label><input id="password" name="password" type="password" autocomplete="${registering?'new-password':'current-password'}" ${registering?'minlength="4" maxlength="200"':''} required>
 ${registering?'<label for="confirm-password">Repetir contraseña</label><input id="confirm-password" type="password" autocomplete="new-password" minlength="4" required>':''}
 ${mode==='register'?'<label><input type="checkbox" name="demo"> Empresa de demostración (datos ficticios)</label>':''}
 ${importing?'<p class="form-help">Se recuperan clientes, servicios, cargos, pagos, personal, tareas e historial. Los autores históricos se conservan sin acceso al sistema. Cree los usuarios autorizados después de importar.</p>':''}
-<button class="primary" type="submit">${importing?'Importar y entrar →':registering?'Crear empresa y entrar →':'Entrar a Zero →'}</button><div class="error" id="login-error" role="alert">${esc(error)}</div><div class="form-help" style="margin-top:14px;font-size:12px;color:var(--muted);background:var(--surface,#f8fafc);padding:10px 14px;border-radius:6px;border:1px solid var(--border,#cbd5e1);line-height:1.5">🔑 <strong>Acceso inicial:</strong> Usuario: <code>monarca</code> (o <code>admin</code>) · Contraseña: <code>1234</code></div></form><p class="muted">${registering?'El registro está disponible en el equipo donde se ejecuta Zero.': 'Para entrar en una empresa existente necesita un usuario autorizado; registrarse no concede acceso a sus datos.'}</p></div></section></main>`;
+<button class="primary" type="submit">${importing?'Importar y entrar →':registering?'Crear empresa y entrar →':'Entrar a Zero →'}</button><div class="error" id="login-error" role="alert">${esc(error)}</div></form><p class="muted">${registering?'El registro está disponible en el equipo donde se ejecuta Zero.': 'Para entrar en una empresa existente necesita un usuario autorizado; registrarse no concede acceso a sus datos.'}</p></div></section></main>`;
 document.querySelectorAll('[data-access]').forEach(b=>b.onclick=()=>login('',b.dataset.access));let archive=null;
 if(importing)$('#archive-file').onchange=async e=>{archive=null;$('#login-error').textContent='';const file=e.target.files[0];if(!file)return;try{if(file.size>50000000)throw Error('El archivo supera 50 MB.');const parsed=JSON.parse(await file.text());if(parsed.format!=='zero-company'||![1,2,3,4,5,6,7].includes(parsed.version)||!parsed.company||!parsed.data)throw Error('Seleccione un archivo de empresa exportado desde Zero.');archive=parsed;$('#company-name').value=parsed.company.name+' (importada)';const count=Object.values(parsed.data).reduce((n,list)=>n+(Array.isArray(list)?list.length:0),0);$('#archive-preview').textContent=`${parsed.company.name} · ${count} registros · ${parsed.company.demo?'Demostración':'Empresa real'}. Se validará todo antes de guardar.`}catch(err){$('#archive-preview').textContent='Archivo no válido.';$('#login-error').textContent=err.message}};
 $('#login-form').onsubmit=async e=>{e.preventDefault();const btn=e.target.querySelector('[type=submit]');btn.disabled=true;$('#login-error').textContent='';try{const data=Object.fromEntries(new FormData(e.target));if(registering){if(data.password!==$('#confirm-password').value)throw Error('Las contraseñas no coinciden.');if(importing&&!archive)throw Error('Seleccione un archivo Zero válido.');data.demo=Boolean(data.demo);if(importing)data.archive=archive;await api(importing?'register-import':'register',data)}await api('login',{username:data.username,password:data.password});await boot();if(registering)toast(importing?'Empresa importada. Sus datos anteriores se conservaron.':'Empresa y usuario creados.')}catch(err){$('#login-error').textContent=err.message;btn.disabled=false}};
@@ -396,10 +396,10 @@ function render(){
       </nav>
 
       <div class="sidebar-bottom">
-        <span class="badge">PILOTO LOCAL</span><br>
+        <span class="badge">Ver. 1.0.1a</span><br>
         Guardado inmediato en SQLite<br>
         Zona horaria: Santo Domingo<br>
-        Paquete piloto · sin facturación de licencias
+        Edición Empresarial Ver. 1.0.1a
       </div>
     </aside>
     <div class="main-wrapper">
@@ -431,7 +431,7 @@ function render(){
       ${floatingMasterBar}
       ${mobileSubnav}
       <main class="content">
-        ${company().demo?'<div class="notice">Está en demostración: todas las personas, clientes y movimientos son ficticios. Use su usuario empresarial para trabajar con datos reales.</div>':'<div class="notice">Empresa real · Piloto local. Registre datos autorizados y cree un respaldo al finalizar la jornada.</div>'}
+        ${company().demo?'<div class="notice">Está en demostración: todas las personas, clientes y movimientos son ficticios. Use su usuario empresarial para trabajar con datos reales.</div>':'<div class="notice">Empresa real · Ver. 1.0.1a. Registre datos autorizados y cree un respaldo al finalizar la jornada.</div>'}
         ${({payroll:payrollView,treasury:treasuryView,dashboard:dashboardView,collections:collectionsView,expenses:expensesView,team:teamView,tasks:tasksView,settings:settingsView,agriculture:agricultureView,reports:reportsView,departments:departmentsView,real_estate:realEstateView}[view])()}
         <div class="footer-note">Actualizado ${esc(new Date(S.updated_at).toLocaleString('es-DO',{timeZone:'America/Santo_Domingo'}))} · Importes en RD$, salvo cuentas de caja y banco con otra moneda indicada.</div>
       </main>
@@ -451,7 +451,7 @@ function dashboardView(){
     const isAdmin = canAdminCompany(c.id);
     return `<tr><td><strong>${esc(c.name)}</strong> ${isActive ? '<span class="badge green">Activa</span>' : ''}<div class="muted">${esc(c.group_name||'Empresa independiente')}${c.restricted?' · alcance limitado':''}</div></td><td>${money(c.expenses)}</td><td>${money(c.payable)}</td><td>${money(c.collected)}</td><td>${money(c.receivable)}</td><td>${c.hours} h</td><td>${c.late_tasks?badge(c.late_tasks+' pendientes'):'0'}</td><td>${!isActive ? `<button class="small" data-switch-company="${c.id}">Ir a empresa</button>` : ''} ${isAdmin ? action('✏ Ficha / Ajustes', 'edit_company', c.id) : ''}</td></tr>`;
   });
-  return heading('Una mirada a toda la operación',`${esc(company().name)} · Empresa seleccionada`,`<button data-action="refresh">↻ Actualizar</button>`)+`<form id="period-form" class="toolbar"><div class="field"><label for="period-start">Desde</label><input type="date" id="period-start" name="start" value="${start}" required></div><div class="field"><label for="period-end">Hasta</label><input type="date" id="period-end" name="end" value="${end}" required></div><button>Aplicar período</button><span class="muted">Corte: ${displayDate(end)} · actualizado ${esc(new Date(D.updated_at).toLocaleTimeString('es-DO',{timeZone:'America/Santo_Domingo'}))}</span></form><div class="cards">${cards.map(([t,v,n],i)=>`<article class="card ${i===2?'highlight':''}"><div class="card-title">${t}<span>↗</span></div><div class="card-value">${v}</div><div class="card-note">${n}</div></article>`).join('')}</div>`+panel('Empresas de la cuenta y resultados',table(['Empresa / Grupo','Gastos','Por pagar','Cobrado','Por cobrar','Horas','Atrasadas','Acciones'],allRows))+`<div class="two-col">${panel('Cobros que requieren atención',alertList())}${panel('Cómo leer este panel',`<div class="definition">Gastos = importes aprobados, no necesariamente pagados. Pagos pendientes = saldo de gastos aprobados, nóminas y trabajo liberado acumulado al cierre. Cobrado = pagos efectivamente registrados en el período; generar un cargo no aumenta esta cifra.<br><br>Por cobrar = saldo acumulado de cargos iniciados hasta el cierre, descontando pagos fechados hasta ese día. Horas = reportes aprobados. Atrasadas = tareas abiertas vencidas a la fecha actual (${displayDate(D.today)}).<br><br>Los filtros de departamento y proyecto limitan la información operativa; cobros es un permiso independiente de alcance empresarial. Las aprobaciones y estados reflejan su estado actual: este piloto no reconstruye estados históricos de aprobación.</div>`)}</div>`+dashboardPayrollSection()+dashboardAdaptiveModulesSection()}
+  return heading('Una mirada a toda la operación',`${esc(company().name)} · Empresa seleccionada`,`<button data-action="refresh">↻ Actualizar</button>`)+`<form id="period-form" class="toolbar"><div class="field"><label for="period-start">Desde</label><input type="date" id="period-start" name="start" value="${start}" required></div><div class="field"><label for="period-end">Hasta</label><input type="date" id="period-end" name="end" value="${end}" required></div><button>Aplicar período</button><span class="muted">Corte: ${displayDate(end)} · actualizado ${esc(new Date(D.updated_at).toLocaleTimeString('es-DO',{timeZone:'America/Santo_Domingo'}))}</span></form><div class="cards">${cards.map(([t,v,n],i)=>`<article class="card ${i===2?'highlight':''}"><div class="card-title">${t}<span>↗</span></div><div class="card-value">${v}</div><div class="card-note">${n}</div></article>`).join('')}</div>`+panel('Empresas de la cuenta y resultados',table(['Empresa / Grupo','Gastos','Por pagar','Cobrado','Por cobrar','Horas','Atrasadas','Acciones'],allRows))+`<div class="two-col">${panel('Cobros que requieren atención',alertList())}${panel('Cómo leer este panel',`<div class="definition">Gastos = importes aprobados, no necesariamente pagados. Pagos pendientes = saldo de gastos aprobados, nóminas y trabajo liberado acumulado al cierre. Cobrado = pagos efectivamente registrados en el período; generar un cargo no aumenta esta cifra.<br><br>Por cobrar = saldo acumulado de cargos iniciados hasta el cierre, descontando pagos fechados hasta ese día. Horas = reportes aprobados. Atrasadas = tareas abiertas vencidas a la fecha actual (${displayDate(D.today)}).<br><br>Los filtros de departamento y proyecto limitan la información operativa; cobros es un permiso independiente de alcance empresarial. Las aprobaciones y estados reflejan su estado actual: el sistema no reconstruye estados históricos de aprobación.</div>`)}</div>`+dashboardPayrollSection()+dashboardAdaptiveModulesSection()}
 function dashboardAdaptiveModulesSection(){
   const activeVertical = S?.company_profile?.business_vertical || 'general';
   const rePropsCount = (S.re_properties || []).length;
@@ -460,35 +460,37 @@ function dashboardAdaptiveModulesSection(){
   const farmJobsCount = (S.farm_jobs || []).length;
 
   return `
-    <div class="panel" style="margin-top:20px">
-      <div class="panel-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+    <section class="panel adaptive-architecture-panel">
+      <div class="adaptive-panel-header">
         <div>
           <div class="eyebrow">ARQUITECTURA EMPRESARIAL ADAPTATIVA</div>
-          <h3 style="margin:2px 0 0">Módulos Especializados y Circunstanciales</h3>
-          <p class="muted" style="margin:2px 0 0;font-size:12.5px">Módulos de sector que se adaptan a la naturaleza del negocio o se abren de forma circunstancial.</p>
+          <h3 class="adaptive-panel-title">Módulos Especializados y Circunstanciales</h3>
+          <p class="muted adaptive-panel-desc">Módulos de sector que se adaptan a la naturaleza del negocio o se abren de forma circunstancial.</p>
         </div>
-        <button type="button" class="small secondary" id="btn-dash-modules">🧩 Centro de Módulos</button>
+        <button type="button" class="glass-pill-btn secondary" id="btn-dash-modules">🧩 Centro de Módulos</button>
       </div>
-      <div class="cards" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-top:12px">
-        <article class="card ${activeVertical==='real_estate'?'highlight':''}">
-          <div class="card-title">🏢 Bienes Raíces e Inmobiliaria <span class="badge ${activeVertical==='real_estate'?'green':'blue'}">${activeVertical==='real_estate'?'Naturaleza Principal':'Módulo Circunstancial'}</span></div>
-          <div class="card-value" style="font-size:18px">${rePropsCount} propiedad(es) · ${reLeasesCount} contrato(s)</div>
-          <div class="card-note">Inmuebles en venta y alquiler, cobros de renta en RD$, visitas y reparaciones.</div>
-          <div style="margin-top:12px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
-            <button type="button" class="primary small" data-view="real_estate">🏢 Abrir Bienes Raíces →</button>
-            ${rePropsCount===0?`<button type="button" class="secondary small" data-action="seed_demo_real_estate">⚡ Cargar 4 Inmuebles Demo</button>`:''}
-          </div>
-        </article>
-        <article class="card ${activeVertical==='agriculture'?'highlight':''}">
-          <div class="card-title">🌱 Agropecuaria y Labores <span class="badge ${activeVertical==='agriculture'?'green':'blue'}">${activeVertical==='agriculture'?'Naturaleza Principal':'Módulo Circunstancial'}</span></div>
-          <div class="card-value" style="font-size:18px">${farmsCount} finca(s) · ${farmJobsCount} labores</div>
-          <div class="card-note">Parcelas agrícolas, cosechas en quintales/cajas y liquidación de jornales de campo.</div>
-          <div style="margin-top:12px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
-            <button type="button" class="secondary small" data-view="agriculture">🌱 Abrir Fincas y Labores →</button>
-          </div>
-        </article>
+      <div class="adaptive-panel-body">
+        <div class="adaptive-cards-grid">
+          <article class="card adaptive-card ${activeVertical==='real_estate'?'highlight':''}">
+            <div class="card-title">🏢 Bienes Raíces e Inmobiliaria <span class="badge ${activeVertical==='real_estate'?'green':'blue'}">${activeVertical==='real_estate'?'Naturaleza Principal':'Módulo Circunstancial'}</span></div>
+            <div class="card-value" style="font-size:18px">${rePropsCount} propiedad(es) · ${reLeasesCount} contrato(s)</div>
+            <div class="card-note">Inmuebles en venta y alquiler, cobros de renta en RD$, visitas y reparaciones.</div>
+            <div class="adaptive-card-actions">
+              <button type="button" class="primary small" data-view="real_estate">🏢 Abrir Bienes Raíces →</button>
+              ${rePropsCount===0?`<button type="button" class="secondary small" data-action="seed_demo_real_estate">⚡ Cargar 4 Inmuebles Demo</button>`:''}
+            </div>
+          </article>
+          <article class="card adaptive-card ${activeVertical==='agriculture'?'highlight':''}">
+            <div class="card-title">🌱 Agropecuaria y Labores <span class="badge ${activeVertical==='agriculture'?'green':'blue'}">${activeVertical==='agriculture'?'Naturaleza Principal':'Módulo Circunstancial'}</span></div>
+            <div class="card-value" style="font-size:18px">${farmsCount} finca(s) · ${farmJobsCount} labores</div>
+            <div class="card-note">Parcelas agrícolas, cosechas en quintales/cajas y liquidación de jornales de campo.</div>
+            <div class="adaptive-card-actions">
+              <button type="button" class="secondary small" data-view="agriculture">🌱 Abrir Fincas y Labores →</button>
+            </div>
+          </article>
+        </div>
       </div>
-    </div>
+    </section>
   `;
 }
 function dashboardPayrollSection(){
