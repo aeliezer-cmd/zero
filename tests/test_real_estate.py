@@ -521,5 +521,81 @@ class RealEstateTests(unittest.TestCase):
         prop_final = next(p for p in st['re_properties'] if p['id'] == prop_id)
         self.assertEqual(prop_final['status'], 'sold')
 
+    def test_edit_re_visit_and_maintenance(self):
+        prop_res = self.save('create_re_property',
+            title='Apartamento Evaristo Morales',
+            address='Calle Paseo de los Locutores #45',
+            city='Santo Domingo',
+            property_type='apartment',
+            listing_type='both',
+            price_sale='9500000',
+            price_rent='55000',
+            status='available'
+        )
+        prop_id = prop_res['id']
+
+        # 1. Create and edit visit
+        v_res = self.save('create_re_visit',
+            property_id=prop_id,
+            client_name='Carlos Santana',
+            client_phone='809-555-8888',
+            visit_date=app.today().isoformat(),
+            interest_level='medium',
+            status='scheduled'
+        )
+        self.assertTrue(v_res['ok'])
+        visit_id = v_res['id']
+
+        # Edit visit
+        edit_v_res = self.save('edit_re_visit',
+            id=visit_id,
+            property_id=prop_id,
+            client_name='Carlos Santana',
+            client_phone='809-555-8888',
+            visit_date=app.today().isoformat(),
+            interest_level='high',
+            feedback='Cliente encantado con la vista y distribución. Quiere presentar oferta.',
+            status='completed'
+        )
+        self.assertTrue(edit_v_res['ok'])
+
+        st = app.state(self.c, 1, 1)
+        visit_obj = next(v for v in st['re_visits'] if v['id'] == visit_id)
+        self.assertEqual(visit_obj['interest_level'], 'high')
+        self.assertEqual(visit_obj['status'], 'completed')
+        self.assertIn('presentar oferta', visit_obj['feedback'])
+
+        # 2. Create and edit maintenance
+        m_res = self.save('create_re_maintenance',
+            property_id=prop_id,
+            title='Fuga de agua en lavamanos secundario',
+            cost_estimate='2500',
+            reported_date=app.today().isoformat(),
+            contractor_technician='Plomería González',
+            status='pending'
+        )
+        self.assertTrue(m_res['ok'])
+        m_id = m_res['id']
+
+        # Edit maintenance
+        edit_m_res = self.save('edit_re_maintenance',
+            id=m_id,
+            property_id=prop_id,
+            title='Fuga en lavamanos y cambio de tubería de desagüe',
+            cost_estimate='3800',
+            reported_date=app.today().isoformat(),
+            contractor_technician='Plomería González & Hnos',
+            status='in_progress',
+            notes='Repuesto comprado en ferretería Americana'
+        )
+        self.assertTrue(edit_m_res['ok'])
+
+        st = app.state(self.c, 1, 1)
+        m_obj = next(m for m in st['re_maintenances'] if m['id'] == m_id)
+        self.assertEqual(m_obj['cost_estimate'], 380000)
+        self.assertEqual(m_obj['status'], 'in_progress')
+        self.assertEqual(m_obj['contractor_technician'], 'Plomería González & Hnos')
+
 if __name__ == '__main__':
     unittest.main()
+

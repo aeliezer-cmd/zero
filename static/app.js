@@ -2392,8 +2392,13 @@ function bind(){
   };
   document.querySelectorAll('[data-open]').forEach(b=>{
     b.onclick=()=>{
-      const extra = b.dataset.propertyId ? {property_id: Number(b.dataset.propertyId)} : null;
-      openForm(b.dataset.open, null, extra);
+      const extra = {};
+      if(b.dataset.propertyId) extra.property_id = Number(b.dataset.propertyId);
+      if(b.dataset.buyerId) extra.buyer_id = Number(b.dataset.buyerId);
+      if(b.dataset.condoId) extra.condo_id = Number(b.dataset.condoId);
+      if(b.dataset.saleId) extra.sale_id = Number(b.dataset.saleId);
+      if(b.dataset.installmentId) extra.installment_id = Number(b.dataset.installmentId);
+      openForm(b.dataset.open, null, Object.keys(extra).length ? extra : null);
     };
   });
   document.querySelectorAll('[data-action]').forEach(b=>b.onclick=()=>handleAction(b));
@@ -4103,12 +4108,15 @@ if(kind==='re_sale'||kind==='edit_re_sale'){
   const propOpts=(S.re_properties||[]).map(p=>[p.id, `${p.code?p.code+' · ':''}${p.title} (Ref: ${money(p.price_sale)})`]);
   const buyerOpts=[['','— Seleccionar comprador registrado o digitar abajo —'],...(S.re_buyers||[]).map(b=>[b.id,`👤 ${b.name} (${b.document_id||b.phone})`])];
   const saleStatuses=[['in_progress','En financiamiento (Cuotas activas)'],['closed','Cerrado / Pagado en su totalidad'],['reserved','Reservado / En arras'],['cancelled','Cancelado']];
+  const selBuyer=(extraData?.buyer_id?(S.re_buyers||[]).find(x=>x.id===extraData.buyer_id):null)||(s?.buyer_id?(S.re_buyers||[]).find(x=>x.id===s.buyer_id):null);
+  const selProp=(extraData?.property_id?(S.re_properties||[]).find(x=>x.id===extraData.property_id):null)||(s?.property_id?(S.re_properties||[]).find(x=>x.id===s.property_id):null);
+  const defaultPrice=s?(s.sale_price/100):(selProp?.price_sale?(selProp.price_sale/100):'');
   fields=select('property_id','Inmueble vendido',propOpts,s?.property_id||extraData?.property_id||'','required')+
          select('buyer_id','Comprador registrado (opcional)',buyerOpts,s?.buyer_id||extraData?.buyer_id||'')+
-         input('buyer_name','Nombre completo del comprador','text',s?.buyer_name||'','required maxlength="200" placeholder="Nombre completo"')+
-         input('buyer_document','Cédula / RNC del comprador','text',s?.buyer_document||'')+
-         input('buyer_phone','Teléfono / WhatsApp del comprador','text',s?.buyer_phone||'')+
-         input('sale_price','Precio total de venta acordado (RD$)','number',s?.sale_price?(s.sale_price/100):'','required min="0.01" step="0.01"')+
+         input('buyer_name','Nombre completo del comprador','text',s?.buyer_name||selBuyer?.name||'','required maxlength="200" placeholder="Nombre completo"')+
+         input('buyer_document','Cédula / RNC del comprador','text',s?.buyer_document||selBuyer?.document_id||'')+
+         input('buyer_phone','Teléfono / WhatsApp del comprador','text',s?.buyer_phone||selBuyer?.phone||'')+
+         input('sale_price','Precio total de venta acordado (RD$)','number',defaultPrice,'required min="0.01" step="0.01"')+
          input('down_payment','Inicial / Pago de Separación (RD$)','number',s?.down_payment?(s.down_payment/100):0,'min="0" step="0.01" placeholder="ej. 4500000.00"')+
          input('installments_count','Cantidad de cuotas mensuales de financiamiento','number',s?.installments_count||0,'min="0" max="360" placeholder="ej. 24, 36, 60 (0 para venta al contado)"')+
          input('interest_rate_annual','Tasa de interés anual de financiamiento (%)','number',s?.interest_rate_annual||0,'min="0" max="100" step="0.01" placeholder="ej. 12.0 para 12% anual"')+
@@ -4124,11 +4132,19 @@ if(kind==='re_sale'||kind==='edit_re_sale'){
   help='Registre ventas al contado o con plan de financiamiento en cuotas mensuales (sistema de amortización francés), cálculo de intereses y mora por atraso.';
 }
 if(kind==='record_re_sale_payment'){
-  const saleId=Number(extraData?.sale_id||id);
-  const s=(S.re_sales||[]).find(x=>x.id===saleId);
+  const sales=(S.re_sales||[]);
+  if(!sales.length){
+    toast('No hay contratos de venta registrados aún para cobrar o abonar.');
+    return;
+  }
+  let saleId=Number(extraData?.sale_id||id);
+  if(!saleId||!sales.some(x=>x.id===saleId)){
+    saleId=sales[0].id;
+  }
+  const s=sales.find(x=>x.id===saleId)||sales[0];
   const instId=extraData?.installment_id?Number(extraData.installment_id):null;
   const inst=instId?(S.re_sale_installments||[]).find(x=>x.id===instId):null;
-  title=s?`Facturar Cobro / Abono a Venta · Contrato #${saleId}`:'Facturar Cobro o Abono a Venta Inmobiliaria';
+  title=`Facturar Cobro / Abono a Venta · Contrato #${saleId}`;
   initial={sale_id:saleId};
   if(instId) initial.installment_id=instId;
   const sInsts=(S.re_sale_installments||[]).filter(i=>i.sale_id===saleId&&i.status!=='paid');
@@ -4145,8 +4161,11 @@ if(kind==='record_re_sale_payment'){
     ['card','Tarjeta de Débito / Crédito']
   ];
   const cashAccounts=[['','Caja / Banco por defecto'],...(S.cash_accounts||[]).filter(a=>!a.archived).map(a=>[a.id,`🏦 ${a.name} (${a.currency} · Saldo: ${accountMoney(a.balance,a.currency)})`])];
+  const saleOpts=sales.map(sal=>[sal.id,`Contrato #${sal.id} · ${sal.property_title||'Inmueble'} · Comprador: ${sal.buyer_name} (Resta: ${money(sal.remaining_capital||0)})`]);
 
-  fields=select('installment_id','Cuota mensual a saldar (o abono a capital)',instOpts,instId||'')+
+  const saleField=(extraData?.sale_id||(id&&sales.some(x=>x.id===id)))?'':select('sale_id','Contrato de venta a abonar',saleOpts,saleId);
+  fields=saleField+
+         select('installment_id','Cuota mensual a saldar (o abono a capital)',instOpts,instId||'')+
          input('amount','Monto a cobrar / abonar (RD$)','number',pendingAmount>0?(pendingAmount/100):'','required min="0.01" step="0.01"')+
          input('payment_date','Fecha del cobro','date',S.today,`required max="${S.today}"`)+
          select('payment_method','Medio de pago',paymentMethods,'transfer')+
@@ -4190,7 +4209,58 @@ $('#modal').querySelectorAll('input,textarea,select').forEach(el=>{el.setAttribu
 $('#modal').showModal();
 $('#close-modal').onclick=$('#cancel-modal').onclick=()=>$('#modal').close();
 if(kind==='subscription')$('#f-product_id').onchange=e=>{$('#f-amount').value=S.products.find(p=>p.id===Number(e.target.value)).amount/100};
-$('#record-form').onsubmit=async e=>{e.preventDefault();const btn=e.target.querySelector('[type=submit]');btn.disabled=true;const form=new FormData(e.target),data={...Object.fromEntries(form),...initial};if(form.has('allow_early_close'))data.allow_early_close=true;if(form.has('close_contracts'))data.close_contracts=true;if(kind==='view_termination'){$('#modal').close();return;}if(['member','edit_member'].includes(kind)){data.departments=form.getAll('departments').map(Number);data.projects=form.getAll('projects').map(Number);data.collections=form.has('collections')}try{if(['expense_payment','pay_payroll'].includes(kind)){const accId=data.account_id;const acc=S.cash_accounts?.find(a=>String(a.id)===String(accId));if(acc){let payAmount=0;if(kind==='expense_payment')payAmount=Math.round(Number(data.amount||0)*100);else if(kind==='pay_payroll'){const p=(S.farm_payrolls||[]).find(x=>x.id===Number(data.id));if(p)payAmount=p.amount;}if(payAmount>acc.balance){throw Error(`Saldo insuficiente en «${acc.name}». Saldo disponible: ${accountMoney(acc.balance,acc.currency)}.`);}}}if(kind==='password')await api('password',data);else if(kind==='company'){data.company_id=cid;const created=await api('company',data);$('#modal').close();await boot();setActiveCompany(created.company_id);await refresh();toast('Empresa creada correctamente.')}else if(kind==='edit_company'){const targetId=Number(initial.id||data.id||cid);data.id=targetId;data.target_company_id=targetId;data.demo=form.has('demo');const targetComp=me?.companies?.find(x=>x.id===targetId)||{};data.logo=targetComp.logo||(targetId===Number(cid)?S.company_profile?.logo:'')||'';if(data.remove_logo)data.logo='';const file=$('#company-logo-modal')?.files?.[0];if(file){if(file.size>500000)throw Error('El logo supera 500 KB.');data.logo=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(Error('No se pudo leer el logo.'));reader.readAsDataURL(file)})}await save('edit_company',data);me=await api('me');$('#modal').close();await refresh();toast('Ficha de empresa actualizada correctamente.')}else if(kind==='terminate_employee'){await save('terminate_employee',data);$('#modal').close();toast('Colaborador dado de baja correctamente.');}else{const reActionMap={re_property:'create_re_property',re_condo:'create_re_condo',edit_re_condo:'edit_re_condo',re_condo_charge:'create_re_condo_charge',edit_re_condo_charge:'edit_re_condo_charge',generate_condo_fees:'generate_condo_month_fees',pay_condo_charge:'record_condo_charge_payment',re_condo_expense:'create_re_condo_expense',edit_re_condo_expense:'edit_re_condo_expense',pay_condo_expense:'pay_re_condo_expense',re_buyer:'create_re_buyer',edit_re_buyer:'edit_re_buyer',re_sale:'create_re_sale',edit_re_sale:'edit_re_sale',record_re_sale_payment:'record_re_sale_payment',re_lease:'create_re_lease',re_visit:'create_re_visit',re_maintenance:'create_re_maintenance',edit_member:'member'};const actionName=reActionMap[kind]||kind;await save(actionName,data);$('#modal').close();toast('Guardado correctamente.')}}catch(err){$('#form-error').textContent=err.message;btn.disabled=false}}}
+if(kind==='re_sale'||kind==='edit_re_sale'){
+  const buyerSelect=$('#f-buyer_id');
+  if(buyerSelect){
+    buyerSelect.onchange=(e)=>{
+      const bId=Number(e.target.value);
+      const buyer=(S.re_buyers||[]).find(b=>b.id===bId);
+      if(buyer){
+        if($('#f-buyer_name')) $('#f-buyer_name').value=buyer.name;
+        if($('#f-buyer_document')) $('#f-buyer_document').value=buyer.document_id||'';
+        if($('#f-buyer_phone')) $('#f-buyer_phone').value=buyer.phone||'';
+      }
+    };
+  }
+  const propSelect=$('#f-property_id');
+  if(propSelect){
+    propSelect.onchange=(e)=>{
+      const pId=Number(e.target.value);
+      const prop=(S.re_properties||[]).find(p=>p.id===pId);
+      if(prop&&prop.price_sale>0&&!$('#f-sale_price').value){
+        $('#f-sale_price').value=(prop.price_sale/100).toFixed(2);
+      }
+    };
+  }
+}
+if(kind==='record_re_sale_payment'){
+  const saleSelect=$('#f-sale_id');
+  if(saleSelect){
+    saleSelect.onchange=(e)=>{
+      openForm('record_re_sale_payment',null,{sale_id:Number(e.target.value)});
+    };
+  }
+  const instSelect=$('#f-installment_id');
+  if(instSelect){
+    instSelect.onchange=(e)=>{
+      const iId=Number(e.target.value);
+      if(iId){
+        const inst=(S.re_sale_installments||[]).find(x=>x.id===iId);
+        if(inst){
+          const pending=(inst.total_due+(inst.calculated_late_fee||0))-(inst.paid_amount||0);
+          if($('#f-amount')) $('#f-amount').value=(Math.max(0,pending)/100).toFixed(2);
+        }
+      } else {
+        const curSaleId=Number($('#f-sale_id')?.value||initial.sale_id);
+        const curSale=(S.re_sales||[]).find(x=>x.id===curSaleId);
+        if(curSale&&$('#f-amount')){
+          $('#f-amount').value=((curSale.remaining_capital||0)/100).toFixed(2);
+        }
+      }
+    };
+  }
+}
+$('#record-form').onsubmit=async e=>{e.preventDefault();const btn=e.target.querySelector('[type=submit]');btn.disabled=true;const form=new FormData(e.target),data={...Object.fromEntries(form),...initial};if(form.has('allow_early_close'))data.allow_early_close=true;if(form.has('close_contracts'))data.close_contracts=true;if(kind==='view_termination'){$('#modal').close();return;}if(['member','edit_member'].includes(kind)){data.departments=form.getAll('departments').map(Number);data.projects=form.getAll('projects').map(Number);data.collections=form.has('collections')}try{if(['expense_payment','pay_payroll'].includes(kind)){const accId=data.account_id;const acc=S.cash_accounts?.find(a=>String(a.id)===String(accId));if(acc){let payAmount=0;if(kind==='expense_payment')payAmount=Math.round(Number(data.amount||0)*100);else if(kind==='pay_payroll'){const p=(S.farm_payrolls||[]).find(x=>x.id===Number(data.id));if(p)payAmount=p.amount;}if(payAmount>acc.balance){throw Error(`Saldo insuficiente en «${acc.name}». Saldo disponible: ${accountMoney(acc.balance,acc.currency)}.`);}}}if(kind==='password')await api('password',data);else if(kind==='company'){data.company_id=cid;const created=await api('company',data);$('#modal').close();await boot();setActiveCompany(created.company_id);await refresh();toast('Empresa creada correctamente.')}else if(kind==='edit_company'){const targetId=Number(initial.id||data.id||cid);data.id=targetId;data.target_company_id=targetId;data.demo=form.has('demo');const targetComp=me?.companies?.find(x=>x.id===targetId)||{};data.logo=targetComp.logo||(targetId===Number(cid)?S.company_profile?.logo:'')||'';if(data.remove_logo)data.logo='';const file=$('#company-logo-modal')?.files?.[0];if(file){if(file.size>500000)throw Error('El logo supera 500 KB.');data.logo=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(Error('No se pudo leer el logo.'));reader.readAsDataURL(file)})}await save('edit_company',data);me=await api('me');$('#modal').close();await refresh();toast('Ficha de empresa actualizada correctamente.')}else if(kind==='terminate_employee'){await save('terminate_employee',data);$('#modal').close();toast('Colaborador dado de baja correctamente.');}else{const reActionMap={re_property:'create_re_property',edit_re_property:'edit_re_property',re_condo:'create_re_condo',edit_re_condo:'edit_re_condo',re_condo_charge:'create_re_condo_charge',edit_re_condo_charge:'edit_re_condo_charge',generate_condo_fees:'generate_condo_month_fees',pay_condo_charge:'record_condo_charge_payment',re_condo_expense:'create_re_condo_expense',edit_re_condo_expense:'edit_re_condo_expense',pay_condo_expense:'pay_re_condo_expense',re_buyer:'create_re_buyer',edit_re_buyer:'edit_re_buyer',re_sale:'create_re_sale',edit_re_sale:'edit_re_sale',record_re_sale_payment:'record_re_sale_payment',re_lease:'create_re_lease',edit_re_lease:'edit_re_lease',re_visit:'create_re_visit',edit_re_visit:'edit_re_visit',re_maintenance:'create_re_maintenance',edit_re_maintenance:'edit_re_maintenance',edit_member:'member'};const actionName=reActionMap[kind]||kind;await save(actionName,data);$('#modal').close();toast('Guardado correctamente.')}}catch(err){$('#form-error').textContent=err.message;btn.disabled=false}}}
 let reportFilters={type:'expenses',start:'',end:'',department:'',project:'',person:'',status:'',search:''};
 let currentReport=null;
 function reportColumns(result){const type=reportFilters.type,op=result.definition.operational;const headers=['Fecha','Registro','Concepto',...(op?['Departamento','Proyecto']:['Cliente']),...(result.definition.person?['Persona']:[]),'Estado',...(type==='worklogs'?['Horas']:type==='tasks'?[]:['Importe RD$','Pagado RD$','Saldo RD$']),'Referencia / observaciones'];const values=r=>[r.date,r.id,r.concept,...(op?[r.department,r.project]:[r.customer]),...(result.definition.person?[r.person]:[]),statuses[r.status]||r.status,...(type==='worklogs'?[(r.minutes/60).toFixed(2)]:type==='tasks'?[]:[(r.amount/100).toFixed(2),(r.paid/100).toFixed(2),(r.balance/100).toFixed(2)]),r.reference||r.notes];return {headers,rows:result.records.map(values)}}
@@ -6331,22 +6401,22 @@ function realEstateView(){
 
   const circumstantialBanner = `
     <div class="circumstantial-module-banner">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
-        <div>
-          <div style="display:flex;align-items:center;gap:6px">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+        <div style="flex:1;min-width:280px">
+          <div style="display:flex;align-items:center;gap:8px">
             <span class="badge ${isCircumstantial?'blue':'green'}">${isCircumstantial?'MÓDULO CIRCUNSTANCIAL':'NATURALEZA PRINCIPAL'}</span>
-            <strong style="font-size:13px">Bienes Raíces, Administración de Condominios y Propiedades · ${esc(company().name)}</strong>
+            <strong style="font-size:13.5px;letter-spacing:-0.2px">Bienes Raíces, Administración de Condominios y Propiedades · ${esc(company().name)}</strong>
           </div>
-          <div class="muted" style="font-size:12px;margin-top:2px">
+          <div class="muted" style="font-size:12.5px;margin-top:4px;line-height:1.45;max-width:760px">
             ${isCircumstantial 
               ? `Operando de forma adaptativa y circunstancial para esta empresa (Naturaleza principal: ${verticalLabels[activeVertical]||activeVertical}). Puede gestionar condominios, cobros de cuotas a condóminos, facturas comunes de luz y agua, ventas y alquileres sin alterar la contabilidad ni las labores nativas.` 
               : 'Módulo principal activo para esta empresa inmobiliaria y administradora de condominios.'}
           </div>
         </div>
-        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-          <button type="button" class="small secondary" id="btn-re-open-modules-center">🧩 Centro de Módulos</button>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <button type="button" class="glass-pill-btn" id="btn-re-open-modules-center">🧩 Centro de Módulos</button>
           ${isCircumstantial && canAdmin() ? `
-          <button type="button" class="small" id="btn-re-set-as-primary" title="Establecer Bienes Raíces como la naturaleza principal de esta empresa">
+          <button type="button" class="glass-pill-btn" id="btn-re-set-as-primary" title="Establecer Bienes Raíces como la naturaleza principal de esta empresa" style="background:var(--brand-accent)!important;color:#fff!important;border-color:transparent!important">
             🎯 Establecer como principal
           </button>` : ''}
         </div>

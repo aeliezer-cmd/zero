@@ -1628,6 +1628,31 @@ def mutate(core, c, uid, cid, action, d):
         core.audit(c, uid, cid, 'registrar visita inmueble', 're_visits', visit_id, {'client': client_name, 'property_id': prop_id})
         return {'ok': True, 'id': visit_id, 'message': 'Visita registrada con éxito.'}
 
+    if action == 'edit_re_visit':
+        visit_id = int(d.get('id') or 0)
+        visit = core.ref(c, 're_visits', visit_id, cid)
+        prop_id = int(d.get('property_id') or visit['property_id'])
+        prop = core.ref(c, 're_properties', prop_id, cid)
+        client_name = core.text(d.get('client_name') or visit['client_name'], 'Nombre del cliente interesado', 200)
+        client_phone = str(d.get('client_phone') if 'client_phone' in d else visit['client_phone']).strip()[:100]
+        visit_date = core.date(d.get('visit_date', visit['visit_date'])).isoformat()
+        agent_id = int(d['agent_id']) if d.get('agent_id') else None
+        interest_level = str(d.get('interest_level') or visit['interest_level']).strip().lower()
+        if interest_level not in VISIT_INTEREST_LEVELS: interest_level = 'medium'
+        feedback = str(d.get('feedback') if 'feedback' in d else visit['feedback']).strip()[:1000]
+        status = str(d.get('status') or visit['status']).strip().lower()
+        if status not in VISIT_STATUSES: status = 'completed'
+
+        c.execute('''
+            UPDATE re_visits SET
+                property_id=?, client_name=?, client_phone=?, visit_date=?,
+                agent_id=?, interest_level=?, feedback=?, status=?
+            WHERE id=? AND company_id=?
+        ''', (prop_id, client_name, client_phone, visit_date, agent_id, interest_level, feedback, status, visit_id, cid))
+
+        core.audit(c, uid, cid, 'editar visita inmueble', 're_visits', visit_id, {'client': client_name, 'property_id': prop_id})
+        return {'ok': True, 'id': visit_id, 'message': 'Visita actualizada con éxito.'}
+
     if action == 'delete_re_visit':
         visit_id = int(d.get('id') or 0)
         core.ref(c, 're_visits', visit_id, cid)
@@ -1652,6 +1677,29 @@ def mutate(core, c, uid, cid, action, d):
 
         core.audit(c, uid, cid, 'reportar mantenimiento inmueble', 're_maintenances', m_id, {'title': title, 'cost': cost_estimate})
         return {'ok': True, 'id': m_id, 'message': 'Mantenimiento registrado.'}
+
+    if action == 'edit_re_maintenance':
+        m_id = int(d.get('id') or 0)
+        maint = core.ref(c, 're_maintenances', m_id, cid)
+        prop_id = int(d.get('property_id') or maint['property_id'])
+        prop = core.ref(c, 're_properties', prop_id, cid)
+        title = core.text(d.get('title') or maint['title'], 'Detalle del mantenimiento o incidencia', 300)
+        cost_estimate = int(round(float(d.get('cost_estimate') if 'cost_estimate' in d else (maint['cost_estimate'] / 100)) * 100))
+        reported_date = core.date(d.get('reported_date', maint['reported_date'])).isoformat()
+        status = str(d.get('status') or maint['status']).strip().lower()
+        if status not in MAINTENANCE_STATUSES: status = 'pending'
+        contractor = str(d.get('contractor_technician') if 'contractor_technician' in d else maint['contractor_technician']).strip()[:200]
+        notes = str(d.get('notes') if 'notes' in d else maint['notes']).strip()[:2000]
+
+        c.execute('''
+            UPDATE re_maintenances SET
+                property_id=?, title=?, cost_estimate=?, reported_date=?,
+                status=?, contractor_technician=?, notes=?
+            WHERE id=? AND company_id=?
+        ''', (prop_id, title, cost_estimate, reported_date, status, contractor, notes, m_id, cid))
+
+        core.audit(c, uid, cid, 'editar mantenimiento inmueble', 're_maintenances', m_id, {'title': title, 'cost': cost_estimate})
+        return {'ok': True, 'id': m_id, 'message': 'Mantenimiento actualizado.'}
 
     if action == 'resolve_re_maintenance':
         m_id = int(d.get('id') or 0)
