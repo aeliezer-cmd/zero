@@ -443,6 +443,107 @@ def mutate(c,uid,cid,action,d):
         c.execute('DELETE FROM employees WHERE id=? AND company_id=?',(item['id'],cid))
         audit(c,uid,cid,'borrar personal','employees',item['id'],item)
         return {'ok':True,'id':item['id']}
+    if action=='bulk_edit_employees':
+        m=membership(c,uid,cid,2)
+        ids=[int(x) for x in d.get('employee_ids',[]) if str(x).isdigit()]
+        if not ids: raise ValueError('Seleccione al menos un colaborador.')
+        update_fields={}
+        if d.get('update_employment_type'):
+            emp_type=d.get('employment_type')
+            if emp_type in ('fixed','temporary'): update_fields['employment_type']=emp_type
+        if d.get('update_farm_id'):
+            farm_id=int(d['farm_id']) if d.get('farm_id') else None
+            if farm_id: ref(c,'farms',farm_id,cid)
+            update_fields['farm_id']=farm_id
+        if d.get('update_department_id'):
+            dept_id=int(d['department_id']) if d.get('department_id') else None
+            if dept_id: ref(c,'departments',dept_id,cid)
+            update_fields['department_id']=dept_id
+        if d.get('update_project_id'):
+            proj_id=int(d['project_id']) if d.get('project_id') else None
+            if proj_id: ref(c,'projects',proj_id,cid)
+            update_fields['project_id']=proj_id
+        if d.get('update_basis'):
+            basis=d.get('basis')
+            if basis in ('monthly','weekly','daily','hourly'): update_fields['basis']=basis
+        if d.get('update_rate'):
+            update_fields['rate']=amount(d.get('rate'),True)
+        if d.get('update_position'):
+            update_fields['position']=text(d.get('position'),'Puesto')
+        if not update_fields and not d.get('update_conditions'):
+            raise ValueError('Seleccione al menos un campo para actualizar en lote.')
+        updated_count=0
+        for eid in ids:
+            item=ref(c,'employees',eid,cid);assert_scope(m,item)
+            item_update=dict(update_fields)
+            if d.get('update_conditions'):
+                cond_val=str(d.get('conditions','')).strip()[:3000]
+                if d.get('conditions_mode')=='append' and item.get('conditions'):
+                    item_update['conditions']=(item['conditions']+'\n'+cond_val)[:3000]
+                else:
+                    item_update['conditions']=cond_val
+            if item_update:
+                c.execute('UPDATE employees SET '+','.join(k+'=?' for k in item_update)+' WHERE id=?',(*item_update.values(),item['id']))
+                audit(c,uid,cid,'editar personal en lote','employees',item['id'],dict(before=item,after=item_update))
+                updated_count+=1
+        return {'ok':True,'count':updated_count}
+    if action=='bulk_terminate_employees':
+        m=membership(c,uid,cid,2)
+        ids=[int(x) for x in d.get('employee_ids',[]) if str(x).isdigit()]
+        if not ids: raise ValueError('Seleccione al menos un colaborador.')
+        term_date=date(d.get('termination_date',today().isoformat())).isoformat()
+        reason=text(d.get('termination_reason') or 'Fin de temporada / cosecha agrícola','Motivo de salida',250)
+        notes=str(d.get('termination_notes','')).strip()[:3000]
+        close_contracts=bool(d.get('close_contracts'))
+        terminated_count=0
+        for eid in ids:
+            item=ref(c,'employees',eid,cid);assert_scope(m,item)
+            if item.get('status')=='terminated': continue
+            c.execute("UPDATE employees SET status='terminated', termination_date=?, termination_reason=?, termination_notes=? WHERE id=?",(term_date,reason,notes,item['id']))
+            closed_farm_contracts=0
+            if close_contracts:
+                closed_farm_contracts=c.execute("UPDATE farm_contracts SET status='completed' WHERE employee_id=? AND company_id=? AND status='active'",(item['id'],cid)).rowcount
+                c.execute("UPDATE work_contracts SET progress=10000 WHERE employee_id=? AND company_id=? AND progress<10000",(item['id'],cid))
+            audit(c,uid,cid,'dar de baja personal en lote','employees',item['id'],dict(before=item,termination_date=term_date,reason=reason,notes=notes,closed_contracts=closed_farm_contracts))
+            terminated_count+=1
+        return {'ok':True,'count':terminated_count}
+    if action=='bulk_reactivate_employees':
+        m=membership(c,uid,cid,2)
+        ids=[int(x) for x in d.get('employee_ids',[]) if str(x).isdigit()]
+        if not ids: raise ValueError('Seleccione al menos un colaborador.')
+        reactivated_count=0
+        for eid in ids:
+            item=ref(c,'employees',eid,cid);assert_scope(m,item)
+            if item.get('status')=='active': continue
+            c.execute("UPDATE employees SET status='active', termination_date=NULL, termination_reason=NULL, termination_notes='' WHERE id=?",(item['id'],))
+            audit(c,uid,cid,'reactivar personal en lote','employees',item['id'],dict(before=item,status='active'))
+            reactivated_count+=1
+        return {'ok':True,'count':reactivated_count}
+    if action=='bulk_delete_employees':
+        m=membership(c,uid,cid,3)
+        ids=[int(x) for x in d.get('employee_ids',[]) if str(x).isdigit()]
+        if not ids: raise ValueError('Seleccione al menos un colaborador.')
+        deleted_count=0
+        skipped=[]
+        for eid in ids:
+            item=ref(c,'employees',eid,cid);assert_scope(m,item)
+            uses=sum([
+                c.execute('SELECT COUNT(*) FROM payroll_lines WHERE employee_id=? AND company_id=?',(item['id'],cid)).fetchone()[0],
+                c.execute('SELECT COUNT(*) FROM worklogs WHERE employee_id=? AND company_id=?',(item['id'],cid)).fetchone()[0],
+                c.execute('SELECT COUNT(*) FROM work_contracts WHERE employee_id=? AND company_id=?',(item['id'],cid)).fetchone()[0],
+                c.execute('SELECT COUNT(*) FROM farm_contracts WHERE employee_id=? AND company_id=?',(item['id'],cid)).fetchone()[0],
+                c.execute('SELECT COUNT(*) FROM tasks WHERE responsible_id=? AND company_id=?',(item['id'],cid)).fetchone()[0],
+                c.execute('SELECT COUNT(*) FROM employee_pay_settings WHERE employee_id=? AND company_id=?',(item['id'],cid)).fetchone()[0],
+                c.execute('SELECT COUNT(*) FROM payroll_adjustments WHERE employee_id=? AND company_id=?',(item['id'],cid)).fetchone()[0],
+                c.execute('SELECT COUNT(*) FROM farms WHERE manager_id=? AND company_id=?',(item['id'],cid)).fetchone()[0]
+            ])
+            if uses>0:
+                skipped.append({'id':item['id'],'name':item['name'],'uses':uses})
+                continue
+            c.execute('DELETE FROM employees WHERE id=? AND company_id=?',(item['id'],cid))
+            audit(c,uid,cid,'borrar personal en lote','employees',item['id'],item)
+            deleted_count+=1
+        return {'ok':True,'deleted_count':deleted_count,'skipped_count':len(skipped),'skipped':skipped}
     if action=='edit_department':
         m=membership(c,uid,cid,3)
         item=ref(c,'departments',d.get('id'),cid)

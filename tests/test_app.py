@@ -484,4 +484,54 @@ class PilotTests(unittest.TestCase):
         with app.connect() as c:
             self.assertIsNone(c.execute('SELECT * FROM employees WHERE id=?', (unused_id,)).fetchone())
 
+    def test_bulk_employee_operations(self):
+        # Create 3 temporeros
+        t1 = self.action('employee', name='Temporero Lote 1', position='Cosechador', basis='hourly', rate='120.00', department_id=self.dep, employment_type='temporary')['id']
+        t2 = self.action('employee', name='Temporero Lote 2', position='Cosechador', basis='hourly', rate='120.00', department_id=self.dep, employment_type='temporary')['id']
+        t3 = self.action('employee', name='Temporero Lote 3', position='Cosechador', basis='hourly', rate='120.00', department_id=self.dep, employment_type='temporary')['id']
+
+        # 1. Bulk edit: change basis to daily, rate to 750.00 RD$, position to Recolector Senior
+        res_edit = self.action('bulk_edit_employees', employee_ids=[t1, t2, t3], update_basis=True, basis='daily', update_rate=True, rate='750.00', update_position=True, position='Recolector Senior')
+        self.assertTrue(res_edit.get('ok'))
+        self.assertEqual(res_edit.get('count'), 3)
+        with app.connect() as c:
+            for eid in [t1, t2, t3]:
+                e = app.ref(c, 'employees', eid, 3)
+                self.assertEqual(e['basis'], 'daily')
+                self.assertEqual(e['rate'], 75000)
+                self.assertEqual(e['position'], 'Recolector Senior')
+
+        # 2. Bulk terminate / archive
+        res_term = self.action('bulk_terminate_employees', employee_ids=[t1, t2], termination_date='2026-10-15', termination_reason='Fin de cosecha agrícola', termination_notes='Cierre de cuadrilla temporal')
+        self.assertTrue(res_term.get('ok'))
+        self.assertEqual(res_term.get('count'), 2)
+        with app.connect() as c:
+            for eid in [t1, t2]:
+                e = app.ref(c, 'employees', eid, 3)
+                self.assertEqual(e['status'], 'terminated')
+                self.assertEqual(e['termination_date'], '2026-10-15')
+                self.assertEqual(e['termination_reason'], 'Fin de cosecha agrícola')
+
+        # 3. Bulk reactivate
+        res_react = self.action('bulk_reactivate_employees', employee_ids=[t1, t2])
+        self.assertTrue(res_react.get('ok'))
+        self.assertEqual(res_react.get('count'), 2)
+        with app.connect() as c:
+            for eid in [t1, t2]:
+                e = app.ref(c, 'employees', eid, 3)
+                self.assertEqual(e['status'], 'active')
+                self.assertIsNone(e['termination_date'])
+
+        # 4. Bulk delete with protection for employee with history
+        self.action('worklog', employee_id=t3, work_date='2026-10-16', minutes=360, activity='Recolección', method='Manual')
+        res_del = self.action('bulk_delete_employees', employee_ids=[t1, t2, t3])
+        self.assertTrue(res_del.get('ok'))
+        self.assertEqual(res_del.get('deleted_count'), 2)
+        self.assertEqual(res_del.get('skipped_count'), 1)
+        self.assertEqual(res_del.get('skipped')[0]['id'], t3)
+        with app.connect() as c:
+            self.assertIsNone(c.execute('SELECT * FROM employees WHERE id=?', (t1,)).fetchone())
+            self.assertIsNone(c.execute('SELECT * FROM employees WHERE id=?', (t2,)).fetchone())
+            self.assertIsNotNone(c.execute('SELECT * FROM employees WHERE id=?', (t3,)).fetchone())
+
 if __name__=='__main__': unittest.main(verbosity=2)

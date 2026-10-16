@@ -614,8 +614,13 @@ function alertList(){if(!canCollect())return '<div class="empty">Su rol no tiene
 function collectionsView(){const tabs=[['invoices','Facturas'],['charges','Cuentas por cobrar'],['subscriptions','Servicios contratados'],['customers','Clientes'],['products','Catálogo'],['payments','Recibos y pagos'],['fiscal','Facturación fiscal']];let body='';if(tab==='invoices')body=invoicesView();if(tab==='fiscal')body=fiscalView();if(tab==='charges')body=panel('Cargos y saldos',table(['Cliente / servicio','Período','Vencimiento','Importe','Pagado','Saldo','Estado',''],S.charges.map(c=>`<tr><td><strong>${esc(c.customer)}</strong><div class="muted">${esc(c.product)} · Cargo #${c.id}</div></td><td>${displayDate(c.period_date)}</td><td>${displayDate(c.due_date)}${c.alert?`<div class="muted">${esc(c.alert)}</div>`:''}</td><td>${money(c.amount)}</td><td>${money(c.paid)}</td><td><strong>${money(c.balance)}</strong></td><td>${badge(c.status)}</td><td>${c.balance&&canPay()?action('Registrar pago','payment',c.id):''} ${invoiceLink(c.id)} ${filesButton('charges',c.id)}</td></tr>`)),`<button class="small" data-action="generate">Generar períodos hasta hoy</button>`)+panel('Alertas internas · empresa activa',alertList());if(tab==='customers')body=panel('Clientes',table(['Nombre','Contacto','Acciones'],S.customers.map(c=>`<tr><td><strong>${esc(c.name)}</strong></td><td>${esc(c.contact)}</td><td>${action('Editar','edit_customer',c.id)} ${action('Borrar','delete_customer',c.id)}</td></tr>`)),openButton('+ Cliente','customer'));if(tab==='products')body=catalogView();if(tab==='subscriptions')body=panel('Servicios contratados',table(['Cliente / servicio','Frecuencia','Inicio / fin del servicio','Vencimiento','Importe','Estado','Acciones'],S.subscriptions.map(s=>`<tr><td><strong>${esc(lookup('customers',s.customer_id))}</strong><div class="muted">${esc(lookup('products',s.product_id))}</div></td><td>${s.frequency==='once'?'Cargo único':`Cada ${s.interval} ${s.frequency==='days'?'día(s)':'mes(es)'}`}</td><td>${displayDate(s.start_date)}<br><span class="muted">${displayDate(s.end_date)}</span></td><td>${s.due_days} días después de cada período</td><td>${money(s.amount)}</td><td>${badge(s.canceled_at?'Cancelado':s.end_date&&s.end_date<S.today?'Finalizado':'Activo')}</td><td>${canReview()?action('Editar','edit_subscription',s.id):''} ${!s.canceled_at&&canReview()?action('Cancelar','cancel_subscription',s.id):''} ${canAdmin()?action('🗑️ Eliminar','delete_subscription',s.id):''}</td></tr>`)),openButton('+ Contratar servicio','subscription'));if(tab==='payments')body=panel('Pagos recibidos',table(['Fecha','Cargo','Cliente','Importe','Referencia','Comprobantes','Acciones'],S.payments.map(p=>`<tr><td>${displayDate(p.paid_date)}</td><td>#${p.charge_id}</td><td>${esc(S.charges.find(c=>c.id===p.charge_id)?.customer)}</td><td>${money(p.amount)}</td><td>${esc(p.reference)}</td><td>${documentLink('receipt',p.id,'Recibo / PDF')} ${filesButton('payments',p.id)}</td><td>${canAdmin()?action('🗑️ Anular pago','delete_payment',p.id):''}</td></tr>`)));return heading('Facturación y cobros','Emita facturas, consulte saldos y registre pagos.',`<button class="primary" data-tab="products">+ Nueva factura</button>`)+`<div class="tabs">${tabs.map(([id,name])=>`<button data-tab="${id}" class="${tab===id?'active':''}">${name}</button>`).join('')}</div><div class="notice">Los cargos se generan al contratar y con “Generar períodos hasta hoy”. No hay cobros bancarios automáticos ni mensajes externos. Alertas compartidas según permiso: próximos 5 días, 24 horas, día de vencimiento y vencidos.</div>`+body}
 function expensesView(){return heading('Gastos y pagos','Registre, revise y pague sin perder el historial.',openButton('+ Registrar gasto','expense'))+panel('Registro de gastos',table(['Concepto','Fecha','Departamento / proyecto','Importe','Estado','Saldo',''],S.expenses.map(e=>`<tr><td><strong>${esc(e.description)}</strong><div class="muted">${esc(e.receipt||'Sin referencia de comprobante')}</div></td><td>${displayDate(e.expense_date)}</td><td>${esc(lookup('departments',e.department_id))}<div class="muted">${esc(lookup('projects',e.project_id))}</div></td><td>${money(e.amount)}</td><td>${badge(e.status)}${e.balance===0?' '+badge('paid'):''}</td><td>${money(e.balance)}</td><td>${canReview()?(e.status==='proposed'?action('Aprobar','approve_expense',e.id):e.balance&&canPay()?action('Registrar pago','expense_payment',e.id):''):''} ${canReview()?action('Editar factura','edit_expense',e.id):''} ${e.balance===e.amount&&canAdmin()?action('🗑️ Borrar','delete_expense',e.id):''} ${filesButton('expenses',e.id)}</td></tr>`)))+panel('Pagos de gastos',table(['Fecha','Gasto','Importe','Referencia','Comprobantes','Acciones'],(S.expense_payments||[]).map(p=>`<tr><td>${displayDate(p.paid_date)}</td><td>${esc(S.expenses.find(e=>e.id===p.expense_id)?.description||('#'+p.expense_id))}</td><td>${money(p.amount)}</td><td>${esc(p.reference)}</td><td>${filesButton('expense_payments',p.id)}</td><td>${canAdmin()?action('🗑️ Anular pago','delete_expense_payment',p.id):''}</td></tr>`)))+`<div class="notice">Comprobantes: use Adjuntos para subir fotos o documentos a cada gasto o pago. Los pagos están condicionados al saldo disponible en las cuentas de tesorería y son manejados por los niveles jerárquicos 1 y 2.</div>`}
 let teamFilter = 'active', teamFarmFilter = '', queueFilter = 'all', deptSearch = '', deptFilter = 'all', deptOrgTab = 'departments';
+let teamSelectedEmployees = new Set();
+
 function teamView(){
   const allEmployees = S.employees || [];
+  const validIds = new Set(allEmployees.map(e => e.id));
+  teamSelectedEmployees = new Set(Array.from(teamSelectedEmployees).filter(id => validIds.has(id)));
+
   const activeEmployees = allEmployees.filter(e => (e.status || 'active') === 'active');
   const termEmployees = allEmployees.filter(e => e.status === 'terminated');
   const fixedActive = activeEmployees.filter(e => (e.employment_type || 'fixed') === 'fixed');
@@ -632,6 +637,14 @@ function teamView(){
     if(teamFarmFilter === 'unassigned') filteredEmployees = filteredEmployees.filter(e => !e.farm_id);
     else filteredEmployees = filteredEmployees.filter(e => String(e.farm_id) === String(teamFarmFilter));
   }
+
+  const selectedList = allEmployees.filter(e => teamSelectedEmployees.has(e.id));
+  const selectedCount = selectedList.length;
+  const selectedTempCount = selectedList.filter(e => e.employment_type === 'temporary').length;
+  const selectedFixedCount = selectedList.filter(e => (e.employment_type || 'fixed') === 'fixed').length;
+  const selectedActiveCount = selectedList.filter(e => (e.status || 'active') === 'active').length;
+  const selectedTermCount = selectedList.filter(e => e.status === 'terminated').length;
+  const allFilteredSelected = filteredEmployees.length > 0 && filteredEmployees.every(e => teamSelectedEmployees.has(e.id));
 
   const teamCards = `
     <div class="cards" style="margin-bottom:20px">
@@ -675,16 +688,44 @@ function teamView(){
     </div>
   `;
 
+  const quickSelectors = `
+    <div class="team-quick-selectors">
+      <span style="font-size:12px;font-weight:600;color:var(--muted)">Selección en lote:</span>
+      <button type="button" class="small secondary" id="btn-select-filtered" title="Seleccionar los ${filteredEmployees.length} colaboradores del filtro actual">☑ Visibles (${filteredEmployees.length})</button>
+      <button type="button" class="small secondary" id="btn-select-temps" title="Seleccionar todos los temporeros activos">🚜 Todos los temporeros (${tempActive.length})</button>
+      <button type="button" class="small secondary" id="btn-select-fixed" title="Seleccionar todos los fijos activos">🏢 Todos los fijos (${fixedActive.length})</button>
+      ${selectedCount > 0 ? `<button type="button" class="small subtle" id="btn-clear-emp-selection" style="color:#dc2626">✕ Limpiar selección (${selectedCount})</button>` : ''}
+    </div>
+  `;
+
+  const teamBulkBar = selectedCount > 0 ? `
+    <div class="team-bulk-bar">
+      <div class="bulk-bar-info">
+        <span class="bulk-badge">📌 ${selectedCount} seleccionado(s)</span>
+        <span class="bulk-subinfo">(${selectedTempCount} temporero(s) · ${selectedFixedCount} fijo(s)${selectedTermCount ? ' · ' + selectedTermCount + ' de baja' : ''})</span>
+      </div>
+      <div class="bulk-bar-actions">
+        ${canReview() ? `<button type="button" class="small primary" id="btn-bulk-edit-emp" title="Editar campos en lote de los colaboradores seleccionados"><span style="font-size:13px">✏️</span> Editar en masa</button>` : ''}
+        ${canReview() && selectedActiveCount > 0 ? `<button type="button" class="small secondary" id="btn-bulk-term-emp" style="border-color:#e08436;color:#b85c18" title="Dar de baja o archivar formalmente conservando historial"><span style="font-size:13px">🚪</span> Dar de baja (${selectedActiveCount})</button>` : ''}
+        ${canReview() && selectedTermCount > 0 ? `<button type="button" class="small secondary" id="btn-bulk-react-emp" style="border-color:#185b4d;color:#185b4d" title="Reactivar colaboradores dados de baja"><span style="font-size:13px">♻️</span> Reactivar (${selectedTermCount})</button>` : ''}
+        ${canAdmin() ? `<button type="button" class="small danger" id="btn-bulk-del-emp" title="Eliminar permanentemente (solo fichas sin historial)"><span style="font-size:13px">🗑️</span> Eliminar</button>` : ''}
+        <button type="button" class="small subtle" id="btn-bulk-cancel-emp">✕ Cancelar</button>
+      </div>
+    </div>
+  ` : '';
+
   const explanatoryNotice = `
     <div class="notice" style="margin-bottom:16px">
       <strong>💡 Gestión de Recursos Humanos y Vinculación:</strong><br>
       • <strong>🏢 Personal Fijo:</strong> Recibe compensación regular (mensual, quincenal o semanal) según contrato continuo.<br>
       • <strong>🚜 Personal Temporero / Jornalero:</strong> Opera por labor, tarea, finca o días específicos. Su continuidad y horas ejecutadas se aprueban en Planificación.<br>
-      • <strong>🚪 Desvinculación / Despido:</strong> Permite retirar formalmente a cualquier trabajador (fijo o temporero) registrando motivo, fecha y notas, cerrando opcionalmente sus contratos activos y manteniendo íntegro el historial contable y legal.
+      • <strong>🚪 Desvinculación / Despido:</strong> Permite retirar formalmente a cualquier trabajador (fijo o temporero) registrando motivo, fecha y notas, cerrando opcionalmente sus contratos activos y manteniendo íntegro el historial contable y legal.<br>
+      • <strong>☑ Selección en lote:</strong> Puede seleccionar múltiples temporeros o colaboradores para editarlos en masa, reasignar fincas/tarifas, o darlos de baja conjuntamente al culminar la cosecha.
     </div>
   `;
 
   const employeeRows = filteredEmployees.map(e => {
+    const isSelected = teamSelectedEmployees.has(e.id);
     const isTemp = e.employment_type === 'temporary';
     const isTerm = e.status === 'terminated';
     const typeBadge = isTemp ? '<span class="badge orange">🚜 TEMPORERO</span>' : '<span class="badge blue">🏢 FIJO</span>';
@@ -708,7 +749,10 @@ function teamView(){
       ? `<div class="muted" style="color:#b85c18;font-size:11px;margin-top:4px"><strong>Salida:</strong> ${displayDate(e.termination_date||S.today)} · <em>${esc(e.termination_reason||'Desvinculado')}</em></div>`
       : '';
 
-    return `<tr>
+    return `<tr class="${isSelected ? 'selected-row' : ''}">
+      <td style="width:36px;text-align:center;vertical-align:middle">
+        <input type="checkbox" class="team-emp-checkbox" data-emp-id="${e.id}" ${isSelected ? 'checked' : ''} aria-label="Seleccionar ${esc(e.name)}">
+      </td>
       <td>
         <strong>${esc(e.name)}</strong>
         <div class="muted">${esc(e.position)}</div>
@@ -723,8 +767,12 @@ function teamView(){
     </tr>`;
   });
 
+  const masterCheckbox = filteredEmployees.length > 0
+    ? `<input type="checkbox" id="team-select-all" ${allFilteredSelected ? 'checked' : ''} title="Seleccionar o deseleccionar todos los visibles">`
+    : '';
+
   const employeeTable = filteredEmployees.length
-    ? table(['Nombre / Puesto', 'Vinculación', 'Estado', 'Departamento / Proyecto', 'Tarifa vigente', 'Observaciones', 'Acciones'], employeeRows)
+    ? table([masterCheckbox, 'Nombre / Puesto', 'Vinculación', 'Estado', 'Departamento / Proyecto', 'Tarifa vigente', 'Observaciones', 'Acciones'], employeeRows)
     : '<div class="empty">No hay colaboradores que coincidan con este filtro.</div>';
 
   const proposedWorklogs = (S.worklogs || []).filter(w => w.status === 'proposed');
@@ -759,7 +807,454 @@ function teamView(){
     'Personas que hacen que todo avance',
     'Fichas de personal fijo vs. temporero, condiciones y reportes de supervisión.',
     `<button class="small secondary" data-view="departments">🏛️ Departamentos</button> <button class="small primary" data-view="payroll">Ir a Módulo de Nóminas ♧</button> ` + openButton('+ Persona', 'employee')
-  ) + teamCards + explanatoryNotice + panel('Fichas de Personal', filterBar + employeeTable) + panel('Reportes de trabajo y supervisión', worklogTable, worklogPanelActions) + payrollPanel();
+  ) + teamCards + explanatoryNotice + panel('Fichas de Personal', filterBar + quickSelectors + teamBulkBar + employeeTable) + panel('Reportes de trabajo y supervisión', worklogTable, worklogPanelActions) + payrollPanel();
+}
+
+function openBulkEditEmployeesModal(employeeIds){
+  const selectedEmps = (S.employees || []).filter(e => employeeIds.includes(e.id));
+  if(!selectedEmps.length) return;
+  const tempsCount = selectedEmps.filter(e => e.employment_type === 'temporary').length;
+  const fixedCount = selectedEmps.filter(e => (e.employment_type || 'fixed') === 'fixed').length;
+
+  const html = `
+    <div class="modal-header">
+      <h2 style="display:flex;align-items:center;gap:8px"><span>✏️</span> Edición en masa de colaboradores</h2>
+      <button type="button" id="close-modal" aria-label="Cerrar">×</button>
+    </div>
+
+    <div class="notice" style="margin-bottom:14px">
+      <strong>👥 ${selectedEmps.length} colaborador(es) seleccionado(s)</strong> (${tempsCount} temporeros, ${fixedCount} fijos).<br>
+      Active la casilla del campo o campos que desea actualizar. Solo se actualizarán los campos que marque; los demás conservarán su valor actual para cada colaborador.
+    </div>
+
+    <form id="bulk-edit-form" style="display:flex;flex-direction:column;gap:12px">
+      <!-- 1. Tipo de vinculación -->
+      <div class="bulk-field-group" id="grp-bulk-type">
+        <label class="bulk-field-toggle">
+          <input type="checkbox" name="update_employment_type" id="chk-bulk-type">
+          <strong>Modificar tipo de vinculación laboral</strong>
+        </label>
+        <div class="bulk-field-input" id="box-bulk-type" style="opacity:0.5;pointer-events:none">
+          <select name="employment_type">
+            <option value="temporary">🚜 Empleado Temporero (Jornalero / Contratado por labor / Finca / Obra)</option>
+            <option value="fixed">🏢 Empleado Fijo (Nómina regular / Planta / Recurrente)</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- 2. Finca / Sucursal -->
+      <div class="bulk-field-group" id="grp-bulk-farm">
+        <label class="bulk-field-toggle">
+          <input type="checkbox" name="update_farm_id" id="chk-bulk-farm">
+          <strong>Modificar ${esc(unitLabel(false,true))} / Sucursal asignada</strong>
+        </label>
+        <div class="bulk-field-input" id="box-bulk-farm" style="opacity:0.5;pointer-events:none">
+          <select name="farm_id">
+            <option value="">Sin sucursal asignada</option>
+            ${(S.farms||[]).map(f => `<option value="${f.id}">🏢 ${esc(f.name)}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+
+      <!-- 3. Departamento -->
+      <div class="bulk-field-group" id="grp-bulk-dept">
+        <label class="bulk-field-toggle">
+          <input type="checkbox" name="update_department_id" id="chk-bulk-dept">
+          <strong>Modificar Departamento / Área</strong>
+        </label>
+        <div class="bulk-field-input" id="box-bulk-dept" style="opacity:0.5;pointer-events:none">
+          <select name="department_id">
+            <option value="">Sin departamento</option>
+            ${(S.departments||[]).map(d => `<option value="${d.id}">🏛️ ${esc(d.name)}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+
+      <!-- 4. Proyecto -->
+      <div class="bulk-field-group" id="grp-bulk-proj">
+        <label class="bulk-field-toggle">
+          <input type="checkbox" name="update_project_id" id="chk-bulk-proj">
+          <strong>Modificar Proyecto</strong>
+        </label>
+        <div class="bulk-field-input" id="box-bulk-proj" style="opacity:0.5;pointer-events:none">
+          <select name="project_id">
+            <option value="">Sin proyecto</option>
+            ${(S.projects||[]).map(p => `<option value="${p.id}">📁 ${esc(p.name)}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+
+      <!-- 5. Base de remuneración -->
+      <div class="bulk-field-group" id="grp-bulk-basis">
+        <label class="bulk-field-toggle">
+          <input type="checkbox" name="update_basis" id="chk-bulk-basis">
+          <strong>Modificar Base de remuneración</strong>
+        </label>
+        <div class="bulk-field-input" id="box-bulk-basis" style="opacity:0.5;pointer-events:none">
+          <select name="basis">
+            <option value="daily">Diaria (Jornal / Día trabajado)</option>
+            <option value="hourly">Por hora</option>
+            <option value="weekly">Semanal</option>
+            <option value="monthly">Mensual</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- 6. Tarifa -->
+      <div class="bulk-field-group" id="grp-bulk-rate">
+        <label class="bulk-field-toggle">
+          <input type="checkbox" name="update_rate" id="chk-bulk-rate">
+          <strong>Modificar Tarifa (RD$)</strong>
+        </label>
+        <div class="bulk-field-input" id="box-bulk-rate" style="opacity:0.5;pointer-events:none">
+          <input type="number" name="rate" min="0" step="0.01" placeholder="Ej. 750.00">
+        </div>
+      </div>
+
+      <!-- 7. Puesto -->
+      <div class="bulk-field-group" id="grp-bulk-pos">
+        <label class="bulk-field-toggle">
+          <input type="checkbox" name="update_position" id="chk-bulk-pos">
+          <strong>Modificar Puesto / Cargo</strong>
+        </label>
+        <div class="bulk-field-input" id="box-bulk-pos" style="opacity:0.5;pointer-events:none">
+          <input type="text" name="position" placeholder="Ej. Jornalero agrícola / Operador de campo">
+        </div>
+      </div>
+
+      <!-- 8. Condiciones -->
+      <div class="bulk-field-group" id="grp-bulk-cond">
+        <label class="bulk-field-toggle">
+          <input type="checkbox" name="update_conditions" id="chk-bulk-cond">
+          <strong>Actualizar Observaciones y Condiciones</strong>
+        </label>
+        <div class="bulk-field-input" id="box-bulk-cond" style="opacity:0.5;pointer-events:none">
+          <div style="display:flex;gap:14px;margin-bottom:6px">
+            <label style="font-size:12px;display:flex;align-items:center;gap:4px"><input type="radio" name="conditions_mode" value="replace" checked> Reemplazar texto anterior</label>
+            <label style="font-size:12px;display:flex;align-items:center;gap:4px"><input type="radio" name="conditions_mode" value="append"> Añadir a notas existentes</label>
+          </div>
+          <textarea name="conditions" rows="3" placeholder="Escriba aquí las condiciones o notas..."></textarea>
+        </div>
+      </div>
+
+      <div id="bulk-error" class="error" style="color:#dc2626;font-size:13px"></div>
+
+      <div class="form-actions" style="margin-top:8px">
+        <button type="button" id="cancel-modal">Cancelar</button>
+        <button type="submit" class="primary" id="btn-submit-bulk-edit">Guardar cambios en lote (${selectedEmps.length})</button>
+      </div>
+    </form>
+  `;
+
+  $('#modal-content').innerHTML = html;
+  $('#modal').showModal();
+  $('#close-modal').onclick = $('#cancel-modal').onclick = () => $('#modal').close();
+
+  // Bind toggles
+  ['type','farm','dept','proj','basis','rate','pos','cond'].forEach(key => {
+    const chk = $(`#chk-bulk-${key}`);
+    const box = $(`#box-bulk-${key}`);
+    const grp = $(`#grp-bulk-${key}`);
+    if(chk && box){
+      chk.onchange = () => {
+        const enabled = chk.checked;
+        box.style.opacity = enabled ? '1' : '0.5';
+        box.style.pointerEvents = enabled ? 'auto' : 'none';
+        if(grp) grp.classList.toggle('active-group', enabled);
+        const input = box.querySelector('input, select, textarea');
+        if(enabled && input) input.focus();
+      };
+    }
+  });
+
+  $('#bulk-edit-form').onsubmit = async e => {
+    e.preventDefault();
+    const btn = $('#btn-submit-bulk-edit');
+    btn.disabled = true;
+    $('#bulk-error').textContent = '';
+    const form = new FormData(e.target);
+    const data = Object.fromEntries(form);
+
+    const hasAny = ['update_employment_type','update_farm_id','update_department_id','update_project_id','update_basis','update_rate','update_position','update_conditions'].some(k => form.has(k));
+    if(!hasAny){
+      $('#bulk-error').textContent = 'Marque al menos un campo para actualizar en lote.';
+      btn.disabled = false;
+      return;
+    }
+
+    const payload = {
+      employee_ids: employeeIds,
+      update_employment_type: form.has('update_employment_type'),
+      employment_type: data.employment_type,
+      update_farm_id: form.has('update_farm_id'),
+      farm_id: data.farm_id ? Number(data.farm_id) : null,
+      update_department_id: form.has('update_department_id'),
+      department_id: data.department_id ? Number(data.department_id) : null,
+      update_project_id: form.has('update_project_id'),
+      project_id: data.project_id ? Number(data.project_id) : null,
+      update_basis: form.has('update_basis'),
+      basis: data.basis,
+      update_rate: form.has('update_rate'),
+      rate: data.rate,
+      update_position: form.has('update_position'),
+      position: data.position,
+      update_conditions: form.has('update_conditions'),
+      conditions_mode: data.conditions_mode,
+      conditions: data.conditions
+    };
+
+    try {
+      const res = await save('bulk_edit_employees', payload);
+      teamSelectedEmployees.clear();
+      $('#modal').close();
+      toast(`✓ ${res.count || employeeIds.length} colaboradores actualizados en masa.`);
+    } catch(err){
+      $('#bulk-error').textContent = err.message;
+      btn.disabled = false;
+    }
+  };
+}
+
+function openBulkTerminateEmployeesModal(employeeIds){
+  const selectedEmps = (S.employees || []).filter(e => employeeIds.includes(e.id));
+  const activeEmps = selectedEmps.filter(e => (e.status || 'active') === 'active');
+  if(!activeEmps.length){
+    toast('Todos los colaboradores seleccionados ya se encuentran de baja.');
+    return;
+  }
+
+  const html = `
+    <div class="modal-header">
+      <h2 style="display:flex;align-items:center;gap:8px"><span style="color:#e08436">🚪</span> Dar de baja / Archivar en masa</h2>
+      <button type="button" id="close-modal" aria-label="Cerrar">×</button>
+    </div>
+
+    <div class="notice" style="margin-bottom:14px">
+      <strong>📋 Retiro formal de colaboradores:</strong><br>
+      Va a dar de baja o archivar a <strong>${activeEmps.length} colaborador(es) activo(s)</strong>.<br>
+      Esta acción retira sus fichas de la nómina activa pero <strong>conserva íntegramente</strong> todo su historial contable, pagos de jornales, comprobantes y balances legales.
+    </div>
+
+    <div style="max-height:100px;overflow-y:auto;background:var(--surface,#f8fafc);padding:8px 12px;border-radius:8px;border:1px solid var(--border);margin-bottom:12px;display:flex;gap:6px;flex-wrap:wrap">
+      ${activeEmps.map(e => `<span class="badge ${e.employment_type==='temporary'?'orange':'blue'}">${e.employment_type==='temporary'?'🚜':'🏢'} ${esc(e.name)}</span>`).join('')}
+    </div>
+
+    <form id="bulk-terminate-form" style="display:flex;flex-direction:column;gap:12px">
+      <div class="field">
+        <label for="f-bulk-term-date">Fecha de salida / desvinculación</label>
+        <input type="date" id="f-bulk-term-date" name="termination_date" value="${S.today}" required>
+      </div>
+
+      <div class="field">
+        <label for="f-bulk-term-reason">Motivo de salida</label>
+        <select id="f-bulk-term-reason" name="termination_reason">
+          <option value="Fin de temporada / cosecha agrícola" selected>Fin de temporada / cosecha agrícola</option>
+          <option value="Término de contrato de labor temporal">Término de contrato de labor temporal</option>
+          <option value="Desahucio del empleador">Desahucio del empleador</option>
+          <option value="Renuncia voluntaria / Dimisión">Renuncia voluntaria / Dimisión</option>
+          <option value="Mutuo acuerdo">Mutuo acuerdo</option>
+          <option value="Jubilación / Retiro">Jubilación / Retiro</option>
+          <option value="Cierre de proyecto u obra">Cierre de proyecto u obra</option>
+          <option value="Despido justificado">Despido justificado</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="f-bulk-term-notes">Notas o comentarios de salida (opcional)</label>
+        <textarea id="f-bulk-term-notes" name="termination_notes" rows="3" placeholder="Detalles de liquidación, fin de cosecha, observaciones generales..."></textarea>
+      </div>
+
+      <div class="field" style="margin-top:2px">
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+          <input type="checkbox" name="close_contracts" checked>
+          <span><strong>Cerrar automáticamente contratos de finca y labores activas</strong> de estos colaboradores</span>
+        </label>
+      </div>
+
+      <div id="bulk-term-error" class="error" style="color:#dc2626;font-size:13px"></div>
+
+      <div class="form-actions" style="margin-top:8px">
+        <button type="button" id="cancel-modal">Cancelar</button>
+        <button type="submit" class="secondary" id="btn-submit-bulk-term" style="border-color:#e08436;color:#b85c18;font-weight:700">Dar de baja a ${activeEmps.length} colaboradores</button>
+      </div>
+    </form>
+  `;
+
+  $('#modal-content').innerHTML = html;
+  $('#modal').showModal();
+  $('#close-modal').onclick = $('#cancel-modal').onclick = () => $('#modal').close();
+
+  $('#bulk-terminate-form').onsubmit = async e => {
+    e.preventDefault();
+    const btn = $('#btn-submit-bulk-term');
+    btn.disabled = true;
+    $('#bulk-term-error').textContent = '';
+    const form = new FormData(e.target);
+    const data = Object.fromEntries(form);
+
+    const payload = {
+      employee_ids: activeEmps.map(e => e.id),
+      termination_date: data.termination_date,
+      termination_reason: data.termination_reason,
+      termination_notes: data.termination_notes,
+      close_contracts: form.has('close_contracts')
+    };
+
+    try {
+      const res = await save('bulk_terminate_employees', payload);
+      teamSelectedEmployees.clear();
+      $('#modal').close();
+      toast(`✓ ${res.count || activeEmps.length} colaboradores dados de baja / archivados correctamente.`);
+    } catch(err){
+      $('#bulk-term-error').textContent = err.message;
+      btn.disabled = false;
+    }
+  };
+}
+
+function openBulkReactivateEmployeesModal(employeeIds){
+  const selectedEmps = (S.employees || []).filter(e => employeeIds.includes(e.id));
+  const termEmps = selectedEmps.filter(e => e.status === 'terminated');
+  if(!termEmps.length){
+    toast('No hay colaboradores de baja entre los seleccionados.');
+    return;
+  }
+
+  const html = `
+    <div class="modal-header">
+      <h2 style="display:flex;align-items:center;gap:8px"><span style="color:#059669">♻️</span> Reactivar colaboradores en masa</h2>
+      <button type="button" id="close-modal" aria-label="Cerrar">×</button>
+    </div>
+
+    <div class="notice" style="margin-bottom:14px">
+      ¿Está seguro de que desea reactivar a los <strong>${termEmps.length} colaborador(es)</strong> seleccionados?<br>
+      Pasarán a estado <strong>🟢 ACTIVO</strong> y estarán disponibles nuevamente para asignación de tareas, jornadas y nóminas.
+    </div>
+
+    <div style="max-height:100px;overflow-y:auto;background:var(--surface,#f8fafc);padding:8px 12px;border-radius:8px;border:1px solid var(--border);margin-bottom:12px;display:flex;gap:6px;flex-wrap:wrap">
+      ${termEmps.map(e => `<span class="badge gray">👤 ${esc(e.name)}</span>`).join('')}
+    </div>
+
+    <div id="bulk-react-error" class="error" style="color:#dc2626;font-size:13px"></div>
+
+    <div class="form-actions" style="margin-top:14px">
+      <button type="button" id="cancel-modal">Cancelar</button>
+      <button type="button" class="primary" id="btn-submit-bulk-react" style="background:#059669!important;border-color:transparent!important">Reactivar ${termEmps.length} colaboradores</button>
+    </div>
+  `;
+
+  $('#modal-content').innerHTML = html;
+  $('#modal').showModal();
+  $('#close-modal').onclick = $('#cancel-modal').onclick = () => $('#modal').close();
+
+  $('#btn-submit-bulk-react').onclick = async () => {
+    const btn = $('#btn-submit-bulk-react');
+    btn.disabled = true;
+    try {
+      const res = await save('bulk_reactivate_employees', {employee_ids: termEmps.map(e => e.id)});
+      teamSelectedEmployees.clear();
+      $('#modal').close();
+      toast(`✓ ${res.count || termEmps.length} colaboradores reactivados correctamente.`);
+    } catch(err){
+      $('#bulk-react-error').textContent = err.message;
+      btn.disabled = false;
+    }
+  };
+}
+
+function openBulkDeleteEmployeesModal(employeeIds){
+  const selectedEmps = (S.employees || []).filter(e => employeeIds.includes(e.id));
+  if(!selectedEmps.length) return;
+
+  const worklogs = S.worklogs || [];
+  const tasks = S.tasks || [];
+  const farmContracts = S.farm_contracts || [];
+  const farmJobs = S.farm_jobs || [];
+
+  const analysis = selectedEmps.map(e => {
+    const wlCount = worklogs.filter(w => w.employee_id === e.id).length;
+    const taskCount = tasks.filter(t => t.responsible_id === e.id).length;
+    const fcCount = farmContracts.filter(fc => fc.employee_id === e.id).length;
+    const fjCount = farmJobs.filter(fj => fj.employee_id === e.id).length;
+    const totalUses = wlCount + taskCount + fcCount + fjCount;
+    return { emp: e, uses: totalUses };
+  });
+
+  const safeEmps = analysis.filter(a => a.uses === 0).map(a => a.emp);
+  const protectedEmps = analysis.filter(a => a.uses > 0).map(a => a.emp);
+
+  const html = `
+    <div class="modal-header">
+      <h2 style="display:flex;align-items:center;gap:8px"><span style="color:#dc2626">🗑️</span> Eliminar fichas de colaboradores</h2>
+      <button type="button" id="close-modal" aria-label="Cerrar">×</button>
+    </div>
+
+    <div class="onboarding-alert-warn" style="margin-bottom:14px;background:rgba(220,38,38,0.1);border-color:rgba(220,38,38,0.3);color:#b91c1c">
+      <strong>⚠️ Regla de Integridad Contable y Eliminación Permanente:</strong><br>
+      La eliminación definitiva borra la ficha del sistema. Para proteger la contabilidad y cumplir con la legislación laboral, <strong>solo se pueden eliminar fichas que NO tengan historial</strong> (horas, nóminas, contratos o tareas).
+    </div>
+
+    ${safeEmps.length ? `
+      <div style="margin-bottom:12px">
+        <strong style="color:#059669">✓ Fichas limpias para eliminar permanentemente (${safeEmps.length}):</strong>
+        <div style="max-height:80px;overflow-y:auto;background:var(--surface,#f8fafc);padding:6px 10px;border-radius:6px;border:1px solid var(--border);margin-top:4px;display:flex;gap:6px;flex-wrap:wrap">
+          ${safeEmps.map(e => `<span class="badge green">✓ ${esc(e.name)}</span>`).join('')}
+        </div>
+      </div>
+    ` : ''}
+
+    ${protectedEmps.length ? `
+      <div style="margin-bottom:12px">
+        <strong style="color:#b45309">🔒 Fichas protegidas con historial contable (${protectedEmps.length}):</strong>
+        <p class="muted" style="font-size:12px;margin:2px 0 4px">El sistema conservará estas fichas para no invalidar nóminas anteriores. Para retirarlas de la vista activa, use «Dar de baja / Archivar».</p>
+        <div style="max-height:80px;overflow-y:auto;background:var(--surface,#f8fafc);padding:6px 10px;border-radius:6px;border:1px solid var(--border);display:flex;gap:6px;flex-wrap:wrap">
+          ${protectedEmps.map(e => `<span class="badge orange">🔒 ${esc(e.name)} (Con historial)</span>`).join('')}
+        </div>
+      </div>
+    ` : ''}
+
+    <div id="bulk-del-error" class="error" style="color:#dc2626;font-size:13px"></div>
+
+    <div class="form-actions" style="margin-top:14px">
+      <button type="button" id="cancel-modal">Cancelar</button>
+      ${safeEmps.length ? `
+        <button type="button" class="danger" id="btn-submit-bulk-del">Eliminar ${safeEmps.length} ficha(s) limpias</button>
+      ` : `
+        <button type="button" class="secondary" id="btn-switch-to-term" style="border-color:#e08436;color:#b85c18">Ir a «Dar de baja / Archivar» en su lugar →</button>
+      `}
+    </div>
+  `;
+
+  $('#modal-content').innerHTML = html;
+  $('#modal').showModal();
+  $('#close-modal').onclick = $('#cancel-modal').onclick = () => $('#modal').close();
+
+  const switchBtn = $('#btn-switch-to-term');
+  if(switchBtn){
+    switchBtn.onclick = () => {
+      openBulkTerminateEmployeesModal(employeeIds);
+    };
+  }
+
+  const delBtn = $('#btn-submit-bulk-del');
+  if(delBtn){
+    delBtn.onclick = async () => {
+      delBtn.disabled = true;
+      try {
+        const res = await save('bulk_delete_employees', {employee_ids: employeeIds});
+        teamSelectedEmployees.clear();
+        $('#modal').close();
+        let msg = `✓ ${res.deleted_count || 0} ficha(s) eliminada(s) permanentemente.`;
+        if(res.skipped_count > 0){
+          msg += ` Se protegieron ${res.skipped_count} ficha(s) por poseer historial contable.`;
+        }
+        toast(msg);
+      } catch(err){
+        $('#bulk-del-error').textContent = err.message;
+        delBtn.disabled = false;
+      }
+    };
+  }
 }
 
 let taskViewMode = 'calendar';
@@ -2346,6 +2841,95 @@ function bind(){
   const reExStatusEl=$('#re-exp-status-filter');if(reExStatusEl)reExStatusEl.onchange=e=>{reExpenseStatusFilter=e.target.value;render()};
   document.querySelectorAll('[data-team-filter]').forEach(b=>b.onclick=()=>{teamFilter=b.dataset.teamFilter;render()});
   if($('#f-team-farm-filter')) $('#f-team-farm-filter').onchange = e => { teamFarmFilter = e.target.value; render(); };
+
+  // Master checkbox
+  const teamMasterCb = $('#team-select-all');
+  if(teamMasterCb){
+    teamMasterCb.onchange = e => {
+      const isChecked = e.target.checked;
+      const allEmps = S.employees || [];
+      let currentFiltered = allEmps.filter(emp => (emp.status || 'active') === 'active');
+      if(teamFilter === 'all') currentFiltered = allEmps;
+      else if(teamFilter === 'fixed') currentFiltered = allEmps.filter(emp => (emp.status || 'active') === 'active' && (emp.employment_type || 'fixed') === 'fixed');
+      else if(teamFilter === 'temporary') currentFiltered = allEmps.filter(emp => (emp.status || 'active') === 'active' && emp.employment_type === 'temporary');
+      else if(teamFilter === 'terminated') currentFiltered = allEmps.filter(emp => emp.status === 'terminated');
+      if(teamFarmFilter){
+        if(teamFarmFilter === 'unassigned') currentFiltered = currentFiltered.filter(emp => !emp.farm_id);
+        else currentFiltered = currentFiltered.filter(emp => String(emp.farm_id) === String(teamFarmFilter));
+      }
+      currentFiltered.forEach(emp => {
+        if(isChecked) teamSelectedEmployees.add(emp.id);
+        else teamSelectedEmployees.delete(emp.id);
+      });
+      render();
+    };
+  }
+
+  // Row checkboxes
+  document.querySelectorAll('.team-emp-checkbox').forEach(cb => {
+    cb.onchange = e => {
+      const id = Number(e.target.dataset.empId);
+      if(e.target.checked) teamSelectedEmployees.add(id);
+      else teamSelectedEmployees.delete(id);
+      render();
+    };
+  });
+
+  // Quick selectors
+  const btnSelFiltered = $('#btn-select-filtered');
+  if(btnSelFiltered) btnSelFiltered.onclick = () => {
+    const allEmps = S.employees || [];
+    let currentFiltered = allEmps.filter(emp => (emp.status || 'active') === 'active');
+    if(teamFilter === 'all') currentFiltered = allEmps;
+    else if(teamFilter === 'fixed') currentFiltered = allEmps.filter(emp => (emp.status || 'active') === 'active' && (emp.employment_type || 'fixed') === 'fixed');
+    else if(teamFilter === 'temporary') currentFiltered = allEmps.filter(emp => (emp.status || 'active') === 'active' && emp.employment_type === 'temporary');
+    else if(teamFilter === 'terminated') currentFiltered = allEmps.filter(emp => emp.status === 'terminated');
+    if(teamFarmFilter){
+      if(teamFarmFilter === 'unassigned') currentFiltered = currentFiltered.filter(emp => !emp.farm_id);
+      else currentFiltered = currentFiltered.filter(emp => String(emp.farm_id) === String(teamFarmFilter));
+    }
+    currentFiltered.forEach(emp => teamSelectedEmployees.add(emp.id));
+    render();
+  };
+
+  const btnSelTemps = $('#btn-select-temps');
+  if(btnSelTemps) btnSelTemps.onclick = () => {
+    (S.employees || []).filter(e => e.employment_type === 'temporary' && (e.status || 'active') === 'active')
+      .forEach(e => teamSelectedEmployees.add(e.id));
+    render();
+  };
+
+  const btnSelFixed = $('#btn-select-fixed');
+  if(btnSelFixed) btnSelFixed.onclick = () => {
+    (S.employees || []).filter(e => (e.employment_type || 'fixed') === 'fixed' && (e.status || 'active') === 'active')
+      .forEach(e => teamSelectedEmployees.add(e.id));
+    render();
+  };
+
+  const btnClearSel = $('#btn-clear-emp-selection');
+  if(btnClearSel) btnClearSel.onclick = () => {
+    teamSelectedEmployees.clear();
+    render();
+  };
+
+  const btnBulkCancel = $('#btn-bulk-cancel-emp');
+  if(btnBulkCancel) btnBulkCancel.onclick = () => {
+    teamSelectedEmployees.clear();
+    render();
+  };
+
+  // Bulk action buttons
+  const btnBulkEdit = $('#btn-bulk-edit-emp');
+  if(btnBulkEdit) btnBulkEdit.onclick = () => openBulkEditEmployeesModal(Array.from(teamSelectedEmployees));
+
+  const btnBulkTerm = $('#btn-bulk-term-emp');
+  if(btnBulkTerm) btnBulkTerm.onclick = () => openBulkTerminateEmployeesModal(Array.from(teamSelectedEmployees));
+
+  const btnBulkReact = $('#btn-bulk-react-emp');
+  if(btnBulkReact) btnBulkReact.onclick = () => openBulkReactivateEmployeesModal(Array.from(teamSelectedEmployees));
+
+  const btnBulkDel = $('#btn-bulk-del-emp');
+  if(btnBulkDel) btnBulkDel.onclick = () => openBulkDeleteEmployeesModal(Array.from(teamSelectedEmployees));
   document.querySelectorAll('[data-queue-filter]').forEach(b=>b.onclick=()=>{queueFilter=b.dataset.queueFilter;render()});
   document.querySelectorAll('[data-ptab]').forEach(b=>b.onclick=()=>{currentPayrollTab=b.dataset.ptab;render()});
   document.querySelectorAll('[data-pcad]').forEach(b=>b.onclick=()=>{currentPayrollCadence=b.dataset.pcad;render()});

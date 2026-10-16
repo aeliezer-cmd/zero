@@ -3144,6 +3144,138 @@ input:focus, select:focus, textarea:focus {
   }
 }
 
+/* TEAM BULK ACTIONS & SELECTION (HUMAN DESIGN GLASSMORPHISM) */
+.team-bulk-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  background: var(--glass-bg-medium, rgba(255, 255, 255, 0.88)) !important;
+  -webkit-backdrop-filter: var(--glass-blur-medium, blur(16px)) !important;
+  backdrop-filter: var(--glass-blur-medium, blur(16px)) !important;
+  border: 1px solid var(--brand-accent) !important;
+  border-radius: 12px !important;
+  padding: 10px 16px !important;
+  margin: 10px 0 14px !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08) !important;
+  position: sticky;
+  top: 60px;
+  z-index: 15;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.bulk-bar-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.bulk-badge {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--brand-accent);
+  background: color-mix(in srgb, var(--brand-accent) 15%, transparent);
+  padding: 4px 12px;
+  border-radius: 20px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.bulk-subinfo {
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.bulk-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.team-quick-selectors {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 8px 0 10px;
+  border-bottom: 1px dashed var(--border);
+  margin-bottom: 10px;
+}
+
+tr.selected-row {
+  background: color-mix(in srgb, var(--brand-accent) 10%, var(--card, #fff)) !important;
+}
+
+tr.selected-row td {
+  border-color: color-mix(in srgb, var(--brand-accent) 25%, var(--border)) !important;
+}
+
+.bulk-field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--glass-bg-subtle, rgba(255, 255, 255, 0.5));
+  transition: all 0.18s ease;
+}
+
+.bulk-field-group.active-group {
+  border-color: var(--brand-accent) !important;
+  background: color-mix(in srgb, var(--brand-accent) 5%, var(--card, #fff)) !important;
+  box-shadow: 0 0 0 1px var(--brand-accent);
+}
+
+.bulk-field-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13.5px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.bulk-field-toggle input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--brand-accent);
+  cursor: pointer;
+}
+
+.bulk-field-input {
+  transition: opacity 0.2s ease;
+  padding-left: 28px;
+}
+
+.team-emp-checkbox,
+#team-select-all {
+  width: 17px;
+  height: 17px;
+  accent-color: var(--brand-accent);
+  cursor: pointer;
+  margin: 0;
+  vertical-align: middle;
+}
+
+@media (max-width: 640px) {
+  .team-bulk-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .bulk-bar-actions {
+    flex-direction: column;
+  }
+  .bulk-bar-actions button {
+    width: 100%;
+  }
+}
+
+
 
 
 
