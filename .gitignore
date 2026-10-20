@@ -2,8 +2,8 @@
 respaldos/
 data/backups/
 data/*.sqlite3
-data/*.sqlite3.bak
-data/*.bak
+data/*.sqlite3.bak*
+data/*.bak*
 data/*.sqlite3-wal
 data/*.sqlite3-shm
 data/*.log
