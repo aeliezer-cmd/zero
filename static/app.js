@@ -378,7 +378,7 @@ function render(){
 
   $('#app').innerHTML = `<div class="shell">
     <aside class="sidebar">
-      <div class="brand"><span class="brand-mark"></span>zero</div>
+      <div class="brand brand-clickable" role="button" tabindex="0" title="Ir al inicio" data-view="dashboard" aria-label="Ir al inicio de Zero"><span class="brand-mark"></span>zero</div>
       <div class="sidebar-category-header">
         <span class="sidebar-category-badge">${activeMeta.badge}</span>
         <span class="sidebar-category-title">${activeMeta.title}</span>
@@ -414,7 +414,7 @@ function render(){
     <div class="main-wrapper">
       <header class="topbar">
         <div class="topbar-left">
-          <div class="mobile-brand"><span class="brand-mark"></span>zero</div>
+          <div class="mobile-brand brand-clickable" role="button" tabindex="0" title="Ir al inicio" data-view="dashboard" aria-label="Ir al inicio de Zero"><span class="brand-mark"></span>zero</div>
           <select id="company-select" aria-label="Empresa activa">
             ${me.companies.map(c=>`<option value="${c.id}" ${c.id==cid?'selected':''}>${esc(c.name)}</option>`).join('')}
             ${canAdmin()?'<option value="__add_company__">＋ Agregar empresa…</option>':''}
@@ -2852,6 +2852,26 @@ function bind(){
   }
   document.querySelectorAll('[data-master-cat]').forEach(b=>b.onclick=()=>setCategory(b.dataset.masterCat));
   document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{setActiveView(b.dataset.view);render()});
+  document.querySelectorAll('.brand-clickable').forEach(el => {
+    const goHome = (e) => {
+      if(e) e.preventDefault();
+      try {
+        const modal = $('#modal');
+        if(modal && modal.open) modal.close();
+      } catch(err){}
+      setActiveView('dashboard');
+      render();
+      window.scrollTo({top: 0, behavior: 'smooth'});
+      const content = document.querySelector('.content');
+      if(content) content.scrollTo({top: 0, behavior: 'smooth'});
+    };
+    el.onclick = goHome;
+    el.onkeydown = (e) => {
+      if(e.key === 'Enter' || e.key === ' '){
+        goHome(e);
+      }
+    };
+  });
   document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{tab=b.dataset.tab;render()});
   document.querySelectorAll('[data-re-tab]').forEach(b=>b.onclick=()=>{reTab=b.dataset.reTab;render()});
   document.querySelectorAll('[data-re-cat-filter]').forEach(b=>b.onclick=()=>{reCategoryFilter=b.dataset.reCatFilter;render()});

@@ -180,6 +180,32 @@ p { line-height: 1.6; }
   border: 7px solid color-mix(in srgb, var(--brand-accent) 60%, #fff 40%);
   border-radius: 50%;
   display: inline-block;
+  transition: transform 0.25s ease;
+}
+
+.brand-clickable {
+  cursor: pointer;
+  user-select: none;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.brand-clickable:hover {
+  opacity: 0.88;
+}
+.brand-clickable:hover .brand-mark {
+  transform: rotate(12deg);
+}
+.brand-clickable:active {
+  transform: scale(0.97);
+}
+.brand.brand-clickable:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.7);
+  outline-offset: 4px;
+  border-radius: 6px;
+}
+.mobile-brand.brand-clickable:focus-visible {
+  outline: 2px solid var(--brand-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
 .nav-label {
