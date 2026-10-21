@@ -167,20 +167,12 @@ def initialize(seed=True):
                 c.execute('INSERT INTO expenses(company_id,description,department_id,expense_date,amount,status,created_by) VALUES(?,?,?,?,?,?,?)',(cid,'Materiales de ejemplo',dep,today().isoformat(),850000,'approved',1))
                 c.execute('INSERT INTO worklogs(company_id,employee_id,department_id,work_date,minutes,activity,method,status,created_by) VALUES(?,?,?,?,?,?,?,?,?)',(cid,eid,dep,today().isoformat(),420,'Inspección de ejemplo','Recorrido supervisado','approved',1))
             for cid in (1,2): generate(c,1,cid,today())
-            seed_path = ROOT / 'data' / 'seed_monarca.zero.json'
-            if seed_path.exists() and not one(c, "SELECT 1 FROM companies WHERE name LIKE '%Monarca%'"):
-                try:
-                    import json
-                    bundle = json.loads(seed_path.read_text(encoding='utf-8'))
-                    res_monarca = transfer.restore_company_for_user(sys.modules[__name__], c, 2, bundle, new_name='Grupo Monarca GM SRL')
-                    cid_monarca = res_monarca['company_id']
-                    c.execute("""
-                        INSERT INTO memberships(user_id, company_id, role, role_name, collections)
-                        VALUES(3, ?, 'admin', 'Administrador', 1)
-                        ON CONFLICT(user_id, company_id) DO UPDATE SET role='admin', role_name='Administrador', collections=1
-                    """, (cid_monarca,))
-                except Exception as err:
-                    print('Aviso seed Monarca:', err)
+            if not one(c, "SELECT 1 FROM companies WHERE name LIKE '%Monarca%'"):
+                cid_monarca = c.execute('INSERT INTO companies(name,demo,group_name) VALUES(?,?,?)', ('Grupo Monarca GM SRL', 0, 'Monarca')).lastrowid
+                c.execute('INSERT INTO memberships(user_id,company_id,role,role_name,collections) VALUES(?,?,?,?,?)', (3, cid_monarca, 'admin', 'Administrador', 1))
+                for name in ('Administración','Construcción','Cocina','Atención a visitantes','Jardinería'):
+                    c.execute('INSERT INTO departments(company_id,name) VALUES(?,?)', (cid_monarca, name))
+                c.execute('INSERT INTO projects(company_id,name) VALUES(?,?)', (cid_monarca, 'Operaciones Monarca'))
         creds = ROOT / 'data' / 'ACCESOS.txt'
         creds.write_text('ZERO — Accesos iniciales\n\nDemostración (dos empresas ficticias):\nUsuario: demo\nContraseña: '+demo_password+'\n\nEmpresas reales:\nUsuario: monarca (o admin)\nContraseña: '+real_password+'\n\nCambie las contraseñas desde Configuración. Este archivo contiene secretos: no compartir.\n', encoding='utf-8')
         os.chmod(creds,0o600)
@@ -345,6 +337,31 @@ def dashboard(c,uid,start,end):
         output.append(dict(co, expenses=total_expenses,payable=payable,collected=collected if collections else None,receivable=receivable if collections else None,billed=billed if collections else None,hours=round(sum(w['minutes'] for w in s['worklogs'] if w['status']=='approved' and inside(w['work_date']))/60,2),late_tasks=sum(t['status']!='done' and date(t['due_date'])<today() for t in s['tasks']),restricted=bool(m['departments'] or m['projects'])))
     return {'companies':output,'start':start.isoformat(),'end':end.isoformat(),'updated_at':now(),'today':today().isoformat()}
 
+def cascade_delete_employee(c, eid, cid):
+    c.execute('UPDATE farms SET manager_id=NULL WHERE manager_id=? AND company_id=?', (eid, cid))
+    for tbl, col in [('re_properties','agent_id'), ('re_buyers','agent_id'), ('re_leases','agent_id'), ('re_sales','agent_id'), ('re_visits','agent_id')]:
+        try:
+            c.execute(f'UPDATE {tbl} SET {col}=NULL WHERE {col}=? AND company_id=?', (eid, cid))
+        except sqlite3.OperationalError:
+            pass
+    try:
+        c.execute('DELETE FROM farm_jobs WHERE contract_id IN (SELECT id FROM farm_contracts WHERE employee_id=? AND company_id=?) AND company_id=?', (eid, cid, cid))
+        c.execute('DELETE FROM farm_jobs WHERE employee_id=? AND company_id=?', (eid, cid))
+        c.execute('DELETE FROM farm_contracts WHERE employee_id=? AND company_id=?', (eid, cid))
+    except sqlite3.OperationalError:
+        pass
+    for tbl in ('worklogs', 'tasks', 'work_contracts', 'payroll_lines', 'payroll_adjustments', 'employee_pay_settings', 'employee_account_entries'):
+        try:
+            col = 'responsible_id' if tbl == 'tasks' else 'employee_id'
+            c.execute(f'DELETE FROM {tbl} WHERE {col}=? AND company_id=?', (eid, cid))
+        except sqlite3.OperationalError:
+            pass
+    try:
+        c.execute("DELETE FROM attachments WHERE entity='employees' AND entity_id=? AND company_id=?", (eid, cid))
+    except sqlite3.OperationalError:
+        pass
+    c.execute('DELETE FROM employees WHERE id=? AND company_id=?', (eid, cid))
+
 def mutate(c,uid,cid,action,d):
     if action=='dmca_notice': return dmca.submit_notice(sys.modules[__name__],c,uid,cid,d)
     if action=='dmca_counter_notice': return dmca.submit_counter_notice(sys.modules[__name__],c,uid,cid,d)
@@ -428,6 +445,7 @@ def mutate(c,uid,cid,action,d):
     if action=='delete_employee':
         m=membership(c,uid,cid,3)
         item=ref(c,'employees',d.get('id'),cid);assert_scope(m,item)
+        force=bool(d.get('force'))
         uses=sum([
             c.execute('SELECT COUNT(*) FROM payroll_lines WHERE employee_id=? AND company_id=?',(item['id'],cid)).fetchone()[0],
             c.execute('SELECT COUNT(*) FROM worklogs WHERE employee_id=? AND company_id=?',(item['id'],cid)).fetchone()[0],
@@ -438,10 +456,15 @@ def mutate(c,uid,cid,action,d):
             c.execute('SELECT COUNT(*) FROM payroll_adjustments WHERE employee_id=? AND company_id=?',(item['id'],cid)).fetchone()[0],
             c.execute('SELECT COUNT(*) FROM farms WHERE manager_id=? AND company_id=?',(item['id'],cid)).fetchone()[0]
         ])
-        if uses>0:
+        if uses>0 and not force:
             raise ValueError(f'No se puede eliminar la ficha de «{item["name"]}» porque tiene {uses} registro(s) contables o labores asociadas. Para retirarlo conservando el historial, use «Despedir / Dar de baja».')
-        c.execute('DELETE FROM employees WHERE id=? AND company_id=?',(item['id'],cid))
-        audit(c,uid,cid,'borrar personal','employees',item['id'],item)
+        if force:
+            cascade_delete_employee(c, item['id'], cid)
+        else:
+            try: c.execute("DELETE FROM attachments WHERE entity='employees' AND entity_id=? AND company_id=?", (item['id'], cid))
+            except sqlite3.OperationalError: pass
+            c.execute('DELETE FROM employees WHERE id=? AND company_id=?', (item['id'], cid))
+        audit(c,uid,cid,'borrar personal','employees',item['id'],dict(item, forced=force))
         return {'ok':True,'id':item['id']}
     if action=='bulk_edit_employees':
         m=membership(c,uid,cid,2)
@@ -523,6 +546,7 @@ def mutate(c,uid,cid,action,d):
         m=membership(c,uid,cid,3)
         ids=[int(x) for x in d.get('employee_ids',[]) if str(x).isdigit()]
         if not ids: raise ValueError('Seleccione al menos un colaborador.')
+        force=bool(d.get('force'))
         deleted_count=0
         skipped=[]
         for eid in ids:
@@ -537,11 +561,16 @@ def mutate(c,uid,cid,action,d):
                 c.execute('SELECT COUNT(*) FROM payroll_adjustments WHERE employee_id=? AND company_id=?',(item['id'],cid)).fetchone()[0],
                 c.execute('SELECT COUNT(*) FROM farms WHERE manager_id=? AND company_id=?',(item['id'],cid)).fetchone()[0]
             ])
-            if uses>0:
+            if uses>0 and not force:
                 skipped.append({'id':item['id'],'name':item['name'],'uses':uses})
                 continue
-            c.execute('DELETE FROM employees WHERE id=? AND company_id=?',(item['id'],cid))
-            audit(c,uid,cid,'borrar personal en lote','employees',item['id'],item)
+            if force:
+                cascade_delete_employee(c, item['id'], cid)
+            else:
+                try: c.execute("DELETE FROM attachments WHERE entity='employees' AND entity_id=? AND company_id=?", (item['id'], cid))
+                except sqlite3.OperationalError: pass
+                c.execute('DELETE FROM employees WHERE id=? AND company_id=?', (item['id'], cid))
+            audit(c,uid,cid,'borrar personal en lote','employees',item['id'],dict(item, forced=force))
             deleted_count+=1
         return {'ok':True,'deleted_count':deleted_count,'skipped_count':len(skipped),'skipped':skipped}
     if action=='edit_department':

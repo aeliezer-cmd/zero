@@ -35,7 +35,7 @@ class TestDatabasePersistence(unittest.TestCase):
             monarca = app.one(c, "SELECT id, name FROM companies WHERE name LIKE '%Monarca%'")
             self.assertIsNotNone(monarca)
             employees = app.rows(c, "SELECT * FROM employees WHERE company_id=?", (monarca['id'],))
-            self.assertGreaterEqual(len(employees), 30)
+            self.assertEqual(len(employees), 0)
 
     def test_database_backup_and_restore(self):
         # Create a backup

@@ -1205,23 +1205,28 @@ function openBulkDeleteEmployeesModal(employeeIds){
 
     ${protectedEmps.length ? `
       <div style="margin-bottom:12px">
-        <strong style="color:#b45309">🔒 Fichas protegidas con historial contable (${protectedEmps.length}):</strong>
-        <p class="muted" style="font-size:12px;margin:2px 0 4px">El sistema conservará estas fichas para no invalidar nóminas anteriores. Para retirarlas de la vista activa, use «Dar de baja / Archivar».</p>
+        <strong style="color:#b45309">🔒 Fichas vinculadas con tareas o historial (${protectedEmps.length}):</strong>
+        <p class="muted" style="font-size:12px;margin:2px 0 4px">El sistema protege estas fichas por defecto para conservar la contabilidad. En entornos de prueba o reinicio a cero, puede forzar su eliminación completa.</p>
         <div style="max-height:80px;overflow-y:auto;background:var(--surface,#f8fafc);padding:6px 10px;border-radius:6px;border:1px solid var(--border);display:flex;gap:6px;flex-wrap:wrap">
-          ${protectedEmps.map(e => `<span class="badge orange">🔒 ${esc(e.name)} (Con historial)</span>`).join('')}
+          ${protectedEmps.map(e => `<span class="badge orange">🔒 ${esc(e.name)}</span>`).join('')}
         </div>
       </div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin:12px 0;cursor:pointer;background:rgba(220,38,38,0.05);padding:8px 12px;border-radius:6px;border:1px dashed rgba(220,38,38,0.3)">
+        <input type="checkbox" id="chk-force-bulk-del">
+        <span style="color:#b91c1c;font-weight:600">Forzar eliminación completa (borra también tareas y registros vinculados)</span>
+      </label>
     ` : ''}
 
     <div id="bulk-del-error" class="error" style="color:#dc2626;font-size:13px"></div>
 
     <div class="form-actions" style="margin-top:14px">
       <button type="button" id="cancel-modal">Cancelar</button>
-      ${safeEmps.length ? `
-        <button type="button" class="danger" id="btn-submit-bulk-del">Eliminar ${safeEmps.length} ficha(s) limpias</button>
-      ` : `
+      <button type="button" class="danger" id="btn-submit-bulk-del">
+        ${safeEmps.length ? `Eliminar ${safeEmps.length} ficha(s) limpias` : `Eliminar ${employeeIds.length} seleccionado(s)`}
+      </button>
+      ${protectedEmps.length && !safeEmps.length ? `
         <button type="button" class="secondary" id="btn-switch-to-term" style="border-color:#e08436;color:#b85c18">Ir a «Dar de baja / Archivar» en su lugar →</button>
-      `}
+      ` : ''}
     </div>
   `;
 
@@ -1236,12 +1241,39 @@ function openBulkDeleteEmployeesModal(employeeIds){
     };
   }
 
+  const forceChk = $('#chk-force-bulk-del');
   const delBtn = $('#btn-submit-bulk-del');
+  if(forceChk && delBtn){
+    if(!safeEmps.length && !forceChk.checked){
+      delBtn.disabled = true;
+    }
+    forceChk.onchange = () => {
+      if(forceChk.checked){
+        delBtn.disabled = false;
+        delBtn.textContent = `Forzar eliminación de ${employeeIds.length} ficha(s)`;
+      } else {
+        if(safeEmps.length){
+          delBtn.disabled = false;
+          delBtn.textContent = `Eliminar ${safeEmps.length} ficha(s) limpias`;
+        } else {
+          delBtn.disabled = true;
+          delBtn.textContent = `Eliminar ${employeeIds.length} seleccionado(s)`;
+        }
+      }
+    };
+  }
+
   if(delBtn){
     delBtn.onclick = async () => {
+      const isForced = Boolean($('#chk-force-bulk-del')?.checked);
+      const targetIds = (isForced || !protectedEmps.length) ? employeeIds : safeEmps.map(e => e.id);
+      if(!targetIds.length){
+        toast('No hay colaboradores seleccionados para eliminar.');
+        return;
+      }
       delBtn.disabled = true;
       try {
-        const res = await save('bulk_delete_employees', {employee_ids: employeeIds});
+        const res = await save('bulk_delete_employees', {employee_ids: targetIds, force: isForced});
         teamSelectedEmployees.clear();
         $('#modal').close();
         let msg = `✓ ${res.deleted_count || 0} ficha(s) eliminada(s) permanentemente.`;

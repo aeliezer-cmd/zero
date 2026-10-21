@@ -534,4 +534,13 @@ class PilotTests(unittest.TestCase):
             self.assertIsNone(c.execute('SELECT * FROM employees WHERE id=?', (t2,)).fetchone())
             self.assertIsNotNone(c.execute('SELECT * FROM employees WHERE id=?', (t3,)).fetchone())
 
+        # 5. Bulk delete with force=True bypassing history checks
+        res_del_force = self.action('bulk_delete_employees', employee_ids=[t3], force=True)
+        self.assertTrue(res_del_force.get('ok'))
+        self.assertEqual(res_del_force.get('deleted_count'), 1)
+        self.assertEqual(res_del_force.get('skipped_count'), 0)
+        with app.connect() as c:
+            self.assertIsNone(c.execute('SELECT * FROM employees WHERE id=?', (t3,)).fetchone())
+            self.assertEqual(c.execute('SELECT COUNT(*) FROM worklogs WHERE employee_id=?', (t3,)).fetchone()[0], 0)
+
 if __name__=='__main__': unittest.main(verbosity=2)
