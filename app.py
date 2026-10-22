@@ -250,6 +250,9 @@ def initialize(seed=True):
                 c.execute('INSERT INTO projects(company_id,name) VALUES(?,?)', (cid_monarca, 'Operaciones Monarca'))
                 for name, code, cat in DEFAULT_FARMS:
                     c.execute('INSERT INTO farms(company_id, name, code, category, status, notes) VALUES(?, ?, ?, ?, "active", "")', (cid_monarca, name, code, cat))
+            try:
+                ensure_monarca_farms(c)
+            except Exception: pass
         creds = ROOT / 'data' / 'ACCESOS.txt'
         creds.write_text('ZERO — Accesos iniciales\n\nDemostración (dos empresas ficticias):\nUsuario: demo\nContraseña: '+demo_password+'\n\nEmpresas reales:\nUsuario: monarca (o admin)\nContraseña: '+real_password+'\n\nCambie las contraseñas desde Configuración. Este archivo contiene secretos: no compartir.\n', encoding='utf-8')
         os.chmod(creds,0o600)
@@ -326,6 +329,13 @@ def state(c,uid,cid):
     if co_del and co_del.get('deleted_at'):
         raise Denied('Esta empresa se encuentra en la papelera. Restáurela desde el Directorio de empresas para acceder.')
     m=membership(c,uid,cid)
+    try:
+        co_row = one(c, 'SELECT name, demo FROM companies WHERE id=?', (cid,))
+        if co_row and (not co_row.get('demo') or 'monarca' in (co_row.get('name') or '').lower()):
+            cur_farms = c.execute("SELECT count(*) FROM farms WHERE company_id=?", (cid,)).fetchone()[0]
+            if cur_farms == 0:
+                ensure_monarca_farms(c)
+    except Exception: pass
     result={'membership':m,'today':today().isoformat(),'updated_at':now(),'branding':one(c,'SELECT accent_color,surface_color,card_color,text_color,font_scale FROM companies WHERE id=?',(cid,))}
     for table in ('departments','projects','employees','worklogs','tasks','expenses'):
         entries=rows(c,'SELECT * FROM '+table+' WHERE company_id=? ORDER BY id DESC',(cid,))
