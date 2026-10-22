@@ -81,6 +81,52 @@ def ensure_unassigned_departments(c):
             WHERE company_id=? AND (department_id IS NULL OR department_id NOT IN (SELECT id FROM departments WHERE company_id=?))
         """, (dept_id, cid, cid))
 
+DEFAULT_FARMS = [
+    ('Patricia', 'F-01', 'Agrícola'),
+    ('La Mesa', 'F-02', 'Agrícola'),
+    ('Güiza', 'F-03', 'Agrícola'),
+    ('Las Pajas', 'F-04', 'Agrícola'),
+    ('Las Caobas', 'F-05', 'Agrícola'),
+    ('Esquea', 'F-06', 'Agrícola'),
+    ('Las Mujeres', 'F-07', 'Agrícola'),
+]
+
+def ensure_monarca_farms(c):
+    try:
+        cur = c.execute("SELECT id, name FROM companies WHERE (name LIKE '%Monarca%' OR demo=0) AND (deleted_at IS NULL OR deleted_at='')")
+        companies = []
+        for r in cur.fetchall():
+            cid = r['id'] if hasattr(r, 'keys') else r[0]
+            cname = r['name'] if hasattr(r, 'keys') else r[1]
+            companies.append((cid, cname))
+        for cid, cname in companies:
+            try:
+                c.execute("""
+                    INSERT INTO company_profiles(company_id, unit_singular, unit_plural, business_vertical)
+                    VALUES(?, 'Finca', 'Fincas', 'agriculture')
+                    ON CONFLICT(company_id) DO UPDATE SET 
+                        unit_singular=CASE WHEN unit_singular='' OR unit_singular='Unidad operativa' THEN 'Finca' ELSE unit_singular END,
+                        unit_plural=CASE WHEN unit_plural='' OR unit_plural='Unidades operativas' THEN 'Fincas' ELSE unit_plural END,
+                        business_vertical=CASE WHEN business_vertical='' OR business_vertical='general' THEN 'agriculture' ELSE business_vertical END
+                """, (cid,))
+            except Exception: pass
+            
+            cur_farms = c.execute("SELECT name FROM farms WHERE company_id=?", (cid,)).fetchall()
+            existing_names = {
+                (r['name'] if hasattr(r, 'keys') else r[0]).strip().lower()
+                for r in cur_farms if (r['name'] if hasattr(r, 'keys') else r[0])
+            }
+            for name, code, cat in DEFAULT_FARMS:
+                if name.strip().lower() not in existing_names:
+                    try:
+                        c.execute("""
+                            INSERT INTO farms(company_id, name, code, category, status, notes)
+                            VALUES(?, ?, ?, ?, 'active', '')
+                        """, (cid, name, code, cat))
+                    except Exception: pass
+    except Exception as e:
+        print(f"ensure_monarca_farms notice: {e}")
+
 SCHEMA = '''
 CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY, username TEXT UNIQUE NOT NULL, name TEXT NOT NULL, password TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1);
 CREATE TABLE IF NOT EXISTS companies(id INTEGER PRIMARY KEY, name TEXT NOT NULL, demo INTEGER NOT NULL DEFAULT 0, group_name TEXT NOT NULL DEFAULT '', accent_color TEXT NOT NULL DEFAULT '#185b4d', surface_color TEXT NOT NULL DEFAULT '#f4f6f3', card_color TEXT NOT NULL DEFAULT '#ffffff', text_color TEXT NOT NULL DEFAULT '#172f2d', font_scale TEXT NOT NULL DEFAULT '100', deleted_at TEXT DEFAULT NULL);
@@ -166,6 +212,10 @@ def initialize(seed=True):
             ensure_unassigned_departments(c)
         except Exception as e:
             print(f"ensure_unassigned_departments notice: {e}")
+        try:
+            ensure_monarca_farms(c)
+        except Exception as e:
+            print(f"ensure_monarca_farms notice: {e}")
         user_count = c.execute('SELECT count(*) FROM users').fetchone()[0]
         if user_count:
             return
@@ -194,9 +244,12 @@ def initialize(seed=True):
             if not one(c, "SELECT 1 FROM companies WHERE name LIKE '%Monarca%'"):
                 cid_monarca = c.execute('INSERT INTO companies(name,demo,group_name) VALUES(?,?,?)', ('Grupo Monarca GM SRL', 0, 'Monarca')).lastrowid
                 c.execute('INSERT INTO memberships(user_id,company_id,role,role_name,collections) VALUES(?,?,?,?,?)', (3, cid_monarca, 'admin', 'Administrador', 1))
+                c.execute("INSERT INTO company_profiles(company_id,unit_singular,unit_plural,business_vertical) VALUES(?, 'Finca', 'Fincas', 'agriculture')", (cid_monarca,))
                 for name in ('Sin departamento asignado','Administración','Construcción','Cocina','Atención a visitantes','Jardinería'):
                     c.execute('INSERT INTO departments(company_id,name) VALUES(?,?)', (cid_monarca, name))
                 c.execute('INSERT INTO projects(company_id,name) VALUES(?,?)', (cid_monarca, 'Operaciones Monarca'))
+                for name, code, cat in DEFAULT_FARMS:
+                    c.execute('INSERT INTO farms(company_id, name, code, category, status, notes) VALUES(?, ?, ?, ?, "active", "")', (cid_monarca, name, code, cat))
         creds = ROOT / 'data' / 'ACCESOS.txt'
         creds.write_text('ZERO — Accesos iniciales\n\nDemostración (dos empresas ficticias):\nUsuario: demo\nContraseña: '+demo_password+'\n\nEmpresas reales:\nUsuario: monarca (o admin)\nContraseña: '+real_password+'\n\nCambie las contraseñas desde Configuración. Este archivo contiene secretos: no compartir.\n', encoding='utf-8')
         os.chmod(creds,0o600)

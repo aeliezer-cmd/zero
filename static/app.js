@@ -81,6 +81,7 @@ function getSavedCompanyId(user){
   }
 }
 let currentCategory = 'rrhh';
+let agTab = 'farms';
 let reTab = 'properties';
 let reCategoryFilter = 'all';
 let reCondoFilter = '';
@@ -150,6 +151,15 @@ function setActiveView(newView){
     view = 'real_estate';
     currentCategory = 'real_estate';
     if(!reTab) reTab = 'properties';
+  } else if(newView?.startsWith('agriculture:')){
+    const sub = newView.split(':')[1];
+    agTab = sub;
+    view = 'agriculture';
+    currentCategory = 'rrhh';
+  } else if(newView === 'agriculture'){
+    view = 'agriculture';
+    currentCategory = 'rrhh';
+    if(!agTab) agTab = 'farms';
   } else {
     view = newView;
     currentCategory = getCategoryForView(newView);
@@ -367,6 +377,8 @@ function render(){
       ? (view === 'settings' && settingsTab === v.split(':')[1])
       : v.startsWith('real_estate:')
       ? (view === 'real_estate' && reTab === v.split(':')[1])
+      : v.startsWith('agriculture:')
+      ? (view === 'agriculture' && agTab === v.split(':')[1])
       : (view === v);
     return `<button data-view="${v}" class="${isAct ? 'active' : ''}">
       <span class="nav-symbol">${i}</span>
@@ -828,7 +840,7 @@ function teamView(){
   return heading(
     'Personas que hacen que todo avance',
     'Fichas de personal fijo vs. temporero, condiciones y reportes de supervisión.',
-    `<button class="small secondary" data-view="departments">🏛️ Departamentos</button> <button class="small primary" data-view="payroll">Ir a Módulo de Nóminas ♧</button> ` + openButton('+ Persona', 'employee')
+    `<button class="small secondary" data-view="departments">🏛️ Departamentos</button> <button class="small secondary" data-view="agriculture" data-ag-tab="farms">🚜 ${esc(unitLabel(true))} (${(S.farms||[]).length})</button> <button class="small primary" data-view="payroll">Ir a Módulo de Nóminas ♧</button> ` + openButton('+ Persona', 'employee')
   ) + teamCards + explanatoryNotice + panel('Fichas de Personal', filterBar + quickSelectors + teamBulkBar + employeeTable) + panel('Reportes de trabajo y supervisión', worklogTable, worklogPanelActions) + payrollPanel();
 }
 
@@ -2119,15 +2131,22 @@ function departmentsView(){
   ) + departmentsManagementPanel();
 }
 
-function showDepartmentEmployeesModal(itemId, isProject = false){
-  const tableKey = isProject ? 'projects' : 'departments';
-  const entityIdKey = isProject ? 'project_id' : 'department_id';
+function showDepartmentEmployeesModal(itemId, isProject = false, isFarm = false){
+  const tableKey = isFarm ? 'farms' : (isProject ? 'projects' : 'departments');
+  const entityIdKey = isFarm ? 'farm_id' : (isProject ? 'project_id' : 'department_id');
   const item = (S[tableKey] || []).find(x => x.id === itemId);
   if(!item) return;
 
   const emps = (S.employees || []).filter(e => e[entityIdKey] === itemId);
-  const tasks = (S.tasks || []).filter(t => t[entityIdKey] === itemId);
-  const expenses = (S.expenses || []).filter(ex => ex[entityIdKey] === itemId);
+  const tasks = isFarm
+    ? (S.farm_jobs || []).filter(j => j.farm_id === itemId || ((S.farm_contracts || []).find(co => co.id === j.contract_id)?.farm_id === itemId)).map(j => ({
+        title: j.description,
+        responsible_id: j.employee_id || (S.farm_contracts || []).find(co => co.id === j.contract_id)?.employee_id,
+        status: j.status,
+        due_date: j.work_date || j.due_date || S.today
+      }))
+    : (S.tasks || []).filter(t => t[entityIdKey] === itemId);
+  const expenses = isFarm ? [] : (S.expenses || []).filter(ex => ex[entityIdKey] === itemId);
 
   const empRows = emps.map(e => `
     <tr>
@@ -2148,28 +2167,29 @@ function showDepartmentEmployeesModal(itemId, isProject = false){
     </tr>
   `);
 
-  const isDefaultUnassigned = !isProject && ((item.name||'').trim().toLowerCase() === 'sin departamento asignado' || (item.name||'').trim().toLowerCase() === 'sin departamento');
+  const typeLabel = isFarm ? ('🚜 ' + unitLabel()) : isProject ? '📁 Proyecto' : '🏛️ Departamento';
+  const isDefaultUnassigned = !isProject && !isFarm && ((item.name||'').trim().toLowerCase() === 'sin departamento asignado' || (item.name||'').trim().toLowerCase() === 'sin departamento');
 
   const content = `
     <div class="modal-header">
-      <h2>${isProject ? '📁 Proyecto' : '🏛️ Departamento'}: «${esc(item.name)}»</h2>
+      <h2>${typeLabel}: «${esc(item.name)}»</h2>
       <button type="button" id="close-modal" aria-label="Cerrar">×</button>
     </div>
     <div style="margin:12px 0 16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
       <span class="badge blue">👥 ${emps.length} Colaborador(es)</span>
-      <span class="badge green">☷ ${tasks.length} Tarea(s)</span>
-      <span class="badge orange">▤ ${expenses.length} Gasto(s)</span>
-      <button type="button" class="primary small" data-open="employee" ${isProject ? `data-project-id="${item.id}"` : `data-department-id="${item.id}"`} style="margin-left:auto">＋ Agregar colaborador a este ${isProject ? 'proyecto' : 'departamento'}</button>
+      <span class="badge green">☷ ${tasks.length} ${isFarm ? 'Labor(es)' : 'Tarea(s)'}</span>
+      ${!isFarm ? `<span class="badge orange">▤ ${expenses.length} Gasto(s)</span>` : ''}
+      <button type="button" class="primary small" data-open="employee" ${isFarm ? `data-farm-id="${item.id}"` : isProject ? `data-project-id="${item.id}"` : `data-department-id="${item.id}"`} style="margin-left:auto">＋ Agregar colaborador</button>
     </div>
-    <h3 style="margin:16px 0 8px">Personal vinculado a este ${isProject ? 'proyecto' : 'departamento'} (${emps.length})</h3>
+    <h3 style="margin:16px 0 8px">Personal vinculado a este ${typeLabel} (${emps.length})</h3>
     ${table(['Nombre', 'Puesto', 'Estado', 'Modalidad', 'Acción'], empRows, 'No hay colaboradores vinculados directamente a este registro.')}
     ${tasks.length ? `
-      <h3 style="margin:20px 0 8px">Tareas asociadas (${tasks.length})</h3>
-      ${table(['Tarea', 'Responsable', 'Estado', 'Vencimiento'], taskRows)}
+      <h3 style="margin:20px 0 8px">${isFarm ? 'Labores registradas' : 'Tareas asociadas'} (${tasks.length})</h3>
+      ${table([isFarm ? 'Labor' : 'Tarea', 'Responsable', 'Estado', 'Fecha'], taskRows)}
     ` : ''}
     <div class="form-actions" style="margin-top:20px">
       <button type="button" id="cancel-modal">Volver</button>
-      ${isDefaultUnassigned ? '<span class="muted" style="font-size:12px;padding:6px 12px;background:rgba(0,0,0,0.04);border-radius:6px">🔒 Colección base predeterminada</span>' : `<button type="button" class="primary" data-action="${isProject ? 'edit_project' : 'edit_department'}" data-id="${item.id}">✏️ Renombrar ${isProject ? 'proyecto' : 'departamento'}</button>`}
+      ${isDefaultUnassigned ? '<span class="muted" style="font-size:12px;padding:6px 12px;background:rgba(0,0,0,0.04);border-radius:6px">🔒 Colección base predeterminada</span>' : `<button type="button" class="primary" data-action="${isFarm ? 'edit_farm' : isProject ? 'edit_project' : 'edit_department'}" data-id="${item.id}">✏️ Editar ${typeLabel}</button>`}
     </div>
   `;
 
@@ -2196,7 +2216,9 @@ function showDepartmentEmployeesModal(itemId, isProject = false){
 
 function departmentsManagementPanel(){
   const isDept = deptOrgTab === 'departments';
-  const items = isDept ? (S.departments || []) : (S.projects || []);
+  const isFarm = deptOrgTab === 'farms';
+  const isProj = deptOrgTab === 'projects';
+  const items = isDept ? (S.departments || []) : isFarm ? (S.farms || []) : (S.projects || []);
   const allEmployees = S.employees || [];
   const allTasks = S.tasks || [];
   const allExpenses = S.expenses || [];
@@ -2205,6 +2227,23 @@ function departmentsManagementPanel(){
   const idKey = isDept ? 'department_id' : 'project_id';
 
   const enriched = items.map(item => {
+    if(isFarm){
+      const emps = allEmployees.filter(e => e.farm_id === item.id);
+      const activeEmps = emps.filter(e => (e.status || 'active') === 'active');
+      const jobs = (S.farm_jobs || []).filter(j => j.farm_id === item.id || ((S.farm_contracts || []).find(co => co.id === j.contract_id)?.farm_id === item.id));
+      const contracts = (S.farm_contracts || []).filter(c => c.farm_id === item.id);
+      const totalLinks = emps.length + jobs.length + contracts.length;
+      return {
+        ...item,
+        emps,
+        activeEmps,
+        tasks: jobs,
+        expenses: [],
+        worklogs: [],
+        farms: [],
+        totalLinks
+      };
+    }
     const emps = allEmployees.filter(e => e[idKey] === item.id);
     const activeEmps = emps.filter(e => (e.status || 'active') === 'active');
     const tasks = allTasks.filter(t => t[idKey] === item.id);
@@ -2240,12 +2279,14 @@ function departmentsManagementPanel(){
   const totalCount = items.length;
   const countWithEmps = enriched.filter(x => x.emps.length > 0).length;
   const countClean = enriched.filter(x => x.totalLinks === 0).length;
-  const totalEmpsAssigned = allEmployees.filter(e => e[idKey] !== null && e[idKey] !== undefined).length;
+  const totalEmpsAssigned = isFarm
+    ? allEmployees.filter(e => e.farm_id !== null && e.farm_id !== undefined).length
+    : allEmployees.filter(e => e[idKey] !== null && e[idKey] !== undefined).length;
 
   const kpiCards = `
     <div class="cards" style="margin-bottom:20px">
       <article class="card">
-        <div class="card-title">Total ${isDept ? 'Departamentos' : 'Proyectos'} <span>${isDept ? '🏛️' : '📁'}</span></div>
+        <div class="card-title">Total ${isDept ? 'Departamentos' : isFarm ? unitLabel(true) : 'Proyectos'} <span>${isDept ? '🏛️' : isFarm ? '🚜' : '📁'}</span></div>
         <div class="card-value">${totalCount}</div>
         <div class="card-note">Estructura activa de la empresa</div>
       </article>
@@ -2255,9 +2296,9 @@ function departmentsManagementPanel(){
         <div class="card-note">${totalEmpsAssigned} colaboradores vinculados</div>
       </article>
       <article class="card">
-        <div class="card-title">Sin Vínculos (Listos para retirar) <span>🗑️</span></div>
-        <div class="card-value">${countClean}</div>
-        <div class="card-note">Sin personal ni operaciones vinculadas</div>
+        <div class="card-title">${isFarm ? 'Labores Registradas' : 'Sin Vínculos (Listos para retirar)'} <span>${isFarm ? '📋' : '🗑️'}</span></div>
+        <div class="card-value">${isFarm ? (S.farm_jobs || []).length : countClean}</div>
+        <div class="card-note">${isFarm ? `${(S.farm_contracts || []).length} contratos de labor vigentes` : 'Sin personal ni operaciones vinculadas'}</div>
       </article>
     </div>
   `;
@@ -2268,20 +2309,30 @@ function departmentsManagementPanel(){
         <button type="button" class="settings-tab-btn ${isDept ? 'active' : ''}" data-dept-org-tab="departments">
           <span>🏛️</span> Departamentos (${(S.departments || []).length})
         </button>
-        <button type="button" class="settings-tab-btn ${!isDept ? 'active' : ''}" data-dept-org-tab="projects">
+        <button type="button" class="settings-tab-btn ${isFarm ? 'active' : ''}" data-dept-org-tab="farms">
+          <span>🚜</span> ${esc(unitLabel(true))} (${(S.farms || []).length})
+        </button>
+        <button type="button" class="settings-tab-btn ${isProj ? 'active' : ''}" data-dept-org-tab="projects">
           <span>📁</span> Proyectos (${(S.projects || []).length})
         </button>
       </div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         ${isDept ? `<button type="button" class="secondary small" data-open="employee">＋ Nueva ficha de personal</button>` : ''}
-        <button type="button" class="primary small" data-open="${isDept ? 'department' : 'project'}">
-          ＋ Nuevo ${isDept ? 'departamento' : 'proyecto'}
+        ${isFarm ? `<button type="button" class="secondary small" data-view="agriculture" data-ag-tab="farms">🌱 Abrir Fincas y Campo</button>` : ''}
+        <button type="button" class="primary small" data-open="${isDept ? 'department' : isFarm ? 'farm' : 'project'}">
+          ＋ Nuevo ${isDept ? 'departamento' : isFarm ? unitLabel(false, true) : 'proyecto'}
         </button>
       </div>
     </div>
   `;
 
-  const quickAddForm = `
+  const quickAddForm = isFarm ? `
+    <form id="quick-add-farm-form" class="quick-add-bar" style="display:flex;gap:10px;align-items:center;margin-bottom:18px;background:var(--card);padding:14px 18px;border-radius:10px;border:1px solid var(--border);box-shadow:0 1px 3px rgba(0,0,0,0.04)">
+      <span style="font-size:22px">🚜</span>
+      <input type="text" id="quick-farm-name" placeholder="Crear nueva ${esc(unitLabel(false, true))} (ej. Patricia, La Mesa, Güiza, Las Pajas...)" required style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px">
+      <button class="primary" type="submit" style="white-space:nowrap">＋ Agregar ${esc(unitLabel(false, true))}</button>
+    </form>
+  ` : `
     <form id="${isDept ? 'quick-add-dept-form' : 'quick-add-proj-form'}" class="quick-add-bar" style="display:flex;gap:10px;align-items:center;margin-bottom:18px;background:var(--card);padding:14px 18px;border-radius:10px;border:1px solid var(--border);box-shadow:0 1px 3px rgba(0,0,0,0.04)">
       <span style="font-size:22px">${isDept ? '🏛️' : '📁'}</span>
       <input type="text" id="${isDept ? 'quick-dept-name' : 'quick-proj-name'}" placeholder="Crear nuevo ${isDept ? 'departamento (ej. Recursos Humanos, Ventas, Logística, Mantenimiento...)' : 'proyecto (ej. Fase 1, Expansión, Obras Civiles...)'}" required style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px">
@@ -2292,18 +2343,25 @@ function departmentsManagementPanel(){
   const filterBar = `
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
       <div style="flex:1;min-width:240px">
-        <input type="search" id="dept-search-input" placeholder="🔍 Buscar ${isDept ? 'departamento' : 'proyecto'} por nombre..." value="${esc(deptSearch)}" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px">
+        <input type="search" id="dept-search-input" placeholder="🔍 Buscar ${isDept ? 'departamento' : isFarm ? unitLabel(false, true) : 'proyecto'} por nombre..." value="${esc(deptSearch)}" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px">
       </div>
       <div class="panel-filters" style="margin:0">
         <button class="small ${deptFilter === 'all' ? 'primary' : ''}" data-dept-filter="all">Todos (${items.length})</button>
         <button class="small ${deptFilter === 'with_employees' ? 'primary' : ''}" data-dept-filter="with_employees">Con personal (${countWithEmps})</button>
         <button class="small ${deptFilter === 'empty' ? 'primary' : ''}" data-dept-filter="empty">Sin personal (${items.length - countWithEmps})</button>
-        <button class="small ${deptFilter === 'clean' ? 'primary' : ''}" data-dept-filter="clean">Sin vínculos (${countClean})</button>
+        ${!isFarm ? `<button class="small ${deptFilter === 'clean' ? 'primary' : ''}" data-dept-filter="clean">Sin vínculos (${countClean})</button>` : ''}
       </div>
     </div>
   `;
 
-  const tableHeaders = [
+  const tableHeaders = isFarm ? [
+    unitLabel(),
+    'Personal Asignado',
+    'Labores y Trabajos',
+    'Ubicación / Código',
+    'Estado Operativo',
+    'Acciones'
+  ] : [
     `${isDept ? 'Departamento' : 'Proyecto'}`,
     'Personal Asignado',
     'Tareas y Labores',
@@ -2313,6 +2371,44 @@ function departmentsManagementPanel(){
   ];
 
   const tableRows = filtered.map(item => {
+    if(isFarm){
+      const empCount = item.emps.length;
+      const empPreview = empCount > 0
+        ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">${item.emps.slice(0, 2).map(e => esc(e.name)).join(', ')}${empCount > 2 ? ` <span style="font-weight:600">+${empCount - 2} más</span>` : ''}</div>`
+        : '';
+      const laborCount = item.tasks.length;
+      const laborBadge = laborCount > 0
+        ? `<span class="badge blue" style="font-size:11px">📋 ${laborCount} labor(es)</span>`
+        : '<span class="muted">—</span>';
+      const locText = [item.code ? `Cód: ${esc(item.code)}` : '', item.address ? esc(item.address) : '', item.notes ? esc(item.notes) : ''].filter(Boolean).join(' · ') || '<span class="muted">Sin ubicación especificada</span>';
+      const statusBadge = (item.status === 'active' || !item.status)
+        ? '<span class="badge green">● Operativa</span>'
+        : (item.status === 'maintenance' ? '<span class="badge orange">Mantenimiento</span>' : '<span class="badge gray">Inactiva</span>');
+
+      return `<tr>
+        <td>
+          <strong style="font-size:14px">🚜 ${esc(item.name)}</strong>
+          <div class="muted" style="font-size:11px">Código interno #${item.id}${item.code ? ` · ${esc(item.code)}` : ''}</div>
+        </td>
+        <td>
+          <div><strong>${empCount} colaborador(es)</strong></div>
+          ${empPreview}
+        </td>
+        <td>${laborBadge}</td>
+        <td><div style="font-size:12px">${locText}</div></td>
+        <td>${statusBadge}</td>
+        <td>
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            <button class="small primary" data-action="add_employee_to_farm" data-id="${item.id}" title="Agregar colaborador a esta finca">＋ Personal</button>
+            <button class="small" data-action="add_labor_to_farm" data-id="${item.id}" title="Encargar labor en esta finca">＋ Labor</button>
+            <button class="small secondary" data-view-dept-employees="${item.id}" data-is-farm="true" title="Ver colaboradores y labores">👥 Ver (${empCount})</button>
+            ${canAdmin() ? `<button class="small" data-action="edit_farm" data-id="${item.id}">✏️ Editar</button>` : ''}
+            ${canAdmin() ? `<button class="small danger" data-action="delete_farm" data-id="${item.id}">🗑️ Eliminar</button>` : ''}
+          </div>
+        </td>
+      </tr>`;
+    }
+
     const isDefaultUnassigned = isDept && ((item.name||'').trim().toLowerCase() === 'sin departamento asignado' || (item.name||'').trim().toLowerCase() === 'sin departamento');
     const empCount = item.emps.length;
     const empPreview = empCount > 0
@@ -2380,14 +2476,24 @@ function departmentsManagementPanel(){
 
   const emptyMsg = deptSearch || deptFilter !== 'all'
     ? 'No se encontraron resultados con los filtros actuales.'
-    : `No hay ${isDept ? 'departamentos' : 'proyectos'} registrados todavía. Agregue el primero usando el formulario superior.`;
+    : `No hay ${isDept ? 'departamentos' : isFarm ? unitLabel(true).toLowerCase() : 'proyectos'} registrados todavía. Agregue el primero usando el formulario superior.`;
 
   const infoNotice = `
     <div class="notice" style="margin-top:20px">
-      <strong>💡 Guía de Estructura Organizativa y Departamentos:</strong><br>
+      <strong>💡 Guía de Estructura Organizativa, Departamentos y Fincas:</strong><br>
       • <strong>🏢 Departamentos:</strong> Estructuran al personal de la empresa, asignan áreas de supervisión y clasifican los gastos contables.<br>
-      • <strong>✏️ Editar o renombrar:</strong> Puede cambiar el nombre de cualquier departamento en cualquier momento; todas las fichas de personal, tareas y gastos mantendrán su relación intacta.<br>
+      • <strong>🚜 Fincas y Sedes:</strong> Centros operativos de producción agrícola o sucursales donde se ejecutan labores y se asigna personal de campo.<br>
+      • <strong>✏️ Editar o renombrar:</strong> Puede cambiar el nombre de cualquier departamento o finca en cualquier momento; todas las fichas de personal, tareas y gastos mantendrán su relación intacta.<br>
       • <strong>🗑️ Eliminar:</strong> Por seguridad contable y trazabilidad histórica, un departamento solo se elimina si no tiene personal ni registros vinculados. Si el botón dice <strong>🔒 Protegido</strong>, pulse sobre él para consultar exactamente qué registros deben reasignarse primero.<br>
+      • <strong>👥 Reasignación rápida:</strong> Pulse el botón <strong>👥 Ver</strong> para ver las personas asignadas y reasignarlas abriendo su ficha.
+    </div>
+  `;
+
+  return tabsSelector + kpiCards + quickAddForm + panel(
+    `Estructura interactiva de ${isDept ? 'Departamentos' : isFarm ? unitLabel(true) : 'Proyectos'} (${filtered.length})`,
+    filterBar + table(tableHeaders, tableRows, emptyMsg)
+  ) + infoNotice;
+}
       • <strong>👥 Reasignación rápida:</strong> Pulse el botón <strong>👥 Ver</strong> para ver las personas asignadas y reasignarlas abriendo su ficha.
     </div>
   `;
@@ -2814,6 +2920,26 @@ function bindDepartments(){
     };
   }
 
+  const quickFarmForm = $('#quick-add-farm-form');
+  if(quickFarmForm){
+    quickFarmForm.onsubmit = async (e) => {
+      e.preventDefault();
+      const input = $('#quick-farm-name');
+      const name = input?.value?.trim();
+      if(!name) return;
+      const btn = quickFarmForm.querySelector('button');
+      if(btn) btn.disabled = true;
+      try {
+        await save('farm', { name, category: 'Agrícola', status: 'active' });
+        input.value = '';
+        toast(`Finca «${name}» agregada con éxito.`);
+      } catch(err) {
+        toast(err.message);
+        if(btn) btn.disabled = false;
+      }
+    };
+  }
+
   document.querySelectorAll('[data-dept-blocked-reason]').forEach(btn => {
     btn.onclick = () => {
       alert(btn.dataset.deptBlockedReason);
@@ -2824,7 +2950,8 @@ function bindDepartments(){
     btn.onclick = () => {
       const id = Number(btn.dataset.viewDeptEmployees);
       const isProject = btn.dataset.isProject === 'true';
-      showDepartmentEmployeesModal(id, isProject);
+      const isFarm = btn.dataset.isFarm === 'true';
+      showDepartmentEmployeesModal(id, isProject, isFarm);
     };
   });
 }
@@ -2906,7 +3033,12 @@ function bind(){
     $('#branding-form').onsubmit=async e=>{e.preventDefault();try{await save('branding',Object.fromEntries(new FormData(e.target)));toast('Colores guardados.')}catch(err){toast(err.message)}};
   }
   document.querySelectorAll('[data-master-cat]').forEach(b=>b.onclick=()=>setCategory(b.dataset.masterCat));
-  document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{setActiveView(b.dataset.view);render()});
+  document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{
+    if(b.dataset.agTab) agTab = b.dataset.agTab;
+    if(b.dataset.deptOrgTab) deptOrgTab = b.dataset.deptOrgTab;
+    setActiveView(b.dataset.view);
+    render();
+  });
   document.querySelectorAll('.brand-clickable').forEach(el => {
     const goHome = (e) => {
       if(e) e.preventDefault();
@@ -2928,6 +3060,7 @@ function bind(){
     };
   });
   document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{tab=b.dataset.tab;render()});
+  document.querySelectorAll('[data-ag-tab]').forEach(b=>b.onclick=()=>{agTab=b.dataset.agTab;render()});
   document.querySelectorAll('[data-re-tab]').forEach(b=>b.onclick=()=>{reTab=b.dataset.reTab;render()});
   document.querySelectorAll('[data-re-cat-filter]').forEach(b=>b.onclick=()=>{reCategoryFilter=b.dataset.reCatFilter;render()});
   const reSearchEl=$('#re-search');if(reSearchEl)reSearchEl.oninput=e=>{reSearch=e.target.value;render()};
@@ -7874,19 +8007,83 @@ function agricultureView(){
    </div>
  `;
 
- return heading(
-   'Cola de operaciones y nóminas de ' + unitLabel(false, true),
-   'Gestión estandarizada de trabajos asignados, avances, aprobaciones, personal y compensaciones.',
-   `<button class="small primary" data-action="assign_queue_job">+ Asignar trabajo</button>`
- ) +
- queueCards +
- panel('Cola de trabajos y tareas asignadas', queueFilters + (filteredJobs.length ? table(['Trabajo y concepto', unitLabel(), 'Colaborador asignado', 'Supervisor / Responsable', 'Modalidad y tarifa', 'Avance de labor', 'Compensación devengada', 'Acciones'], queueRows) : '<div class="empty">No hay trabajos que coincidan con este filtro en la cola.</div>'), queuePanelActions) +
- farmLaboresPanel +
- panel('Contratos y acuerdos de trabajo', table(['Trabajo contratado', 'Trabajador', unitLabel(), 'Modalidad y tarifa', 'Vigencia', 'Estado (Cambiar)', 'Avance en trabajos', 'Acciones'], contractsRows), canReview() ? openButton('+ Contrato', 'farm_contract') : '') +
- panel('Cálculo y liquidación de nóminas', table([unitLabel() + ' / Período', 'Detalle por trabajador', 'Total bruto', 'Estado / Referencia', 'Acciones'], payrollRows), canReview() ? openButton('+ Calcular nómina periódica', 'weekly_payroll') : '') +
- panel(unitLabel(true), table(['Nombre / Código', 'Responsable / Contacto', 'Ubicación / Capacidad', 'Departamento / Proyecto', 'Labores y Personal Encargado', 'Estado / Observaciones', 'Acciones'], unitsRows), canAdmin() ? openButton('+ Nueva ' + unitLabel(false, true), 'farm') : '') +
- (canCollect() ? panel('Ingresos por ' + unitLabel(false, true), filters + table([unitLabel(), 'Ventas / ingresos', 'Ingreso recibido', 'Pendiente de cobro'], summary), openButton('+ Venta / ingreso', 'farm_sale')) +
-   panel('Registro de ventas e ingresos', table(['Fecha', unitLabel(), 'Producto / concepto', 'Cantidad', 'Precio', 'Comprador', 'Vendedor', 'Total', 'Recibido', 'Acciones'], sales.map(s => `<tr><td>${displayDate(s.sale_date)}</td><td>${esc(agName('farms', s.farm_id))}</td><td>${esc(s.product)}</td><td>${esc(s.quantity)} ${esc(s.unit)}</td><td>${money(s.price)}</td><td>${esc(s.customer)}</td><td>${esc(s.seller)}</td><td>${money(s.amount)}</td><td>${money(s.received)}</td><td>${canCollect() ? action('Editar', 'edit_farm_sale', s.id) + ' ' + action('Borrar', 'delete_farm_sale', s.id) : ''}</td></tr>`))) : '');
+  const farms = S.farms || [];
+  const assignedEmployeesCount = (S.employees || []).filter(e => e.farm_id).length;
+  const activeFarmsCount = farms.filter(f => (f.status || 'active') === 'active').length;
+
+  const farmCards = `
+    <div class="cards" style="margin-bottom:16px">
+      <article class="card highlight">
+        <div class="card-title">${esc(unitLabel(true))} Registradas <span>🚜</span></div>
+        <div class="card-value">${farms.length}</div>
+        <div class="card-note">${activeFarmsCount} unidades operativas activas</div>
+      </article>
+      <article class="card">
+        <div class="card-title">Personal en Sedes y Fincas <span>👥</span></div>
+        <div class="card-value">${assignedEmployeesCount}</div>
+        <div class="card-note">Colaboradores asignados a sedes de producción</div>
+      </article>
+      <article class="card">
+        <div class="card-title">Labores Operativas <span>📋</span></div>
+        <div class="card-value">${allJobs.length}</div>
+        <div class="card-note">${approvedCount} aprobadas · ${pendingApprovalCount + inProgressCount} en curso</div>
+      </article>
+      <article class="card">
+        <div class="card-title">Devengado Total en Finca <span>💰</span></div>
+        <div class="card-value">${money(totalApprovedMoney + totalInFlightMoney)}</div>
+        <div class="card-note">Compensaciones de labores registradas</div>
+      </article>
+    </div>
+  `;
+
+  const headerActions = `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      ${canAdmin() ? openButton('＋ Nueva ' + unitLabel(false, true), 'farm') : ''}
+      <button class="small primary" data-action="assign_queue_job">+ Asignar trabajo a colaborador</button>
+      <button class="small secondary" data-view="team">👥 Personal y Fichas</button>
+      <button class="small secondary" data-view="departments" data-dept-org-tab="farms">🏛️ Estructura de Fincas</button>
+    </div>
+  `;
+
+  const subnav = `
+    <div class="sub-nav" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;align-items:center">
+      <button type="button" class="${agTab==='farms'?'primary':''}" data-ag-tab="farms">🚜 ${esc(unitLabel(true))} (${farms.length})</button>
+      <button type="button" class="${agTab==='jobs'?'primary':''}" data-ag-tab="jobs">📋 Labores y Operaciones (${allJobs.length})</button>
+      <button type="button" class="${agTab==='contracts'?'primary':''}" data-ag-tab="contracts">📝 Contratos (${contracts.length})</button>
+      <button type="button" class="${agTab==='payrolls'?'primary':''}" data-ag-tab="payrolls">♧ Nóminas de Finca (${payrolls.length})</button>
+      <button type="button" class="${agTab==='sales'?'primary':''}" data-ag-tab="sales">↗ Ventas y Cosechas (${sales.length})</button>
+    </div>
+  `;
+
+  let body = '';
+  if(agTab === 'farms'){
+    body = farmCards +
+      panel(
+        unitLabel(true) + ` (${farms.length})`,
+        (farms.length
+          ? table(['Nombre / Código', 'Responsable / Contacto', 'Ubicación / Capacidad', 'Departamento / Proyecto', 'Labores y Personal Encargado', 'Estado / Observaciones', 'Acciones'], unitsRows)
+          : '<div class="empty">No hay fincas registradas aún. Haga clic en «+ Nueva Finca» para registrar la primera.</div>'),
+        canAdmin() ? openButton('+ Nueva ' + unitLabel(false, true), 'farm') : ''
+      ) +
+      farmLaboresPanel;
+  } else if(agTab === 'jobs'){
+    body = queueCards +
+      panel('Cola de trabajos y tareas asignadas', queueFilters + (filteredJobs.length ? table(['Trabajo y concepto', unitLabel(), 'Colaborador asignado', 'Supervisor / Responsable', 'Modalidad y tarifa', 'Avance de labor', 'Compensación devengada', 'Acciones'], queueRows) : '<div class="empty">No hay trabajos que coincidan con este filtro en la cola.</div>'), queuePanelActions) +
+      farmLaboresPanel;
+  } else if(agTab === 'contracts'){
+    body = panel('Contratos y acuerdos de trabajo', table(['Trabajo contratado', 'Trabajador', unitLabel(), 'Modalidad y tarifa', 'Vigencia', 'Estado (Cambiar)', 'Avance en trabajos', 'Acciones'], contractsRows), canReview() ? openButton('+ Contrato', 'farm_contract') : '');
+  } else if(agTab === 'payrolls'){
+    body = panel('Cálculo y liquidación de nóminas', table([unitLabel() + ' / Período', 'Detalle por trabajador', 'Total bruto', 'Estado / Referencia', 'Acciones'], payrollRows), canReview() ? openButton('+ Calcular nómina periódica', 'weekly_payroll') : '');
+  } else if(agTab === 'sales'){
+    body = (canCollect() ? panel('Ingresos por ' + unitLabel(false, true), filters + table([unitLabel(), 'Ventas / ingresos', 'Ingreso recibido', 'Pendiente de cobro'], summary), openButton('+ Venta / ingreso', 'farm_sale')) +
+      panel('Registro de ventas e ingresos', table(['Fecha', unitLabel(), 'Producto / concepto', 'Cantidad', 'Precio', 'Comprador', 'Vendedor', 'Total', 'Recibido', 'Acciones'], sales.map(s => `<tr><td>${displayDate(s.sale_date)}</td><td>${esc(agName('farms', s.farm_id))}</td><td>${esc(s.product)}</td><td>${esc(s.quantity)} ${esc(s.unit)}</td><td>${money(s.price)}</td><td>${esc(s.customer)}</td><td>${esc(s.seller)}</td><td>${money(s.amount)}</td><td>${money(s.received)}</td><td>${canCollect() ? action('Editar', 'edit_farm_sale', s.id) + ' ' + action('Borrar', 'delete_farm_sale', s.id) : ''}</td></tr>`))) : '<div class="notice">Su rol no tiene permisos para ver o registrar ventas agrícolas.</div>');
+  }
+
+  return heading(
+    '🌱 Fincas, Labores y Operaciones de Campo',
+    'Gestión completa de fincas y sedes, labores asignadas, avances, contratos y compensaciones.',
+    headerActions
+  ) + subnav + body;
 }
 document.addEventListener('submit',e=>{if(e.target.id!=='ag-period')return;e.preventDefault();const f=new FormData(e.target);if(f.get('from')>f.get('to')){toast('El fin debe ser posterior al inicio.');return}agFrom=f.get('from');agTo=f.get('to');render()});
 
