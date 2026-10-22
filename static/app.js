@@ -613,7 +613,7 @@ function dashboardPayrollSection(){
 function alertList(){if(!canCollect())return '<div class="empty">Su rol no tiene permiso de cobros.</div>';const alerts=(S.charges||[]).filter(c=>c.alert);return alerts.length?alerts.map(c=>`<div class="alert-row"><span class="dot"></span><div><strong>${esc(c.customer)}</strong><br><span class="muted">${esc(c.alert)} · ${displayDate(c.due_date)}</span></div><span class="amount">${money(c.balance)}</span></div>`).join(''):'<div class="empty">Sin cobros vencidos o próximos en esta empresa.</div>'}
 function collectionsView(){const tabs=[['invoices','Facturas'],['charges','Cuentas por cobrar'],['subscriptions','Servicios contratados'],['customers','Clientes'],['products','Catálogo'],['payments','Recibos y pagos'],['fiscal','Facturación fiscal']];let body='';if(tab==='invoices')body=invoicesView();if(tab==='fiscal')body=fiscalView();if(tab==='charges')body=panel('Cargos y saldos',table(['Cliente / servicio','Período','Vencimiento','Importe','Pagado','Saldo','Estado',''],S.charges.map(c=>`<tr><td><strong>${esc(c.customer)}</strong><div class="muted">${esc(c.product)} · Cargo #${c.id}</div></td><td>${displayDate(c.period_date)}</td><td>${displayDate(c.due_date)}${c.alert?`<div class="muted">${esc(c.alert)}</div>`:''}</td><td>${money(c.amount)}</td><td>${money(c.paid)}</td><td><strong>${money(c.balance)}</strong></td><td>${badge(c.status)}</td><td>${c.balance&&canPay()?action('Registrar pago','payment',c.id):''} ${invoiceLink(c.id)} ${filesButton('charges',c.id)}</td></tr>`)),`<button class="small" data-action="generate">Generar períodos hasta hoy</button>`)+panel('Alertas internas · empresa activa',alertList());if(tab==='customers')body=panel('Clientes',table(['Nombre','Contacto','Acciones'],S.customers.map(c=>`<tr><td><strong>${esc(c.name)}</strong></td><td>${esc(c.contact)}</td><td>${action('Editar','edit_customer',c.id)} ${action('Borrar','delete_customer',c.id)}</td></tr>`)),openButton('+ Cliente','customer'));if(tab==='products')body=catalogView();if(tab==='subscriptions')body=panel('Servicios contratados',table(['Cliente / servicio','Frecuencia','Inicio / fin del servicio','Vencimiento','Importe','Estado','Acciones'],S.subscriptions.map(s=>`<tr><td><strong>${esc(lookup('customers',s.customer_id))}</strong><div class="muted">${esc(lookup('products',s.product_id))}</div></td><td>${s.frequency==='once'?'Cargo único':`Cada ${s.interval} ${s.frequency==='days'?'día(s)':'mes(es)'}`}</td><td>${displayDate(s.start_date)}<br><span class="muted">${displayDate(s.end_date)}</span></td><td>${s.due_days} días después de cada período</td><td>${money(s.amount)}</td><td>${badge(s.canceled_at?'Cancelado':s.end_date&&s.end_date<S.today?'Finalizado':'Activo')}</td><td>${canReview()?action('Editar','edit_subscription',s.id):''} ${!s.canceled_at&&canReview()?action('Cancelar','cancel_subscription',s.id):''} ${canAdmin()?action('🗑️ Eliminar','delete_subscription',s.id):''}</td></tr>`)),openButton('+ Contratar servicio','subscription'));if(tab==='payments')body=panel('Pagos recibidos',table(['Fecha','Cargo','Cliente','Importe','Referencia','Comprobantes','Acciones'],S.payments.map(p=>`<tr><td>${displayDate(p.paid_date)}</td><td>#${p.charge_id}</td><td>${esc(S.charges.find(c=>c.id===p.charge_id)?.customer)}</td><td>${money(p.amount)}</td><td>${esc(p.reference)}</td><td>${documentLink('receipt',p.id,'Recibo / PDF')} ${filesButton('payments',p.id)}</td><td>${canAdmin()?action('🗑️ Anular pago','delete_payment',p.id):''}</td></tr>`)));return heading('Facturación y cobros','Emita facturas, consulte saldos y registre pagos.',`<button class="primary" data-tab="products">+ Nueva factura</button>`)+`<div class="tabs">${tabs.map(([id,name])=>`<button data-tab="${id}" class="${tab===id?'active':''}">${name}</button>`).join('')}</div><div class="notice">Los cargos se generan al contratar y con “Generar períodos hasta hoy”. No hay cobros bancarios automáticos ni mensajes externos. Alertas compartidas según permiso: próximos 5 días, 24 horas, día de vencimiento y vencidos.</div>`+body}
 function expensesView(){return heading('Gastos y pagos','Registre, revise y pague sin perder el historial.',openButton('+ Registrar gasto','expense'))+panel('Registro de gastos',table(['Concepto','Fecha','Departamento / proyecto','Importe','Estado','Saldo',''],S.expenses.map(e=>`<tr><td><strong>${esc(e.description)}</strong><div class="muted">${esc(e.receipt||'Sin referencia de comprobante')}</div></td><td>${displayDate(e.expense_date)}</td><td>${esc(lookup('departments',e.department_id))}<div class="muted">${esc(lookup('projects',e.project_id))}</div></td><td>${money(e.amount)}</td><td>${badge(e.status)}${e.balance===0?' '+badge('paid'):''}</td><td>${money(e.balance)}</td><td>${canReview()?(e.status==='proposed'?action('Aprobar','approve_expense',e.id):e.balance&&canPay()?action('Registrar pago','expense_payment',e.id):''):''} ${canReview()?action('Editar factura','edit_expense',e.id):''} ${e.balance===e.amount&&canAdmin()?action('🗑️ Borrar','delete_expense',e.id):''} ${filesButton('expenses',e.id)}</td></tr>`)))+panel('Pagos de gastos',table(['Fecha','Gasto','Importe','Referencia','Comprobantes','Acciones'],(S.expense_payments||[]).map(p=>`<tr><td>${displayDate(p.paid_date)}</td><td>${esc(S.expenses.find(e=>e.id===p.expense_id)?.description||('#'+p.expense_id))}</td><td>${money(p.amount)}</td><td>${esc(p.reference)}</td><td>${filesButton('expense_payments',p.id)}</td><td>${canAdmin()?action('🗑️ Anular pago','delete_expense_payment',p.id):''}</td></tr>`)))+`<div class="notice">Comprobantes: use Adjuntos para subir fotos o documentos a cada gasto o pago. Los pagos están condicionados al saldo disponible en las cuentas de tesorería y son manejados por los niveles jerárquicos 1 y 2.</div>`}
-let teamFilter = 'active', teamFarmFilter = '', queueFilter = 'all', deptSearch = '', deptFilter = 'all', deptOrgTab = 'departments';
+let teamFilter = 'active', teamFarmFilter = '', teamDeptFilter = '', queueFilter = 'all', deptSearch = '', deptFilter = 'all', deptOrgTab = 'departments';
 let teamSelectedEmployees = new Set();
 
 function teamView(){
@@ -636,6 +636,11 @@ function teamView(){
   if(teamFarmFilter){
     if(teamFarmFilter === 'unassigned') filteredEmployees = filteredEmployees.filter(e => !e.farm_id);
     else filteredEmployees = filteredEmployees.filter(e => String(e.farm_id) === String(teamFarmFilter));
+  }
+
+  if(teamDeptFilter){
+    if(teamDeptFilter === 'unassigned') filteredEmployees = filteredEmployees.filter(e => !e.department_id || (lookup('departments', e.department_id) || '').toLowerCase().includes('sin departamento'));
+    else filteredEmployees = filteredEmployees.filter(e => String(e.department_id) === String(teamDeptFilter));
   }
 
   const selectedList = allEmployees.filter(e => teamSelectedEmployees.has(e.id));
@@ -676,15 +681,25 @@ function teamView(){
         <button class="small ${teamFilter === 'terminated' ? 'primary' : ''}" data-team-filter="terminated">🔴 De baja (${termEmployees.length})</button>
         <button class="small ${teamFilter === 'all' ? 'primary' : ''}" data-team-filter="all">👥 Todo (${allEmployees.length})</button>
       </div>
-      ${(S.farms?.length) ? `
-      <div style="display:inline-flex;align-items:center;gap:6px">
-        <label for="f-team-farm-filter" style="font-size:12px;font-weight:600;color:var(--muted)">🏢 ${esc(unitLabel(false,true))}:</label>
-        <select id="f-team-farm-filter" style="font-size:12px;padding:3px 8px;border-radius:6px;height:30px">
-          <option value="">Todas las sedes / sucursales</option>
-          ${S.farms.map(f=>`<option value="${f.id}" ${String(f.id)===String(teamFarmFilter)?'selected':''}>${esc(f.name)} (${allEmployees.filter(e=>e.farm_id===f.id).length})</option>`).join('')}
-          <option value="unassigned" ${teamFarmFilter==='unassigned'?'selected':''}>Sin sucursal asignada (${allEmployees.filter(e=>!e.farm_id).length})</option>
-        </select>
-      </div>` : ''}
+      <div style="display:inline-flex;align-items:center;gap:10px;flex-wrap:wrap">
+        ${(S.farms?.length) ? `
+        <div style="display:inline-flex;align-items:center;gap:6px">
+          <label for="f-team-farm-filter" style="font-size:12px;font-weight:600;color:var(--muted)">🏢 ${esc(unitLabel(false,true))}:</label>
+          <select id="f-team-farm-filter" style="font-size:12px;padding:3px 8px;border-radius:6px;height:30px">
+            <option value="">Todas las sedes / sucursales</option>
+            ${S.farms.map(f=>`<option value="${f.id}" ${String(f.id)===String(teamFarmFilter)?'selected':''}>${esc(f.name)} (${allEmployees.filter(e=>e.farm_id===f.id).length})</option>`).join('')}
+            <option value="unassigned" ${teamFarmFilter==='unassigned'?'selected':''}>Sin sucursal asignada (${allEmployees.filter(e=>!e.farm_id).length})</option>
+          </select>
+        </div>` : ''}
+        ${(S.departments?.length) ? `
+        <div style="display:inline-flex;align-items:center;gap:6px">
+          <label for="f-team-dept-filter" style="font-size:12px;font-weight:600;color:var(--muted)">🏛️ Departamento:</label>
+          <select id="f-team-dept-filter" style="font-size:12px;padding:3px 8px;border-radius:6px;height:30px">
+            <option value="">Todos los departamentos</option>
+            ${S.departments.map(d=>`<option value="${d.id}" ${String(d.id)===String(teamDeptFilter)?'selected':''}>${esc(d.name)} (${allEmployees.filter(e=>e.department_id===d.id).length})</option>`).join('')}
+          </select>
+        </div>` : ''}
+      </div>
     </div>
   `;
 
@@ -773,7 +788,14 @@ function teamView(){
 
   const employeeTable = filteredEmployees.length
     ? table([masterCheckbox, 'Nombre / Puesto', 'Vinculación', 'Estado', 'Departamento / Proyecto', 'Tarifa vigente', 'Observaciones', 'Acciones'], employeeRows)
-    : '<div class="empty">No hay colaboradores que coincidan con este filtro.</div>';
+    : (allEmployees.length === 0
+        ? `<div class="card" style="text-align:center;padding:36px 20px;margin:16px 0;background:var(--card);border:2px dashed var(--border);border-radius:12px">
+             <div style="font-size:40px;margin-bottom:10px">👥</div>
+             <h3 style="margin:0 0 8px;font-size:17px">No hay colaboradores registrados todavía</h3>
+             <p class="muted" style="max-width:480px;margin:0 auto 18px;font-size:13.5px">Cree las fichas de su personal fijo o temporero. Todo colaborador se organiza dentro de un departamento o en la colección predeterminada «Sin departamento asignado».</p>
+             <button type="button" class="primary" data-open="employee" style="font-size:14px;padding:10px 20px">＋ Crear primera ficha de personal</button>
+           </div>`
+        : '<div class="empty">No hay colaboradores que coincidan con este filtro.</div>');
 
   const proposedWorklogs = (S.worklogs || []).filter(w => w.status === 'proposed');
 
@@ -2089,8 +2111,11 @@ function brandingPanel(){
 function departmentsView(){
   return heading(
     'Departamentos y Estructura Organizacional',
-    'Gestione, agregue, renombre y retire departamentos y áreas operativas de la empresa.',
-    openButton('＋ Nuevo departamento', 'department')
+    'Gestione, agregue, renombre y organice el personal en departamentos y áreas operativas de la empresa.',
+    `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+       ${openButton('＋ Nueva ficha de personal', 'employee')}
+       ${openButton('＋ Nuevo departamento', 'department')}
+     </div>`
   ) + departmentsManagementPanel();
 }
 
@@ -2123,15 +2148,18 @@ function showDepartmentEmployeesModal(itemId, isProject = false){
     </tr>
   `);
 
+  const isDefaultUnassigned = !isProject && ((item.name||'').trim().toLowerCase() === 'sin departamento asignado' || (item.name||'').trim().toLowerCase() === 'sin departamento');
+
   const content = `
     <div class="modal-header">
       <h2>${isProject ? '📁 Proyecto' : '🏛️ Departamento'}: «${esc(item.name)}»</h2>
       <button type="button" id="close-modal" aria-label="Cerrar">×</button>
     </div>
-    <div style="margin:12px 0 16px;display:flex;gap:10px;flex-wrap:wrap">
+    <div style="margin:12px 0 16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
       <span class="badge blue">👥 ${emps.length} Colaborador(es)</span>
       <span class="badge green">☷ ${tasks.length} Tarea(s)</span>
       <span class="badge orange">▤ ${expenses.length} Gasto(s)</span>
+      <button type="button" class="primary small" data-open="employee" ${isProject ? `data-project-id="${item.id}"` : `data-department-id="${item.id}"`} style="margin-left:auto">＋ Agregar colaborador a este ${isProject ? 'proyecto' : 'departamento'}</button>
     </div>
     <h3 style="margin:16px 0 8px">Personal vinculado a este ${isProject ? 'proyecto' : 'departamento'} (${emps.length})</h3>
     ${table(['Nombre', 'Puesto', 'Estado', 'Modalidad', 'Acción'], empRows, 'No hay colaboradores vinculados directamente a este registro.')}
@@ -2141,7 +2169,7 @@ function showDepartmentEmployeesModal(itemId, isProject = false){
     ` : ''}
     <div class="form-actions" style="margin-top:20px">
       <button type="button" id="cancel-modal">Volver</button>
-      <button type="button" class="primary" data-action="${isProject ? 'edit_project' : 'edit_department'}" data-id="${item.id}">✏️ Renombrar ${isProject ? 'proyecto' : 'departamento'}</button>
+      ${isDefaultUnassigned ? '<span class="muted" style="font-size:12px;padding:6px 12px;background:rgba(0,0,0,0.04);border-radius:6px">🔒 Colección base predeterminada</span>' : `<button type="button" class="primary" data-action="${isProject ? 'edit_project' : 'edit_department'}" data-id="${item.id}">✏️ Renombrar ${isProject ? 'proyecto' : 'departamento'}</button>`}
     </div>
   `;
 
@@ -2152,6 +2180,16 @@ function showDepartmentEmployeesModal(itemId, isProject = false){
     b.onclick = () => {
       $('#modal').close();
       handleAction(b);
+    };
+  });
+  $('#modal-content').querySelectorAll('[data-open]').forEach(b => {
+    b.onclick = () => {
+      const extra = {};
+      if(b.dataset.departmentId) extra.department_id = Number(b.dataset.departmentId);
+      if(b.dataset.projectId) extra.project_id = Number(b.dataset.projectId);
+      if(b.dataset.farmId) extra.farm_id = Number(b.dataset.farmId);
+      $('#modal').close();
+      openForm(b.dataset.open, null, Object.keys(extra).length ? extra : null);
     };
   });
 }
@@ -2234,7 +2272,8 @@ function departmentsManagementPanel(){
           <span>📁</span> Proyectos (${(S.projects || []).length})
         </button>
       </div>
-      <div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        ${isDept ? `<button type="button" class="secondary small" data-open="employee">＋ Nueva ficha de personal</button>` : ''}
         <button type="button" class="primary small" data-open="${isDept ? 'department' : 'project'}">
           ＋ Nuevo ${isDept ? 'departamento' : 'proyecto'}
         </button>
@@ -2274,6 +2313,7 @@ function departmentsManagementPanel(){
   ];
 
   const tableRows = filtered.map(item => {
+    const isDefaultUnassigned = isDept && ((item.name||'').trim().toLowerCase() === 'sin departamento asignado' || (item.name||'').trim().toLowerCase() === 'sin departamento');
     const empCount = item.emps.length;
     const empPreview = empCount > 0
       ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">${item.emps.slice(0, 2).map(e => esc(e.name)).join(', ')}${empCount > 2 ? ` <span style="font-weight:600">+${empCount - 2} más</span>` : ''}</div>`
@@ -2287,15 +2327,29 @@ function departmentsManagementPanel(){
       ? `<span class="badge orange" style="font-size:11px">▤ ${item.expenses.length} gasto(s)</span>`
       : '<span class="muted">—</span>';
 
-    const statusBadge = item.totalLinks > 0
-      ? `<span class="badge green">● Activo (${item.totalLinks} reg.)</span>`
-      : `<span class="badge gray">○ Sin uso (Eliminable)</span>`;
+    const statusBadge = isDefaultUnassigned
+      ? `<span class="badge blue">Colección base</span>`
+      : (item.totalLinks > 0
+          ? `<span class="badge green">● Activo (${item.totalLinks} reg.)</span>`
+          : `<span class="badge gray">○ Sin uso (Eliminable)</span>`);
 
-    const blockedReason = `No se puede eliminar «${item.name}» porque tiene ${item.totalLinks} registro(s) vinculado(s): ${item.emps.length} colaborador(es), ${item.tasks.length} tarea(s), ${item.expenses.length} gasto(s), ${item.worklogs.length} reporte(s). Reasígnelos antes de eliminar este ${isDept ? 'departamento' : 'proyecto'}.`;
+    const blockedReason = isDefaultUnassigned
+      ? `El departamento «Sin departamento asignado» es la colección predeterminada del sistema donde se agrupan los colaboradores sin área específica. No puede eliminarse ni renombrarse.`
+      : `No se puede eliminar «${item.name}» porque tiene ${item.totalLinks} registro(s) vinculado(s): ${item.emps.length} colaborador(es), ${item.tasks.length} tarea(s), ${item.expenses.length} gasto(s), ${item.worklogs.length} reporte(s). Reasígnelos antes de eliminar este ${isDept ? 'departamento' : 'proyecto'}.`;
 
-    const deleteBtn = item.totalLinks === 0
-      ? `<button class="small danger" data-action="${isDept ? 'delete_department' : 'delete_project'}" data-id="${item.id}" title="Eliminar definitivamente">🗑️ Eliminar</button>`
-      : `<button class="small" type="button" data-dept-blocked-reason="${esc(blockedReason)}" style="opacity:0.8;cursor:help" title="Haga clic para ver por qué no se puede eliminar aún">🔒 Protegido (${item.totalLinks})</button>`;
+    const addEmpBtn = isDept
+      ? `<button class="small primary" data-open="employee" data-department-id="${item.id}" title="Agregar colaborador directamente a «${esc(item.name)}»">＋ Colaborador</button>`
+      : '';
+
+    const renameBtn = isDefaultUnassigned
+      ? ''
+      : `<button class="small" data-action="${isDept ? 'edit_department' : 'edit_project'}" data-id="${item.id}" title="Cambiar nombre">✏️ Renombrar</button>`;
+
+    const deleteBtn = isDefaultUnassigned
+      ? `<span class="muted" style="font-size:11.5px;padding:4px 8px;background:rgba(0,0,0,0.04);border-radius:6px;display:inline-flex;align-items:center;gap:4px" title="Colección predeterminada protegida por el sistema">🔒 Colección base</span>`
+      : (item.totalLinks === 0
+          ? `<button class="small danger" data-action="${isDept ? 'delete_department' : 'delete_project'}" data-id="${item.id}" title="Eliminar definitivamente">🗑️ Eliminar</button>`
+          : `<button class="small" type="button" data-dept-blocked-reason="${esc(blockedReason)}" style="opacity:0.8;cursor:help" title="Haga clic para ver por qué no se puede eliminar aún">🔒 Protegido (${item.totalLinks})</button>`);
 
     const viewDetailsBtn = item.totalLinks > 0
       ? `<button class="small secondary" data-view-dept-employees="${item.id}" data-is-project="${!isDept}" title="Ver colaboradores y detalles">👥 Ver (${empCount})</button>`
@@ -2303,7 +2357,7 @@ function departmentsManagementPanel(){
 
     return `<tr>
       <td>
-        <strong style="font-size:14px">${isDept ? '🏛️' : '📁'} ${esc(item.name)}</strong>
+        <strong style="font-size:14px">${isDept ? '🏛️' : '📁'} ${esc(item.name)}</strong>${isDefaultUnassigned ? ' <span class="badge blue" style="font-size:10px;margin-left:4px">Predeterminado</span>' : ''}
         <div class="muted" style="font-size:11px">Código interno #${item.id}</div>
       </td>
       <td>
@@ -2315,7 +2369,8 @@ function departmentsManagementPanel(){
       <td>${statusBadge}</td>
       <td>
         <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-          <button class="small" data-action="${isDept ? 'edit_department' : 'edit_project'}" data-id="${item.id}" title="Cambiar nombre">✏️ Renombrar</button>
+          ${addEmpBtn}
+          ${renameBtn}
           ${viewDetailsBtn}
           ${deleteBtn}
         </div>
@@ -2893,6 +2948,7 @@ function bind(){
   const reExStatusEl=$('#re-exp-status-filter');if(reExStatusEl)reExStatusEl.onchange=e=>{reExpenseStatusFilter=e.target.value;render()};
   document.querySelectorAll('[data-team-filter]').forEach(b=>b.onclick=()=>{teamFilter=b.dataset.teamFilter;render()});
   if($('#f-team-farm-filter')) $('#f-team-farm-filter').onchange = e => { teamFarmFilter = e.target.value; render(); };
+  if($('#f-team-dept-filter')) $('#f-team-dept-filter').onchange = e => { teamDeptFilter = e.target.value; render(); };
 
   // Master checkbox
   const teamMasterCb = $('#team-select-all');
@@ -2908,6 +2964,10 @@ function bind(){
       if(teamFarmFilter){
         if(teamFarmFilter === 'unassigned') currentFiltered = currentFiltered.filter(emp => !emp.farm_id);
         else currentFiltered = currentFiltered.filter(emp => String(emp.farm_id) === String(teamFarmFilter));
+      }
+      if(teamDeptFilter){
+        if(teamDeptFilter === 'unassigned') currentFiltered = currentFiltered.filter(emp => !emp.department_id || (lookup('departments', emp.department_id) || '').toLowerCase().includes('sin departamento'));
+        else currentFiltered = currentFiltered.filter(emp => String(emp.department_id) === String(teamDeptFilter));
       }
       currentFiltered.forEach(emp => {
         if(isChecked) teamSelectedEmployees.add(emp.id);
@@ -3002,7 +3062,7 @@ function bind(){
   });
   document.querySelectorAll('[data-cal-add-task]').forEach(b=>b.onclick=()=>openForm('task',null,{date:b.dataset.calAddTask}));
   document.querySelectorAll('[data-cal-add-worklog]').forEach(b=>b.onclick=()=>openForm('worklog',null,{date:b.dataset.calAddWorklog}));
-  $('#company-select').onchange=async e=>{if(e.target.value==='__add_company__'){e.target.value=String(cid);openForm('company');return}setActiveCompany(e.target.value);reportFilters.department='';reportFilters.project='';reportFilters.person='';document.querySelectorAll('button,select').forEach(el=>el.disabled=true);try{await refresh()}catch(err){toast(err.message)}};
+  $('#company-select').onchange=async e=>{if(e.target.value==='__add_company__'){e.target.value=String(cid);openForm('company');return}setActiveCompany(e.target.value);reportFilters.department='';reportFilters.project='';reportFilters.person='';teamDeptFilter='';teamFarmFilter='';document.querySelectorAll('button,select').forEach(el=>el.disabled=true);try{await refresh()}catch(err){toast(err.message)}};
   $('#logout').onclick=async()=>{await api('logout',{});me=null;login()};
   const btnHelp = $('#btn-help-modal');
   if(btnHelp) btnHelp.onclick = () => openHelpModal();
@@ -3050,6 +3110,9 @@ function bind(){
       if(b.dataset.condoId) extra.condo_id = Number(b.dataset.condoId);
       if(b.dataset.saleId) extra.sale_id = Number(b.dataset.saleId);
       if(b.dataset.installmentId) extra.installment_id = Number(b.dataset.installmentId);
+      if(b.dataset.departmentId) extra.department_id = Number(b.dataset.departmentId);
+      if(b.dataset.farmId) extra.farm_id = Number(b.dataset.farmId);
+      if(b.dataset.projectId) extra.project_id = Number(b.dataset.projectId);
       openForm(b.dataset.open, null, Object.keys(extra).length ? extra : null);
     };
   });
@@ -4930,7 +4993,20 @@ if(kind==='edit_subscription'){const s=S.subscriptions?.find(x=>x.id===id);title
 if(kind==='edit_ncf_sequence'){const r=S.secuencias_ncf?.find(x=>x.id===id);title='Editar secuencia NCF · '+(r?.tipo_ncf||'');initial={id};fields=input('numero_final','Número final autorizado','number',r?.numero_final||'','required min="'+(r?.contador_actual||1)+'" max="99999999"')+(r?.tipo_ncf==='B01'?input('fecha_vencimiento','Vencimiento de la secuencia','date',r?.fecha_vencimiento||''):'');help='Actualice el número final autorizado por la DGII o su fecha de vencimiento.';submit='Guardar cambios';}
 if(kind==='dmca_notice'){title='Notificación de infracción de derechos de autor (DMCA Safe Harbor)';fields=input('claimant_name','Nombre completo del titular / reclamante','text','','required maxlength="200"')+input('claimant_email','Correo de contacto','email','','required maxlength="200"')+area('copyrighted_work','Identificación de la obra protegida','')+area('infringing_content','Ubicación o detalle del contenido infractor en esta empresa','')+input('signature','Firma digital (nombre completo)','text','','required maxlength="200"')+`<div class="wide" style="font-size:12px;color:var(--muted,#64748b);margin-top:6px"><label style="display:block;margin-bottom:6px"><input type="checkbox" name="good_faith" value="1" required> Declaro de buena fe que el uso del material no está autorizado.</label><label style="display:block"><input type="checkbox" name="accuracy" value="1" required> Declaro bajo pena de perjurio que la información es veraz y soy el titular o agente autorizado.</label></div>`;help='Conforme a 17 U.S.C. § 512(c)(3). Inicia el procedimiento de retirada expedita y notificación al usuario.';submit='Enviar notificación DMCA'}
 if(kind==='expense'){title='Registrar gasto';fields=input('description','Concepto','text','','required')+input('amount','Importe (RD$)','number','','required min="0.01" step="0.01"')+dims()+input('expense_date','Fecha','date',S.today,'required max="'+S.today+'"')+input('receipt','Número, ruta o enlace de comprobante');help='Se guarda como propuesto. Un revisor o administrador debe aprobarlo antes del pago.'}
-if(kind==='employee'){title='Ficha de personal';fields=input('name','Nombre completo','text','','required')+input('position','Puesto / función','text','','required')+select('employment_type','Tipo de vinculación laboral',[['fixed','🏢 Empleado Fijo (Nómina regular / Planta / Recurrente)'],['temporary','🚜 Empleado Temporero (Jornalero / Contratado por labor / Finca / Obra)']])+select('farm_id',unitLabel(false,true)+' / Sucursal asignada (opcional)',options('farms',true),extraData?.farm_id||'')+dims()+select('basis','Base de remuneración',[['monthly','Mensual'],['weekly','Semanal'],['daily','Diaria'],['hourly','Por hora']])+input('rate','Tarifa propuesta (RD$)','number','','required min="0" step="0.01"')+area('conditions','Condiciones propuestas, horario y observaciones');help='Distinga claramente entre personal fijo y temporero y asigne su '+unitLabel(false,true).toLowerCase()+' o sucursal correspondiente.'}
+if(kind==='employee'){
+  const unassignedDept = (S.departments||[]).find(d => (d.name||'').trim().toLowerCase() === 'sin departamento asignado' || (d.name||'').trim().toLowerCase() === 'sin departamento');
+  const targetDeptId = (extraData?.department_id !== undefined && extraData?.department_id !== null && extraData?.department_id !== '') ? extraData.department_id : (unassignedDept ? unassignedDept.id : '');
+  title='Ficha de personal';
+  fields=input('name','Nombre completo','text','','required')+
+         input('position','Puesto / función','text','','required')+
+         select('employment_type','Tipo de vinculación laboral',[['fixed','🏢 Empleado Fijo (Nómina regular / Planta / Recurrente)'],['temporary','🚜 Empleado Temporero (Jornalero / Contratado por labor / Finca / Obra)']])+
+         select('farm_id',unitLabel(false,true)+' / Sucursal asignada (opcional)',options('farms',true),extraData?.farm_id||'')+
+         dims(targetDeptId,extraData?.project_id||'')+
+         select('basis','Base de remuneración',[['monthly','Mensual'],['weekly','Semanal'],['daily','Diaria'],['hourly','Por hora']])+
+         input('rate','Tarifa propuesta (RD$)','number','','required min="0" step="0.01"')+
+         area('conditions','Condiciones propuestas, horario y observaciones');
+  help='Todo colaborador pertenece a un departamento (colección organizacional). Si no se especifica uno particular, se asigna automáticamente a «Sin departamento asignado».';
+}
 if(kind==='worklog'){if(!S.employees.length){toast('Primero cree una ficha de personal.');return}title='Reporte de supervisión';fields=select('employee_id','Persona',options('employees',false,true),'','required')+input('work_date','Fecha','date',extraData?.date||calSelectedDate||S.today,'required max="'+S.today+'"')+input('minutes','Tiempo trabajado (minutos)','number',420,'required min="1" max="1440"')+area('activity','Qué hizo')+area('method','Cómo lo hizo')+area('notes','Observaciones / referencia de evidencia');help='Hereda el departamento y proyecto de la ficha. Se guarda como propuesto hasta aprobación.'}
 if(kind==='edit_worklog'){const w=S.worklogs?.find(x=>x.id===id);title='Editar reporte de supervisión · #'+id;initial={id};fields=select('employee_id','Persona',options('employees',false,true),w?.employee_id||'','required')+input('work_date','Fecha','date',w?.work_date||S.today,'required max="'+S.today+'"')+input('minutes','Tiempo trabajado (minutos)','number',w?.minutes||420,'required min="1" max="1440"')+area('activity','Qué hizo',w?.activity||'')+area('method','Cómo lo hizo',w?.method||'')+area('notes','Observaciones / referencia de evidencia',w?.notes||'');help='Modifique las horas, colaborador o detalle de la labor realizada.';submit='Guardar cambios';}
 if(kind==='payroll'){title='Generar nómina';fields=input('start_date','Desde','date',start,'required')+input('end_date','Hasta','date',end,'required');help='Calcula horas, días o mensualidad usando únicamente reportes aprobados. Revise el resultado antes de pagar.'}
@@ -5477,7 +5553,25 @@ const agForms={
   };
  },
  edit_expense:id=>{const e=S.expenses.find(x=>x.id===id);return {title:'Editar factura de gasto',initial:{id},fields:input('description','Concepto','text',e.description,'required')+agDate('expense_date','Fecha',e.expense_date)+input('amount','Importe (RD$)','number',e.amount/100,'required min="0.01" step="0.01"')+input('receipt','Número o referencia de factura','text',e.receipt)+input('reason','Motivo de corrección','text','','required'),help:'Se conserva el historial, los adjuntos y los pagos. El importe no puede quedar por debajo de lo pagado. Use Adjuntos para agregar una foto o documento corregido.'}},
-  edit_employee:id=>{const e=S.employees.find(x=>x.id===id);return {title:'Editar ficha de personal · '+(e?.name||'#'+id),initial:{id},fields:input('name','Nombre completo','text',e?.name||'','required')+input('position','Puesto / función','text',e?.position||'','required')+select('employment_type','Tipo de vinculación laboral',[['fixed','🏢 Empleado Fijo (Nómina regular / Planta / Recurrente)'],['temporary','🚜 Empleado Temporero (Jornalero / Contratado por labor / Finca / Obra)']],e?.employment_type||'fixed')+select('farm_id',unitLabel(false,true)+' / Sucursal asignada (opcional)',options('farms',true),e?.farm_id||'')+select('department_id','Departamento',options('departments'),e?.department_id||'')+select('project_id','Proyecto',options('projects'),e?.project_id||'')+select('basis','Base de remuneración',[['monthly','Mensual'],['weekly','Semanal'],['daily','Diaria'],['hourly','Por hora']],e?.basis||'monthly')+input('rate','Tarifa vigente (RD$)','number',(e?.rate||0)/100,'required min="0" step="0.01"')+area('conditions','Condiciones, horario y observaciones',e?.conditions||''),help:'Modifique los datos vigentes del colaborador y su '+unitLabel(false,true).toLowerCase()+' o sucursal asignada. Los registros y nóminas históricas anteriores se conservan intactos. Use Adjuntos para subir copia de cédula, pasaporte u otra identificación.'}},
+  edit_employee:id=>{
+    const e=S.employees.find(x=>x.id===id);
+    const unassignedDept = (S.departments||[]).find(d => (d.name||'').trim().toLowerCase() === 'sin departamento asignado' || (d.name||'').trim().toLowerCase() === 'sin departamento');
+    const targetDeptId = e?.department_id || unassignedDept?.id || '';
+    return {
+      title:'Editar ficha de personal · '+(e?.name||'#'+id),
+      initial:{id},
+      fields:input('name','Nombre completo','text',e?.name||'','required')+
+             input('position','Puesto / función','text',e?.position||'','required')+
+             select('employment_type','Tipo de vinculación laboral',[['fixed','🏢 Empleado Fijo (Nómina regular / Planta / Recurrente)'],['temporary','🚜 Empleado Temporero (Jornalero / Contratado por labor / Finca / Obra)']],e?.employment_type||'fixed')+
+             select('farm_id',unitLabel(false,true)+' / Sucursal asignada (opcional)',options('farms',true),e?.farm_id||'')+
+             select('department_id','Departamento',options('departments'),targetDeptId)+
+             select('project_id','Proyecto',options('projects'),e?.project_id||'')+
+             select('basis','Base de remuneración',[['monthly','Mensual'],['weekly','Semanal'],['daily','Diaria'],['hourly','Por hora']],e?.basis||'monthly')+
+             input('rate','Tarifa vigente (RD$)','number',(e?.rate||0)/100,'required min="0" step="0.01"')+
+             area('conditions','Condiciones, horario y observaciones',e?.conditions||''),
+      help:'Modifique los datos vigentes del colaborador y su '+unitLabel(false,true).toLowerCase()+' o sucursal asignada. Todo colaborador pertenece a un departamento de la empresa. Los registros y nóminas históricas anteriores se conservan intactos. Use Adjuntos para subir copia de cédula, pasaporte u otra identificación.'
+    };
+  },
   terminate_employee:id=>{
     const e=S.employees?.find(x=>x.id===id);
     const isTemp=e?.employment_type==='temporary';

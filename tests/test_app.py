@@ -543,4 +543,33 @@ class PilotTests(unittest.TestCase):
             self.assertIsNone(c.execute('SELECT * FROM employees WHERE id=?', (t3,)).fetchone())
             self.assertEqual(c.execute('SELECT COUNT(*) FROM worklogs WHERE employee_id=?', (t3,)).fetchone()[0], 0)
 
+    def test_34_default_department_unassigned_collection(self):
+        # 1. Verify 'Sin departamento asignado' exists
+        with app.connect() as c:
+            unassigned = app.one(c, "SELECT id, name FROM departments WHERE company_id=3 AND LOWER(TRIM(name))='sin departamento asignado'")
+            self.assertIsNotNone(unassigned)
+            unassigned_id = unassigned['id']
+
+        # 2. Creating an employee without department_id automatically defaults to 'Sin departamento asignado'
+        emp_res = self.action('employee', name='Colaborador Sin Dept', position='Operario General', basis='daily', rate='1200')
+        self.assertIn('id', emp_res)
+        with app.connect() as c:
+            emp = app.one(c, "SELECT * FROM employees WHERE id=?", (emp_res['id'],))
+            self.assertEqual(emp['department_id'], unassigned_id)
+
+        # 3. 'Sin departamento asignado' cannot be deleted
+        with self.assertRaises(Exception):
+            self.action('delete_department', id=unassigned_id)
+
+        # 4. 'Sin departamento asignado' cannot be renamed
+        with self.assertRaises(Exception):
+            self.action('edit_department', id=unassigned_id, name='Nuevo Nombre Prohibido')
+
+        # 5. Editing an employee with empty department_id also falls back to default department
+        self.action('edit_employee', id=emp_res['id'], name='Colaborador Editado', position='Supervisor de Campo', basis='daily', rate='1500', department_id='')
+        with app.connect() as c:
+            emp_after = app.one(c, "SELECT * FROM employees WHERE id=?", (emp_res['id'],))
+            self.assertEqual(emp_after['department_id'], unassigned_id)
+            self.assertEqual(emp_after['name'], 'Colaborador Editado')
+
 if __name__=='__main__': unittest.main(verbosity=2)

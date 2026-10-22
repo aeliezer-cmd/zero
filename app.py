@@ -61,6 +61,26 @@ def audit(c, uid, company, action, entity, entity_id, details):
     c.execute('INSERT INTO audit(user_id,company_id,action,entity,entity_id,details,created_at) VALUES(?,?,?,?,?,?,?)',
               (uid, company, action, entity, entity_id, json.dumps(details, ensure_ascii=False), now()))
 
+DEFAULT_DEPARTMENT_NAME = 'Sin departamento asignado'
+
+def get_or_create_default_department(c, cid):
+    dept = one(c, "SELECT id FROM departments WHERE company_id=? AND LOWER(TRIM(name)) IN ('sin departamento asignado', 'sin departamento')", (cid,))
+    if dept:
+        return dept['id']
+    cur = c.execute("INSERT INTO departments(company_id, name) VALUES(?, ?)", (cid, DEFAULT_DEPARTMENT_NAME))
+    return cur.lastrowid
+
+def ensure_unassigned_departments(c):
+    all_cos = rows(c, "SELECT id FROM companies")
+    for co in all_cos:
+        cid = co['id']
+        dept_id = get_or_create_default_department(c, cid)
+        c.execute("""
+            UPDATE employees 
+            SET department_id=? 
+            WHERE company_id=? AND (department_id IS NULL OR department_id NOT IN (SELECT id FROM departments WHERE company_id=?))
+        """, (dept_id, cid, cid))
+
 SCHEMA = '''
 CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY, username TEXT UNIQUE NOT NULL, name TEXT NOT NULL, password TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1);
 CREATE TABLE IF NOT EXISTS companies(id INTEGER PRIMARY KEY, name TEXT NOT NULL, demo INTEGER NOT NULL DEFAULT 0, group_name TEXT NOT NULL DEFAULT '', accent_color TEXT NOT NULL DEFAULT '#185b4d', surface_color TEXT NOT NULL DEFAULT '#f4f6f3', card_color TEXT NOT NULL DEFAULT '#ffffff', text_color TEXT NOT NULL DEFAULT '#172f2d', font_scale TEXT NOT NULL DEFAULT '100', deleted_at TEXT DEFAULT NULL);
@@ -142,6 +162,10 @@ def initialize(seed=True):
                         ON CONFLICT(user_id, company_id) DO UPDATE SET role='admin', role_name='Administrador', collections=1
                     """, (u['id'], co['id']))
         except Exception: pass
+        try:
+            ensure_unassigned_departments(c)
+        except Exception as e:
+            print(f"ensure_unassigned_departments notice: {e}")
         user_count = c.execute('SELECT count(*) FROM users').fetchone()[0]
         if user_count:
             return
@@ -153,7 +177,7 @@ def initialize(seed=True):
         c.executemany('INSERT INTO companies(name,demo,group_name) VALUES(?,?,?)', [('Calidad de Vida · DEMO',1,'Grupo de demostración'),('Servicios del Caribe · DEMO',1,'Grupo de demostración'),('Calidad de Vida',0,'')])
         c.executemany('INSERT INTO memberships(user_id,company_id,role,role_name,collections) VALUES(?,?,?,?,?)',[(1,1,'admin','Administrador',1),(1,2,'admin','Administrador',1),(2,3,'admin','Administrador',1),(3,3,'admin','Administrador',1)])
         for cid in (1,2,3):
-            for name in ('Administración','Construcción','Cocina','Atención a visitantes','Jardinería'):
+            for name in ('Sin departamento asignado','Administración','Construcción','Cocina','Atención a visitantes','Jardinería'):
                 c.execute('INSERT INTO departments(company_id,name) VALUES(?,?)',(cid,name))
             c.execute('INSERT INTO projects(company_id,name) VALUES(?,?)',(cid,'Urbanización' if cid != 2 else 'Servicios generales'))
         if seed:
@@ -170,7 +194,7 @@ def initialize(seed=True):
             if not one(c, "SELECT 1 FROM companies WHERE name LIKE '%Monarca%'"):
                 cid_monarca = c.execute('INSERT INTO companies(name,demo,group_name) VALUES(?,?,?)', ('Grupo Monarca GM SRL', 0, 'Monarca')).lastrowid
                 c.execute('INSERT INTO memberships(user_id,company_id,role,role_name,collections) VALUES(?,?,?,?,?)', (3, cid_monarca, 'admin', 'Administrador', 1))
-                for name in ('Administración','Construcción','Cocina','Atención a visitantes','Jardinería'):
+                for name in ('Sin departamento asignado','Administración','Construcción','Cocina','Atención a visitantes','Jardinería'):
                     c.execute('INSERT INTO departments(company_id,name) VALUES(?,?)', (cid_monarca, name))
                 c.execute('INSERT INTO projects(company_id,name) VALUES(?,?)', (cid_monarca, 'Operaciones Monarca'))
         creds = ROOT / 'data' / 'ACCESOS.txt'
@@ -413,6 +437,8 @@ def mutate(c,uid,cid,action,d):
         conditions=str(d.get('conditions',''))[:3000]
         emp_type=d.get('employment_type',item.get('employment_type','fixed'))
         if emp_type not in ('fixed','temporary'): emp_type='fixed'
+        if not d.get('department_id'):
+            d['department_id'] = get_or_create_default_department(c, cid)
         dims=dimensions(c,cid,m,d)
         farm_id=int(d['farm_id']) if d.get('farm_id') else None
         if farm_id: ref(c,'farms',farm_id,cid)
@@ -479,7 +505,7 @@ def mutate(c,uid,cid,action,d):
             if farm_id: ref(c,'farms',farm_id,cid)
             update_fields['farm_id']=farm_id
         if d.get('update_department_id'):
-            dept_id=int(d['department_id']) if d.get('department_id') else None
+            dept_id=int(d['department_id']) if d.get('department_id') else get_or_create_default_department(c, cid)
             if dept_id: ref(c,'departments',dept_id,cid)
             update_fields['department_id']=dept_id
         if d.get('update_project_id'):
@@ -576,6 +602,8 @@ def mutate(c,uid,cid,action,d):
     if action=='edit_department':
         m=membership(c,uid,cid,3)
         item=ref(c,'departments',d.get('id'),cid)
+        if item['name'].strip().lower() in ('sin departamento asignado', 'sin departamento'):
+            raise ValueError('El departamento predeterminado «Sin departamento asignado» no puede ser renombrado.')
         name=text(d.get('name'),'Nombre del departamento')
         c.execute('UPDATE departments SET name=? WHERE id=?',(name,item['id']))
         audit(c,uid,cid,'editar departamento','departments',item['id'],{'before':item,'name':name})
@@ -583,6 +611,8 @@ def mutate(c,uid,cid,action,d):
     if action=='delete_department':
         m=membership(c,uid,cid,3)
         item=ref(c,'departments',d.get('id'),cid)
+        if item['name'].strip().lower() in ('sin departamento asignado', 'sin departamento'):
+            raise ValueError('El departamento «Sin departamento asignado» es la colección predeterminada del sistema y no puede eliminarse.')
         uses=sum([
             c.execute('SELECT COUNT(*) FROM employees WHERE department_id=? AND company_id=?',(item['id'],cid)).fetchone()[0],
             c.execute('SELECT COUNT(*) FROM tasks WHERE department_id=? AND company_id=?',(item['id'],cid)).fetchone()[0],
@@ -790,6 +820,8 @@ def mutate(c,uid,cid,action,d):
         if emp_type not in ('fixed','temporary'): emp_type='fixed'
         farm_id=int(d['farm_id']) if d.get('farm_id') else None
         if farm_id: ref(c,'farms',farm_id,cid)
+        if not d.get('department_id'):
+            d['department_id'] = get_or_create_default_department(c, cid)
         table='employees';record=dict(dimensions(c,cid,m,d),name=text(d.get('name'),'Nombre'),position=text(d.get('position'),'Puesto'),basis=basis,rate=amount(d.get('rate'),True),conditions=str(d.get('conditions',''))[:3000],employment_type=emp_type,farm_id=farm_id,status='active',termination_date=None,termination_reason=None,termination_notes='')
     elif action=='approve_all_worklogs':
         if not (m['role']=='admin' or m['role']=='review'): raise Denied('Aprobación no autorizada.')
@@ -1141,6 +1173,9 @@ class Handler(BaseHTTPRequestHandler):
                     group_name=str(d.get('group_name') or '').strip()[:200]
                     cid_new=c.execute('INSERT INTO companies(name,demo,group_name) VALUES(?,?,?)',(name,demo,group_name)).lastrowid
                     c.execute("INSERT INTO memberships(user_id,company_id,role,role_name,collections) VALUES(?,?,'admin','Administrador',1)",(s['uid'],cid_new))
+                    for dname in ('Sin departamento asignado','Administración','Construcción','Cocina','Atención a visitantes','Jardinería'):
+                        c.execute('INSERT INTO departments(company_id,name) VALUES(?,?)',(cid_new,dname))
+                    c.execute('INSERT INTO projects(company_id,name) VALUES(?,?)',(cid_new,'Operaciones generales'))
                     audit(c,s['uid'],cid_new,'crear empresa','companies',cid_new,{'name':name,'demo':demo,'group_name':group_name})
                     result={'company_id':cid_new,'name':name,'demo':demo,'group_name':group_name}
                 elif path=='/api/attachments': result=attachments.upload(sys.modules[__name__],c,s['uid'],d)

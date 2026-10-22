@@ -215,7 +215,7 @@ def mutate(core,c,uid,cid,action,d):
                      accent_color='#185b4d',surface_color='#f4f6f3',card_color='#ffffff',text_color='#172f2d',font_scale='100'
                      WHERE id=?''',(target_cid,))
 
-        c.execute('INSERT INTO departments(company_id,name) VALUES(?,?)',(target_cid,'Operaciones'))
+        c.execute('INSERT INTO departments(company_id,name) VALUES(?,?)',(target_cid,'Sin departamento asignado'))
         c.execute('INSERT INTO cash_accounts(company_id,name,kind,currency,bank_name,account_type,holder_name,holder_document) VALUES(?,?,?,?,?,?,?,?)',
                   (target_cid,'Caja General','cash','DOP','Efectivo / Caja','savings',target_comp['name'],''))
 
