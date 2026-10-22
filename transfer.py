@@ -11,7 +11,7 @@ import sqlite3
 TABLES=('departments','projects','customers','products','subscriptions','charges','payments','employees','worklogs','tasks','expenses','expense_payments','attachments')+agriculture.TABLES+commerce.TABLES+('cash_accounts',)+payroll.TABLES+('audit','cash_movements')+ecf.TABLES+real_estate.TABLES
 REFS={'attachments':{'uploaded_by':'users'},'subscriptions':{'customer_id':'customers','product_id':'products'},'charges':{'subscription_id':'subscriptions'},'payments':{'charge_id':'charges'},'employees':{'department_id':'departments','project_id':'projects'},'worklogs':{'employee_id':'employees','department_id':'departments','project_id':'projects','created_by':'users'},'tasks':{'responsible_id':'employees','department_id':'departments','project_id':'projects'},'expenses':{'department_id':'departments','project_id':'projects','created_by':'users'},'expense_payments':{'expense_id':'expenses'},'audit':{'user_id':'users'}}
 
-REFS.update({'secuencias_ncf':{'created_by':'users'},'sales_invoices':{'charge_id':'charges','created_by':'users','secuencia_ncf_id':'secuencias_ncf'},'farms':{'department_id':'departments','project_id':'projects','manager_id':'employees'},'farm_sales':{'farm_id':'farms','created_by':'users'},'farm_contracts':{'farm_id':'farms','employee_id':'employees','created_by':'users'},'farm_jobs':{'contract_id':'farm_contracts','created_by':'users'},'farm_payrolls':{'farm_id':'farms','created_by':'users'},'farm_payroll_lines':{'payroll_id':'farm_payrolls','job_id':'farm_jobs'}})
+REFS.update({'secuencias_ncf':{'created_by':'users'},'sales_invoices':{'charge_id':'charges','created_by':'users','secuencia_ncf_id':'secuencias_ncf'},'farms':{'manager_id':'employees'},'farm_sales':{'farm_id':'farms','created_by':'users'},'farm_contracts':{'farm_id':'farms','employee_id':'employees','created_by':'users'},'farm_jobs':{'contract_id':'farm_contracts','created_by':'users'},'farm_payrolls':{'farm_id':'farms','created_by':'users'},'farm_payroll_lines':{'payroll_id':'farm_payrolls','job_id':'farm_jobs'}})
 REFS.update({'payrolls':{'created_by':'users'},'payroll_lines':{'payroll_id':'payrolls','employee_id':'employees'}})
 REFS.update({'employee_pay_settings':{'employee_id':'employees'},'work_contracts':{'employee_id':'employees','created_by':'users'},'payroll_adjustments':{'employee_id':'employees','contract_id':'work_contracts','payroll_id':'payrolls','created_by':'users'},'payroll_payments':{'payroll_id':'payrolls','account_id':'cash_accounts','created_by':'users'},'cash_movements':{'account_id':'cash_accounts','created_by':'users'}})
 REFS.update({'ecf_documents':{'source_invoice_id':'sales_invoices'},'ecf_audit_log':{'ecf_id':'ecf_documents'}})
@@ -82,6 +82,8 @@ def validate(core,c,bundle):
         for table in real_estate.TABLES: data.setdefault(table,[])
         for row in data.get('company_profiles',[]):
             row.setdefault('business_vertical','general')
+        for row in data.get('departments',[]):
+            row.setdefault('farm_id',None)
     if not isinstance(company,dict) or not isinstance(data,dict) or set(data)!=set(TABLES) or not isinstance(actors,list): fail()
     for account in data['cash_accounts']:
         if not isinstance(account,dict) or account.get('currency') not in treasury.CURRENCIES: fail()
@@ -191,9 +193,13 @@ def register(core,c,d,importing=False):
         for actor in bundle['actors']:
             ident=c.execute('INSERT INTO users(username,name,password,active) VALUES(?,?,?,0)',('archivo-'+prefix+'-'+str(actor['id']),actor['name'],'!')).lastrowid
             maps['users'][actor['id']]=ident
+        pending_dept_farms=[]
         for table in TABLES:
             for source in bundle['data'][table]:
                 row={**source};old=row.pop('id',row.get('company_id'));row['company_id']=cid
+                farm_orig=row.get('farm_id') if table=='departments' else None
+                if table=='departments' and farm_orig is not None:
+                    row['farm_id'] = -int(farm_orig)
                 for key,target in REFS.get(table,{}).items():
                     if row[key] is not None: row[key]=maps[target][row[key]]
                 if table=='secuencias_ncf': row.update(contador_actual=row['numero_final'],estado='Agotado')
@@ -207,6 +213,10 @@ def register(core,c,d,importing=False):
                     row['details']=json.dumps({'original_details':source['details'],'source_entity_id':source['entity_id'],'source_company':bundle['company']['id']},ensure_ascii=False)
                 ident=c.execute('INSERT INTO '+table+'('+','.join(row)+') VALUES('+','.join('?' for _ in row)+')',tuple(row.values())).lastrowid
                 maps[table][old]=ident
+                if farm_orig is not None: pending_dept_farms.append((ident, farm_orig))
+        for did, fid in pending_dept_farms:
+            new_fid = maps.get('farms', {}).get(fid)
+            c.execute('UPDATE departments SET farm_id=? WHERE id=?', (new_fid, did))
         c.execute('INSERT INTO imports(fingerprint,company_id,created_at) VALUES(?,?,?)',(fingerprint,cid,core.now()))
     core.audit(c,uid,cid,'importar empresa' if importing else 'registrar empresa','companies',cid,{'name':name,'records':sum(len(v) for v in bundle['data'].values()) if importing else 0})
     return {'user_id':uid,'company_id':cid,'username':username}
@@ -226,9 +236,13 @@ def restore_company_for_user(core, c, uid, bundle, new_name=None):
     for actor in bundle['actors']:
         ident = c.execute('INSERT INTO users(username,name,password,active) VALUES(?,?,?,0)', ('archivo-'+prefix+'-'+str(actor['id']), actor['name'], '!')).lastrowid
         maps['users'][actor['id']] = ident
+    pending_dept_farms = []
     for table in TABLES:
         for source in bundle['data'][table]:
             row = {**source}; old = row.pop('id', row.get('company_id')); row['company_id'] = cid
+            farm_orig = row.get('farm_id') if table == 'departments' else None
+            if table == 'departments' and farm_orig is not None:
+                row['farm_id'] = -int(farm_orig)
             for key, target in REFS.get(table, {}).items():
                 if row[key] is not None: row[key] = maps[target][row[key]]
             if table == 'secuencias_ncf': row.update(contador_actual=row['numero_final'], estado='Agotado')
@@ -242,6 +256,10 @@ def restore_company_for_user(core, c, uid, bundle, new_name=None):
                 row['details'] = json.dumps({'original_details':source['details'],'source_entity_id':source['entity_id'],'source_company':bundle['company']['id']}, ensure_ascii=False)
             ident = c.execute('INSERT INTO '+table+'('+','.join(row)+') VALUES('+','.join('?' for _ in row)+')', tuple(row.values())).lastrowid
             maps[table][old] = ident
+            if farm_orig is not None: pending_dept_farms.append((ident, farm_orig))
+    for did, fid in pending_dept_farms:
+        new_fid = maps.get('farms', {}).get(fid)
+        c.execute('UPDATE departments SET farm_id=? WHERE id=?', (new_fid, did))
     c.execute('INSERT INTO imports(fingerprint,company_id,created_at) VALUES(?,?,?)', (fingerprint, cid, core.now()))
     core.audit(c, uid, cid, 'restaurar empresa desde respaldo', 'companies', cid, {'name': name, 'records': sum(len(v) for v in bundle['data'].values())})
     return {'company_id': cid, 'name': name}

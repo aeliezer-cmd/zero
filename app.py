@@ -63,12 +63,61 @@ def audit(c, uid, company, action, entity, entity_id, details):
 
 DEFAULT_DEPARTMENT_NAME = 'Sin departamento asignado'
 
-def get_or_create_default_department(c, cid):
-    dept = one(c, "SELECT id FROM departments WHERE company_id=? AND LOWER(TRIM(name)) IN ('sin departamento asignado', 'sin departamento')", (cid,))
+DEFAULT_FARM_DEPARTMENTS = [
+    'Sin departamento asignado',
+    'Administración',
+    'Construcción',
+    'Cocina',
+    'Atención a visitantes',
+    'Jardinería',
+]
+
+def get_or_create_default_department(c, cid, farm_id=None):
+    if farm_id:
+        dept = one(c, "SELECT id FROM departments WHERE company_id=? AND farm_id=? AND LOWER(TRIM(name)) IN ('sin departamento asignado', 'sin departamento')", (cid, farm_id))
+        if dept:
+            return dept['id']
+        cur = c.execute("INSERT INTO departments(company_id, farm_id, name) VALUES(?, ?, ?)", (cid, farm_id, DEFAULT_DEPARTMENT_NAME))
+        return cur.lastrowid
+    dept = one(c, "SELECT id FROM departments WHERE company_id=? AND (farm_id IS NULL OR farm_id=0) AND LOWER(TRIM(name)) IN ('sin departamento asignado', 'sin departamento')", (cid,))
     if dept:
         return dept['id']
     cur = c.execute("INSERT INTO departments(company_id, name) VALUES(?, ?)", (cid, DEFAULT_DEPARTMENT_NAME))
     return cur.lastrowid
+
+def ensure_farm_departments(c, target_cid=None):
+    try:
+        sql = "SELECT id, company_id, name FROM farms"
+        params = ()
+        if target_cid:
+            sql += " WHERE company_id=?"
+            params = (target_cid,)
+        cur = c.execute(sql, params)
+        farms_list = cur.fetchall()
+        for f in farms_list:
+            fid = f['id'] if hasattr(f, 'keys') else f[0]
+            cid = f['company_id'] if hasattr(f, 'keys') else f[1]
+            existing_depts = {
+                (r['name'] if hasattr(r, 'keys') else r[0]).strip().lower()
+                for r in c.execute("SELECT name FROM departments WHERE company_id=? AND farm_id=?", (cid, fid)).fetchall()
+                if (r['name'] if hasattr(r, 'keys') else r[0])
+            }
+            for dept_name in DEFAULT_FARM_DEPARTMENTS:
+                if dept_name.strip().lower() not in existing_depts:
+                    try:
+                        c.execute(
+                            "INSERT INTO departments(company_id, farm_id, name) VALUES(?, ?, ?)",
+                            (cid, fid, dept_name)
+                        )
+                    except Exception: pass
+        try:
+            if hasattr(c, 'commit'):
+                c.commit()
+            elif hasattr(c, 'connection') and hasattr(c.connection, 'commit'):
+                c.connection.commit()
+        except Exception: pass
+    except Exception as e:
+        print(f"ensure_farm_departments notice: {e}")
 
 def ensure_unassigned_departments(c):
     all_cos = rows(c, "SELECT id FROM companies")
@@ -78,7 +127,7 @@ def ensure_unassigned_departments(c):
         c.execute("""
             UPDATE employees 
             SET department_id=? 
-            WHERE company_id=? AND (department_id IS NULL OR department_id NOT IN (SELECT id FROM departments WHERE company_id=?))
+            WHERE company_id=? AND (farm_id IS NULL OR farm_id=0) AND (department_id IS NULL OR department_id NOT IN (SELECT id FROM departments WHERE company_id=?))
         """, (dept_id, cid, cid))
 
 DEFAULT_FARMS = [
@@ -124,6 +173,7 @@ def ensure_monarca_farms(c):
                             VALUES(?, ?, ?, ?, 'active', '')
                         """, (cid, name, code, cat))
                     except Exception: pass
+        ensure_farm_departments(c)
         try:
             if hasattr(c, 'commit'):
                 c.commit()
@@ -137,7 +187,7 @@ SCHEMA = '''
 CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY, username TEXT UNIQUE NOT NULL, name TEXT NOT NULL, password TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1);
 CREATE TABLE IF NOT EXISTS companies(id INTEGER PRIMARY KEY, name TEXT NOT NULL, demo INTEGER NOT NULL DEFAULT 0, group_name TEXT NOT NULL DEFAULT '', accent_color TEXT NOT NULL DEFAULT '#185b4d', surface_color TEXT NOT NULL DEFAULT '#f4f6f3', card_color TEXT NOT NULL DEFAULT '#ffffff', text_color TEXT NOT NULL DEFAULT '#172f2d', font_scale TEXT NOT NULL DEFAULT '100', deleted_at TEXT DEFAULT NULL);
 CREATE TABLE IF NOT EXISTS memberships(user_id INTEGER REFERENCES users(id), company_id INTEGER REFERENCES companies(id), role TEXT NOT NULL CHECK(role IN ('register','review','admin')), role_name TEXT NOT NULL, collections INTEGER NOT NULL DEFAULT 0, departments TEXT NOT NULL DEFAULT '[]', projects TEXT NOT NULL DEFAULT '[]', PRIMARY KEY(user_id,company_id));
-CREATE TABLE IF NOT EXISTS departments(id INTEGER PRIMARY KEY, company_id INTEGER NOT NULL REFERENCES companies(id), name TEXT NOT NULL, UNIQUE(company_id,name));
+CREATE TABLE IF NOT EXISTS departments(id INTEGER PRIMARY KEY, company_id INTEGER NOT NULL REFERENCES companies(id), farm_id INTEGER, name TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS projects(id INTEGER PRIMARY KEY, company_id INTEGER NOT NULL REFERENCES companies(id), name TEXT NOT NULL, UNIQUE(company_id,name));
 CREATE TABLE IF NOT EXISTS customers(id INTEGER PRIMARY KEY, company_id INTEGER NOT NULL REFERENCES companies(id), name TEXT NOT NULL, contact TEXT NOT NULL DEFAULT '');
 CREATE TABLE IF NOT EXISTS products(id INTEGER PRIMARY KEY, company_id INTEGER NOT NULL REFERENCES companies(id), name TEXT NOT NULL, amount INTEGER NOT NULL CHECK(amount>0), description TEXT NOT NULL DEFAULT '');
@@ -167,7 +217,26 @@ def initialize(seed=True):
     if new_directory or DB.parent==ROOT/'data': os.chmod(DB.parent,0o700)
     with connect() as c:
         c.execute('PRAGMA journal_mode=WAL')
+        dept_sql = c.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='departments'").fetchone()
+        if dept_sql and "farm_id" not in dept_sql[0]:
+            c.execute("PRAGMA foreign_keys=OFF")
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS departments_new(
+                    id INTEGER PRIMARY KEY,
+                    company_id INTEGER NOT NULL REFERENCES companies(id),
+                    farm_id INTEGER,
+                    name TEXT NOT NULL
+                )
+            """)
+            c.execute("INSERT INTO departments_new(id, company_id, farm_id, name) SELECT id, company_id, NULL, name FROM departments")
+            c.execute("DROP TABLE departments")
+            c.execute("ALTER TABLE departments_new RENAME TO departments")
+            c.execute("PRAGMA foreign_keys=ON")
         c.executescript(SCHEMA)
+        try:
+            c.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_dept_company_name_null_farm ON departments(company_id, name) WHERE farm_id IS NULL")
+            c.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_dept_company_farm_name ON departments(company_id, farm_id, name) WHERE farm_id IS NOT NULL")
+        except Exception: pass
         fiscal.migrate(c)
         payroll.migrate(c)
         treasury.migrate(c)
@@ -222,6 +291,10 @@ def initialize(seed=True):
             ensure_monarca_farms(c)
         except Exception as e:
             print(f"ensure_monarca_farms notice: {e}")
+        try:
+            ensure_farm_departments(c)
+        except Exception as e:
+            print(f"ensure_farm_departments notice: {e}")
         user_count = c.execute('SELECT count(*) FROM users').fetchone()[0]
         if user_count:
             return
@@ -341,6 +414,7 @@ def state(c,uid,cid):
             cur_farms = c.execute("SELECT count(*) FROM farms WHERE company_id=?", (cid,)).fetchone()[0]
             if cur_farms == 0:
                 ensure_monarca_farms(c)
+            ensure_farm_departments(c, cid)
     except Exception: pass
     result={'membership':m,'today':today().isoformat(),'updated_at':now(),'branding':one(c,'SELECT accent_color,surface_color,card_color,text_color,font_scale FROM companies WHERE id=?',(cid,))}
     for table in ('departments','projects','employees','worklogs','tasks','expenses'):
@@ -506,11 +580,11 @@ def mutate(c,uid,cid,action,d):
         conditions=str(d.get('conditions',''))[:3000]
         emp_type=d.get('employment_type',item.get('employment_type','fixed'))
         if emp_type not in ('fixed','temporary'): emp_type='fixed'
-        if not d.get('department_id'):
-            d['department_id'] = get_or_create_default_department(c, cid)
-        dims=dimensions(c,cid,m,d)
-        farm_id=int(d['farm_id']) if d.get('farm_id') else None
+        farm_id=int(d['farm_id']) if d.get('farm_id') else (item.get('farm_id') if 'farm_id' not in d else None)
         if farm_id: ref(c,'farms',farm_id,cid)
+        if not d.get('department_id'):
+            d['department_id'] = get_or_create_default_department(c, cid, farm_id)
+        dims=dimensions(c,cid,m,d)
         update=dict(name=name,position=position,basis=basis,rate=rate,conditions=conditions,employment_type=emp_type,farm_id=farm_id,**dims)
         c.execute('UPDATE employees SET '+','.join(k+'=?' for k in update)+' WHERE id=?',(*update.values(),item['id']))
         audit(c,uid,cid,'editar personal','employees',item['id'],dict(before=item,after=update))
@@ -574,7 +648,8 @@ def mutate(c,uid,cid,action,d):
             if farm_id: ref(c,'farms',farm_id,cid)
             update_fields['farm_id']=farm_id
         if d.get('update_department_id'):
-            dept_id=int(d['department_id']) if d.get('department_id') else get_or_create_default_department(c, cid)
+            farm_target=int(d['farm_id']) if d.get('farm_id') else None
+            dept_id=int(d['department_id']) if d.get('department_id') else get_or_create_default_department(c, cid, farm_target)
             if dept_id: ref(c,'departments',dept_id,cid)
             update_fields['department_id']=dept_id
         if d.get('update_project_id'):
@@ -674,8 +749,10 @@ def mutate(c,uid,cid,action,d):
         if item['name'].strip().lower() in ('sin departamento asignado', 'sin departamento'):
             raise ValueError('El departamento predeterminado «Sin departamento asignado» no puede ser renombrado.')
         name=text(d.get('name'),'Nombre del departamento')
-        c.execute('UPDATE departments SET name=? WHERE id=?',(name,item['id']))
-        audit(c,uid,cid,'editar departamento','departments',item['id'],{'before':item,'name':name})
+        farm_id = int(d['farm_id']) if d.get('farm_id') else (item.get('farm_id') if 'farm_id' not in d else None)
+        if farm_id: ref(c, 'farms', farm_id, cid)
+        c.execute('UPDATE departments SET name=?, farm_id=? WHERE id=?',(name, farm_id, item['id']))
+        audit(c,uid,cid,'editar departamento','departments',item['id'],{'before':item,'name':name,'farm_id':farm_id})
         return {'id':item['id']}
     if action=='delete_department':
         m=membership(c,uid,cid,3)
@@ -686,8 +763,7 @@ def mutate(c,uid,cid,action,d):
             c.execute('SELECT COUNT(*) FROM employees WHERE department_id=? AND company_id=?',(item['id'],cid)).fetchone()[0],
             c.execute('SELECT COUNT(*) FROM tasks WHERE department_id=? AND company_id=?',(item['id'],cid)).fetchone()[0],
             c.execute('SELECT COUNT(*) FROM expenses WHERE department_id=? AND company_id=?',(item['id'],cid)).fetchone()[0],
-            c.execute('SELECT COUNT(*) FROM worklogs WHERE department_id=? AND company_id=?',(item['id'],cid)).fetchone()[0],
-            c.execute('SELECT COUNT(*) FROM farms WHERE department_id=? AND company_id=?',(item['id'],cid)).fetchone()[0]
+            c.execute('SELECT COUNT(*) FROM worklogs WHERE department_id=? AND company_id=?',(item['id'],cid)).fetchone()[0]
         ])
         if uses: raise ValueError(f'No se puede eliminar «{item["name"]}» porque tiene {uses} registro(s) vinculado(s). Reasígnelos antes de borrarlo.')
         c.execute('DELETE FROM departments WHERE id=? AND company_id=?',(item['id'],cid))
@@ -870,8 +946,13 @@ def mutate(c,uid,cid,action,d):
         if through>today(): raise ValueError('El sistema solo genera períodos iniciados hasta hoy.')
         return {'generated':generate(c,uid,cid,through)}
     table=None; record={}
-    if action in ('department','project'):
-        table=action+'s';record={'name':text(d.get('name'),'Nombre')}
+    if action=='department':
+        table='departments'
+        farm_id=int(d['farm_id']) if d.get('farm_id') else None
+        if farm_id: ref(c,'farms',farm_id,cid)
+        record={'name':text(d.get('name'),'Nombre'),'farm_id':farm_id}
+    elif action=='project':
+        table='projects';record={'name':text(d.get('name'),'Nombre')}
     elif action=='customer': table='customers';record={'name':text(d.get('name'),'Nombre'),'contact':str(d.get('contact',''))[:500]}
     elif action=='product': table='products';record={'name':text(d.get('name'),'Nombre'),'amount':amount(d.get('amount')),'description':str(d.get('description',''))[:2000]}
     elif action=='subscription':
@@ -890,7 +971,7 @@ def mutate(c,uid,cid,action,d):
         farm_id=int(d['farm_id']) if d.get('farm_id') else None
         if farm_id: ref(c,'farms',farm_id,cid)
         if not d.get('department_id'):
-            d['department_id'] = get_or_create_default_department(c, cid)
+            d['department_id'] = get_or_create_default_department(c, cid, farm_id)
         table='employees';record=dict(dimensions(c,cid,m,d),name=text(d.get('name'),'Nombre'),position=text(d.get('position'),'Puesto'),basis=basis,rate=amount(d.get('rate'),True),conditions=str(d.get('conditions',''))[:3000],employment_type=emp_type,farm_id=farm_id,status='active',termination_date=None,termination_reason=None,termination_notes='')
     elif action=='approve_all_worklogs':
         if not (m['role']=='admin' or m['role']=='review'): raise Denied('Aprobación no autorizada.')

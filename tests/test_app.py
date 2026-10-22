@@ -572,4 +572,50 @@ class PilotTests(unittest.TestCase):
             self.assertEqual(emp_after['department_id'], unassigned_id)
             self.assertEqual(emp_after['name'], 'Colaborador Editado')
 
+    def test_35_farms_contain_departments_hierarchy(self):
+        with app.connect() as c:
+            # 1. Verify standard farms exist in Company 3
+            farms = c.execute("SELECT id, name FROM farms WHERE company_id=3").fetchall()
+            self.assertGreaterEqual(len(farms), 7)
+            farm_names = {f['name'] for f in farms}
+            for expected_f in ('Patricia', 'La Mesa', 'Güiza', 'Las Pajas', 'Las Caobas', 'Esquea', 'Las Mujeres'):
+                self.assertIn(expected_f, farm_names)
+
+            # 2. Verify all 7 standard farms contain the 6 standard departments
+            for f in farms:
+                if f['name'] not in ('Patricia', 'La Mesa', 'Güiza', 'Las Pajas', 'Las Caobas', 'Esquea', 'Las Mujeres'):
+                    continue
+                depts = c.execute("SELECT name FROM departments WHERE company_id=3 AND farm_id=?", (f['id'],)).fetchall()
+                dept_names = {d['name'] for d in depts}
+                self.assertEqual(len(depts), 6)
+                for expected_d in ('Sin departamento asignado', 'Administración', 'Construcción', 'Cocina', 'Atención a visitantes', 'Jardinería'):
+                    self.assertIn(expected_d, dept_names)
+
+            patricia = [f for f in farms if f['name'] == 'Patricia'][0]
+            patricia_id = patricia['id']
+            patricia_unassigned = c.execute("SELECT id FROM departments WHERE company_id=3 AND farm_id=? AND LOWER(TRIM(name))='sin departamento asignado'", (patricia_id,)).fetchone()['id']
+
+        # 3. Create employee assigned to Finca Patricia with no department_id: defaults to Patricia's 'Sin departamento asignado'
+        emp_farm = self.action('employee', name='Trabajador Patricia', position='Cosechero', basis='daily', rate='1200', farm_id=patricia_id)
+        with app.connect() as c:
+            emp = app.one(c, "SELECT * FROM employees WHERE id=?", (emp_farm['id'],))
+            self.assertEqual(emp['farm_id'], patricia_id)
+            self.assertEqual(emp['department_id'], patricia_unassigned)
+
+        # 4. Custom department inside a farm
+        custom_dept = self.action('department', name='Taller Mecánico', farm_id=patricia_id)
+        with app.connect() as c:
+            cd = app.one(c, "SELECT * FROM departments WHERE id=?", (custom_dept['id'],))
+            self.assertEqual(cd['name'], 'Taller Mecánico')
+            self.assertEqual(cd['farm_id'], patricia_id)
+
+        # 5. Duplicating 'Taller Mecánico' in Patricia should fail UNIQUE constraint
+        with self.assertRaises(Exception):
+            self.action('department', name='Taller Mecánico', farm_id=patricia_id)
+
+        # 6. Creating 'Taller Mecánico' in La Mesa should succeed (same dept name in different farm)
+        la_mesa = [f for f in farms if f['name'] == 'La Mesa'][0]
+        mesa_dept = self.action('department', name='Taller Mecánico', farm_id=la_mesa['id'])
+        self.assertIn('id', mesa_dept)
+
 if __name__=='__main__': unittest.main(verbosity=2)

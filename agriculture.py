@@ -86,8 +86,16 @@ def contract(core,c,cid,m,ident):
     farm(core,c,cid,m,row['farm_id']);core.assert_scope(m,core.ref(c,'employees',row['employee_id'],cid))
     return row
 
+def farm_scoped(core,c,cid,m,f):
+    if not m.get('departments'):
+        return core.scoped(m,f)
+    dept_ids = {r[0] for r in c.execute('SELECT id FROM departments WHERE farm_id=? AND company_id=?', (f['id'], cid)).fetchall()}
+    if any(d in m['departments'] for d in dept_ids):
+        return True
+    return core.scoped(m,f)
+
 def state(core,c,uid,cid,m):
-    farms=[x for x in core.rows(c,'SELECT * FROM farms WHERE company_id=? ORDER BY name',(cid,)) if core.scoped(m,x)]
+    farms=[x for x in core.rows(c,'SELECT * FROM farms WHERE company_id=? ORDER BY name',(cid,)) if farm_scoped(core,c,cid,m,x)]
     fids={x['id'] for x in farms}
     employees={x['id'] for x in core.rows(c,'SELECT * FROM employees WHERE company_id=?',(cid,)) if core.scoped(m,x)}
     contracts=[x for x in core.rows(c,'SELECT * FROM farm_contracts WHERE company_id=?',(cid,)) if x['farm_id'] in fids and x['employee_id'] in employees]
@@ -139,10 +147,19 @@ def mutate(core,c,uid,cid,action,d):
             phone=str(d.get('phone') or '').strip()[:50],
             size_capacity=str(d.get('size_capacity') or '').strip()[:100],
             status=status,
-            notes=str(d.get('notes') or '').strip()[:3000],
-            **core.dimensions(c, cid, m, d)
+            notes=str(d.get('notes') or '').strip()[:3000]
         )
-        return insert('farms', row_data)
+        res = insert('farms', row_data)
+        if d.get('auto_departments'):
+            farm_id = res['id']
+            for dept_name in core.DEFAULT_FARM_DEPARTMENTS:
+                try:
+                    c.execute(
+                        "INSERT INTO departments(company_id, farm_id, name) VALUES(?, ?, ?)",
+                        (cid, farm_id, dept_name)
+                    )
+                except Exception: pass
+        return res
     if action=='edit_farm':
         item=farm(core,c,cid,m,d.get('id'))
         name=core.text(d.get('name', item['name']), 'Nombre de la unidad')
@@ -162,8 +179,7 @@ def mutate(core,c,uid,cid,action,d):
         phone = str(d.get('phone', item.get('phone') or '')).strip()[:50]
         size_capacity = str(d.get('size_capacity', item.get('size_capacity') or '')).strip()[:100]
         notes = str(d.get('notes', item.get('notes') or '')).strip()[:3000]
-        dims=core.dimensions(c,cid,m,d)
-        update=dict(name=name,code=code,category=category,manager_id=manager_id,address=address,phone=phone,size_capacity=size_capacity,status=status,notes=notes,**dims)
+        update=dict(name=name,code=code,category=category,manager_id=manager_id,address=address,phone=phone,size_capacity=size_capacity,status=status,notes=notes)
         c.execute('UPDATE farms SET '+','.join(k+'=?' for k in update)+' WHERE id=?',(*update.values(),item['id']))
         core.audit(c,uid,cid,'editar unidad','farms',item['id'],dict(before=item,after=update))
         return {'id':item['id']}
@@ -173,8 +189,19 @@ def mutate(core,c,uid,cid,action,d):
         has_contracts=c.execute('SELECT COUNT(*) FROM farm_contracts WHERE farm_id=? AND company_id=?',(item['id'],cid)).fetchone()[0]
         has_payrolls=c.execute('SELECT COUNT(*) FROM farm_payrolls WHERE farm_id=? AND company_id=?',(item['id'],cid)).fetchone()[0]
         has_employees=c.execute('SELECT COUNT(*) FROM employees WHERE farm_id=? AND company_id=?',(item['id'],cid)).fetchone()[0]
-        if has_sales or has_contracts or has_payrolls or has_employees:
-            raise ValueError(f'No se puede eliminar «{item["name"]}» porque tiene {has_sales+has_contracts+has_payrolls+has_employees} registro(s) vinculado(s) (incluyendo colaboradores asignados).')
+        dept_ids = [r[0] for r in c.execute('SELECT id FROM departments WHERE farm_id=? AND company_id=?', (item['id'], cid)).fetchall()]
+        has_dept_records = 0
+        if dept_ids:
+            q_marks = ','.join('?' for _ in dept_ids)
+            has_dept_records = sum([
+                c.execute(f'SELECT COUNT(*) FROM employees WHERE department_id IN ({q_marks}) AND company_id=?', (*dept_ids, cid)).fetchone()[0],
+                c.execute(f'SELECT COUNT(*) FROM tasks WHERE department_id IN ({q_marks}) AND company_id=?', (*dept_ids, cid)).fetchone()[0],
+                c.execute(f'SELECT COUNT(*) FROM expenses WHERE department_id IN ({q_marks}) AND company_id=?', (*dept_ids, cid)).fetchone()[0],
+                c.execute(f'SELECT COUNT(*) FROM worklogs WHERE department_id IN ({q_marks}) AND company_id=?', (*dept_ids, cid)).fetchone()[0],
+            ])
+        if has_sales or has_contracts or has_payrolls or has_employees or has_dept_records:
+            raise ValueError(f'No se puede eliminar «{item["name"]}» porque tiene {has_sales+has_contracts+has_payrolls+has_employees+has_dept_records} registro(s) vinculado(s) (incluyendo colaboradores asignados, labores o movimientos en sus departamentos).')
+        c.execute('DELETE FROM departments WHERE farm_id=? AND company_id=?',(item['id'],cid))
         c.execute('DELETE FROM farms WHERE id=? AND company_id=?',(item['id'],cid))
         core.audit(c,uid,cid,'borrar unidad','farms',item['id'],item)
         return {'ok':True,'id':item['id']}

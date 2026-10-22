@@ -2336,6 +2336,7 @@ function departmentsManagementPanel(){
     <form id="${isDept ? 'quick-add-dept-form' : 'quick-add-proj-form'}" class="quick-add-bar" style="display:flex;gap:10px;align-items:center;margin-bottom:18px;background:var(--card);padding:14px 18px;border-radius:10px;border:1px solid var(--border);box-shadow:0 1px 3px rgba(0,0,0,0.04)">
       <span style="font-size:22px">${isDept ? '🏛️' : '📁'}</span>
       <input type="text" id="${isDept ? 'quick-dept-name' : 'quick-proj-name'}" placeholder="Crear nuevo ${isDept ? 'departamento (ej. Recursos Humanos, Ventas, Logística, Mantenimiento...)' : 'proyecto (ej. Fase 1, Expansión, Obras Civiles...)'}" required style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px">
+      ${isDept && (S.farms||[]).length ? `<select id="quick-dept-farm" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px"><option value="">🏢 Empresa General (Sin finca)</option>${(S.farms||[]).map(f => `<option value="${f.id}">🚜 ${esc(f.name)}</option>`).join('')}</select>` : ''}
       <button class="primary" type="submit" style="white-space:nowrap">＋ Agregar ${isDept ? 'departamento' : 'proyecto'}</button>
     </form>
   `;
@@ -2454,6 +2455,7 @@ function departmentsManagementPanel(){
     return `<tr>
       <td>
         <strong style="font-size:14px">${isDept ? '🏛️' : '📁'} ${esc(item.name)}</strong>${isDefaultUnassigned ? ' <span class="badge blue" style="font-size:10px;margin-left:4px">Predeterminado</span>' : ''}
+        ${isDept && item.farm_id ? `<div class="muted" style="font-size:11px">🚜 En: <strong>${esc(agName('farms', item.farm_id))}</strong></div>` : ''}
         <div class="muted" style="font-size:11px">Código interno #${item.id}</div>
       </td>
       <td>
@@ -2887,10 +2889,12 @@ function bindDepartments(){
       const input = $('#quick-dept-name');
       const name = input?.value?.trim();
       if(!name) return;
+      const farmSelect = $('#quick-dept-farm');
+      const farm_id = farmSelect?.value ? Number(farmSelect.value) : null;
       const btn = quickDeptForm.querySelector('button');
       if(btn) btn.disabled = true;
       try {
-        await save('department', { name });
+        await save('department', { name, farm_id });
         input.value = '';
         toast(`Departamento «${name}» agregado con éxito.`);
       } catch(err) {
@@ -2930,7 +2934,7 @@ function bindDepartments(){
       const btn = quickFarmForm.querySelector('button');
       if(btn) btn.disabled = true;
       try {
-        await save('farm', { name, category: 'Agrícola', status: 'active' });
+        await save('farm', { name, category: 'Agrícola', status: 'active', auto_departments: true });
         input.value = '';
         toast(`Finca «${name}» agregada con éxito.`);
       } catch(err) {
@@ -5114,8 +5118,8 @@ function showSalePaymentReceiptModal(paymentId){
 function input(name,label,type='text',value='',extra=''){return `<div><label for="f-${name}">${label}</label><input id="f-${name}" name="${name}" type="${type}" value="${esc(value)}" ${extra}></div>`}
 function select(name,label,options,value='',extra=''){return `<div><label for="f-${name}">${label}</label><select id="f-${name}" name="${name}" ${extra}>${options.map(([v,t])=>`<option value="${esc(v)}" ${String(v)===String(value)?'selected':''}>${esc(t)}</option>`).join('')}</select></div>`}
 function area(name,label,value=''){return `<div class="wide"><label for="f-${name}">${label}</label><textarea id="f-${name}" name="${name}">${esc(value)}</textarea></div>`}
-function options(table,blank=true,onlyActive=false){let items=S[table]||[];if(table==='employees'&&onlyActive){items=items.filter(e=>(e.status||'active')==='active')}return [...(blank?[['','Sin asignar']]:[]),...items.map(x=>[x.id,x.name+(table==='employees'&&x.status==='terminated'?' (De baja)':'')])]}
-function dims(dVal='',pVal=''){const m=S.membership;return select('department_id','Departamento',options('departments',!m.departments.length),dVal,m.departments.length?'required':'')+select('project_id','Proyecto',options('projects',!m.projects.length),pVal,m.projects.length?'required':'')}
+function options(table,blank=true,onlyActive=false,farmId=null){let items=S[table]||[];if(table==='employees'&&onlyActive){items=items.filter(e=>(e.status||'active')==='active')}if(table==='departments'&&farmId!==null&&farmId!==undefined&&farmId!==''){const fIdNum=Number(farmId);const farmDepts=items.filter(d=>Number(d.farm_id)===fIdNum);if(farmDepts.length){items=items.filter(d=>Number(d.farm_id)===fIdNum||(!d.farm_id&&(d.name||'').trim().toLowerCase().includes('sin departamento')));}}return [...(blank?[['','Sin asignar']]:[]),...items.map(x=>[x.id,x.name+(table==='employees'&&x.status==='terminated'?' (De baja)':(table==='departments'&&x.farm_id?' ('+(agName('farms',x.farm_id)||('Finca #'+x.farm_id))+')':''))])]}
+function dims(dVal='',pVal='',farmId=null){const m=S.membership;return select('department_id','Departamento',options('departments',!m.departments.length,false,farmId),dVal,m.departments.length?'required':'')+select('project_id','Proyecto',options('projects',!m.projects.length),pVal,m.projects.length?'required':'')}
 function openForm(kind,id,extraData=null){if(payrollKinds.includes(kind)){payrollDialog(kind,id);return}if(['farm_sale','farm_contract','weekly_payroll'].includes(kind)&&!S.farms?.length){toast('Primero un administrador debe crear una '+unitLabel(false,true)+'.');return}if(kind==='farm_contract'&&!S.employees?.length){toast('Primero cree la ficha del trabajador en Personal y reportes.');return}if(kind==='farm_job'&&!S.farm_contracts?.some(c=>c.status==='active')){toast('Primero cree un contrato activo.');return}let title='',fields='',help='',initial={};let submit='Guardar';if(agForms[kind]){const f=agForms[kind](id);title=f.title;fields=f.fields;help=f.help||'';initial=f.initial||{}}
 if(kind==='customer'){title='Nuevo cliente';fields=input('name','Nombre completo / Razón social','text','','required maxlength="200"')+input('contact','Teléfono, correo o referencia');help='Registre los datos de contacto del cliente.'}
 if(kind==='edit_customer'){const c=S.customers?.find(x=>x.id===id);title='Editar cliente · #'+id;initial={id};fields=input('name','Nombre completo / Razón social','text',c?.name||'','required maxlength="200"')+input('contact','Teléfono, correo o referencia',c?.contact||'');help='Actualice los datos de contacto y facturación del cliente.'}
@@ -5127,18 +5131,19 @@ if(kind==='edit_ncf_sequence'){const r=S.secuencias_ncf?.find(x=>x.id===id);titl
 if(kind==='dmca_notice'){title='Notificación de infracción de derechos de autor (DMCA Safe Harbor)';fields=input('claimant_name','Nombre completo del titular / reclamante','text','','required maxlength="200"')+input('claimant_email','Correo de contacto','email','','required maxlength="200"')+area('copyrighted_work','Identificación de la obra protegida','')+area('infringing_content','Ubicación o detalle del contenido infractor en esta empresa','')+input('signature','Firma digital (nombre completo)','text','','required maxlength="200"')+`<div class="wide" style="font-size:12px;color:var(--muted,#64748b);margin-top:6px"><label style="display:block;margin-bottom:6px"><input type="checkbox" name="good_faith" value="1" required> Declaro de buena fe que el uso del material no está autorizado.</label><label style="display:block"><input type="checkbox" name="accuracy" value="1" required> Declaro bajo pena de perjurio que la información es veraz y soy el titular o agente autorizado.</label></div>`;help='Conforme a 17 U.S.C. § 512(c)(3). Inicia el procedimiento de retirada expedita y notificación al usuario.';submit='Enviar notificación DMCA'}
 if(kind==='expense'){title='Registrar gasto';fields=input('description','Concepto','text','','required')+input('amount','Importe (RD$)','number','','required min="0.01" step="0.01"')+dims()+input('expense_date','Fecha','date',S.today,'required max="'+S.today+'"')+input('receipt','Número, ruta o enlace de comprobante');help='Se guarda como propuesto. Un revisor o administrador debe aprobarlo antes del pago.'}
 if(kind==='employee'){
-  const unassignedDept = (S.departments||[]).find(d => (d.name||'').trim().toLowerCase() === 'sin departamento asignado' || (d.name||'').trim().toLowerCase() === 'sin departamento');
+  const empFarmId = extraData?.farm_id || '';
+  const unassignedDept = (S.departments||[]).find(d => (empFarmId ? Number(d.farm_id) === Number(empFarmId) : !d.farm_id) && ((d.name||'').trim().toLowerCase().includes('sin departamento')));
   const targetDeptId = (extraData?.department_id !== undefined && extraData?.department_id !== null && extraData?.department_id !== '') ? extraData.department_id : (unassignedDept ? unassignedDept.id : '');
   title='Ficha de personal';
   fields=input('name','Nombre completo','text','','required')+
          input('position','Puesto / función','text','','required')+
          select('employment_type','Tipo de vinculación laboral',[['fixed','🏢 Empleado Fijo (Nómina regular / Planta / Recurrente)'],['temporary','🚜 Empleado Temporero (Jornalero / Contratado por labor / Finca / Obra)']])+
-         select('farm_id',unitLabel(false,true)+' / Sucursal asignada (opcional)',options('farms',true),extraData?.farm_id||'')+
-         dims(targetDeptId,extraData?.project_id||'')+
+         select('farm_id',unitLabel(false,true)+' / Sucursal asignada (opcional)',options('farms',true),empFarmId)+
+         dims(targetDeptId,extraData?.project_id||'',empFarmId)+
          select('basis','Base de remuneración',[['monthly','Mensual'],['weekly','Semanal'],['daily','Diaria'],['hourly','Por hora']])+
          input('rate','Tarifa propuesta (RD$)','number','','required min="0" step="0.01"')+
          area('conditions','Condiciones propuestas, horario y observaciones');
-  help='Todo colaborador pertenece a un departamento (colección organizacional). Si no se especifica uno particular, se asigna automáticamente a «Sin departamento asignado».';
+  help='Todo colaborador pertenece a un departamento de la finca o empresa. Si no se especifica uno particular, se asigna automáticamente a «Sin departamento asignado» de la finca correspondiente.';
 }
 if(kind==='worklog'){if(!S.employees.length){toast('Primero cree una ficha de personal.');return}title='Reporte de supervisión';fields=select('employee_id','Persona',options('employees',false,true),'','required')+input('work_date','Fecha','date',extraData?.date||calSelectedDate||S.today,'required max="'+S.today+'"')+input('minutes','Tiempo trabajado (minutos)','number',420,'required min="1" max="1440"')+area('activity','Qué hizo')+area('method','Cómo lo hizo')+area('notes','Observaciones / referencia de evidencia');help='Hereda el departamento y proyecto de la ficha. Se guarda como propuesto hasta aprobación.'}
 if(kind==='edit_worklog'){const w=S.worklogs?.find(x=>x.id===id);title='Editar reporte de supervisión · #'+id;initial={id};fields=select('employee_id','Persona',options('employees',false,true),w?.employee_id||'','required')+input('work_date','Fecha','date',w?.work_date||S.today,'required max="'+S.today+'"')+input('minutes','Tiempo trabajado (minutos)','number',w?.minutes||420,'required min="1" max="1440"')+area('activity','Qué hizo',w?.activity||'')+area('method','Cómo lo hizo',w?.method||'')+area('notes','Observaciones / referencia de evidencia',w?.notes||'');help='Modifique las horas, colaborador o detalle de la labor realizada.';submit='Guardar cambios';}
@@ -5146,8 +5151,8 @@ if(kind==='payroll'){title='Generar nómina';fields=input('start_date','Desde','
 if(kind==='payroll_payment'){title='Registrar pago de nómina';fields=input('reference','Referencia del pago','text','','required maxlength="200"');help='Confirme únicamente un pago ya realizado. Esta acción no realiza transferencias bancarias.'}
 if(kind==='task'){title='Nueva tarea';fields=input('title','Tarea / Labor a realizar','text','','required')+select('responsible_id','Responsable / Colaborador encargado',options('employees',true,true))+input('duration','Duración estimada (Cantidad de tiempo)','number',1,'required min="0.1" step="0.1"')+select('duration_unit','Unidad de tiempo (Impacta directamente en nómina)',[['hours','Horas (h)'],['days','Días (jornadas)'],['weeks','Semanas'],['months','Meses']],'hours')+select('farm_id',unitLabel(false,true)+' vinculada (opcional)',options('farms',true))+input('rate','Tarifa personalizada (RD$, opcional)','number','','min="0" step="0.01" placeholder="Usa la tarifa de nómina del empleado si se deja en blanco"')+dims()+input('due_date','Fecha límite / ejecución','date',extraData?.date||calSelectedDate||S.today,'required')+area('support','Instrucciones, especificaciones y apoyo solicitado');help='Las tareas con colaborador asignado y duración en horas, días, semanas o meses influyen directamente en la nómina del colaborador (devengan según la duración y su tarifa base o específica al completarse).'}
 if(kind==='edit_task'){const t=S.tasks?.find(x=>x.id===id);title='Editar tarea · #'+id;initial={id};fields=input('title','Tarea / Labor a realizar','text',t?.title||'','required')+select('responsible_id','Responsable / Colaborador encargado',options('employees'),t?.responsible_id||'')+input('duration','Duración estimada (Cantidad de tiempo)','number',t?.duration||1,'required min="0.1" step="0.1"')+select('duration_unit','Unidad de tiempo (Impacta directamente en nómina)',[['hours','Horas (h)'],['days','Días (jornadas)'],['weeks','Semanas'],['months','Meses']],t?.duration_unit||'hours')+select('farm_id',unitLabel(false,true)+' vinculada (opcional)',options('farms',true),t?.farm_id||'')+input('rate','Tarifa personalizada (RD$, opcional)','number',t?.rate?(t.rate/100):'','min="0" step="0.01" placeholder="Usa la tarifa de nómina del empleado si se deja en blanco"')+dims(t?.department_id||'',t?.project_id||'')+input('due_date','Fecha límite / ejecución','date',t?.due_date||S.today,'required')+select('status','Estado',[['pending','Pendiente'],['progress','En progreso'],['done','Completada (Devengada para nómina)']],t?.status||'pending')+area('support','Instrucciones, especificaciones y apoyo solicitado',t?.support||'');help='Al marcar la tarea como Completada, el tiempo computado en horas, días, semanas o meses se incorpora a los devengos del período de nómina del colaborador.'}
-if(kind==='department'){title='Nuevo departamento';fields=input('name','Nombre del departamento','text','','required maxlength="100" placeholder="Ej. Operaciones, Ventas, Logística, Contabilidad..."');help='El departamento servirá para agrupar colaboradores, asignar tareas y clasificar centros de costo de la empresa.';submit='Crear departamento';}
-if(kind==='edit_department'){const d=S.departments?.find(x=>x.id===id);title=`Editar departamento: «${d?.name||''}»`;initial={id};fields=input('name','Nombre del departamento','text',d?.name||'','required maxlength="100"');help='Al cambiar el nombre, todos los colaboradores, tareas y gastos asignados mantendrán su vinculación automáticamente.';submit='Guardar cambios';}
+if(kind==='department'){title='Nuevo departamento';fields=input('name','Nombre del departamento','text','','required maxlength="100" placeholder="Ej. Administración, Construcción, Cocina, Jardinería...")+select('farm_id','Finca / Unidad de Producción a la que pertenece',options('farms',true),extraData?.farm_id||'');help='El departamento pertenecerá a la finca o unidad operativa seleccionada (o a la empresa general si se deja sin finca).';submit='Crear departamento';}
+if(kind==='edit_department'){const d=S.departments?.find(x=>x.id===id);title=`Editar departamento: «${d?.name||''}»`;initial={id};fields=input('name','Nombre del departamento','text',d?.name||'','required maxlength="100"')+select('farm_id','Finca / Unidad de Producción a la que pertenece',options('farms',true),d?.farm_id||'');help='Al cambiar el nombre o finca asignada, todos los colaboradores, tareas y gastos asignados mantendrán su vinculación automáticamente.';submit='Guardar cambios';}
 if(kind==='project'){title='Nuevo proyecto';fields=input('name','Nombre del proyecto','text','','required maxlength="100" placeholder="Ej. Expansión Este, Desarrollo Fase 2, Obras..."');help='Los proyectos permiten clasificar presupuestos y ejecuciones temporales o transversales.';submit='Crear proyecto';}
 if(kind==='edit_project'){const p=S.projects?.find(x=>x.id===id);title=`Editar proyecto: «${p?.name||''}»`;initial={id};fields=input('name','Nombre del proyecto','text',p?.name||'','required maxlength="100"');help='Al modificar el nombre del proyecto se actualiza en todas las fichas vinculadas.';submit='Guardar cambios';}
 if(kind==='company'){title='Agregar empresa';fields=input('name','Nombre de la empresa','text','','required maxlength="200"')+input('group_name','Grupo corporativo / Cuenta dependiente','text',company()?.group_name||'','maxlength="200"')+'<label><input type="checkbox" name="demo"> Empresa de demostración (datos ficticios)</label>';help='La empresa se crea con usted como administrador y quedará disponible en el directorio de empresas y el selector superior.'}
@@ -5454,6 +5459,27 @@ $('#modal').querySelectorAll('input,textarea,select').forEach(el=>{el.setAttribu
 $('#modal').showModal();
 $('#close-modal').onclick=$('#cancel-modal').onclick=()=>$('#modal').close();
 if(kind==='subscription')$('#f-product_id').onchange=e=>{$('#f-amount').value=S.products.find(p=>p.id===Number(e.target.value)).amount/100};
+if(kind==='employee'||kind==='edit_employee'){
+  const farmSelect=$('#f-farm_id');
+  const deptSelect=$('#f-department_id');
+  if(farmSelect&&deptSelect){
+    farmSelect.onchange=(e)=>{
+      const selectedFarmId=e.target.value?Number(e.target.value):null;
+      const filteredDepts=(S.departments||[]).filter(d=>selectedFarmId?(Number(d.farm_id)===selectedFarmId):(!d.farm_id));
+      const currentVal=Number(deptSelect.value);
+      let defaultDept=filteredDepts.find(d=>(d.name||'').trim().toLowerCase().includes('sin departamento'));
+      let newOpts=options('departments',!S.membership?.departments?.length,false,selectedFarmId);
+      deptSelect.innerHTML=newOpts.map(([v,t])=>`<option value="${esc(v)}">${esc(t)}</option>`).join('');
+      if(filteredDepts.some(d=>d.id===currentVal)){
+        deptSelect.value=String(currentVal);
+      }else if(defaultDept){
+        deptSelect.value=String(defaultDept.id);
+      }else{
+        deptSelect.value='';
+      }
+    };
+  }
+}
 if(kind==='re_sale'||kind==='edit_re_sale'){
   const buyerSelect=$('#f-buyer_id');
   if(buyerSelect){
@@ -5574,8 +5600,8 @@ const agFarm=()=>select('farm_id',unitLabel(),options('farms',false),'','require
 const agDate=(name,label,value=S.today)=>input(name,label,'date',value,'required');
 const agQty=()=>input('quantity','Cantidad (ajuste fijo: 1)','number','1','required min="0.001" max="1000000" step="0.001"');
 const agForms={
- farm:()=>({title:'Nueva '+unitLabel(false,true)+' · Ficha general',fields:`<div class="form-grid">`+input('name','Nombre de '+unitLabel(false,true),'text','','required')+input('code','Código interno / Referencia','text','','placeholder="ej. UO-01, SUC-10"')+input('category','Tipo / Categoría','text','','placeholder="ej. Agrícola, Sucursal, Inmueble, Almacén"')+select('manager_id','Responsable / Administrador',options('employees',true,true))+input('phone','Teléfono / Contacto directo','text','')+input('size_capacity','Extensión / Capacidad','text','','placeholder="ej. 150 tareas, 350 m², 40 puestos"')+select('status','Estado operativo',[['active','Operativa / Activa'],['maintenance','En mantenimiento / Adecuación'],['inactive','Inactiva / Fuera de servicio']],'active')+input('address','Dirección / Ubicación física','text','','placeholder="Calle, sector, paraje o coordenadas"')+`</div>`+dims()+area('notes','Observaciones generales, condiciones o datos catastrales',''),help:'Complete la ficha integral de la unidad operativa. Puede asociar un responsable, dimensiones y cargar documentos o planos en adjuntos.'}),
- edit_farm:id=>{const f=S.farms?.find(x=>x.id===id);return {title:'Ficha de '+unitLabel(false,true)+' · '+(f?.name||'#'+id),initial:{id},fields:`<div class="form-grid">`+input('name','Nombre de '+unitLabel(false,true),'text',f?.name||'','required')+input('code','Código interno / Referencia','text',f?.code||'')+input('category','Tipo / Categoría','text',f?.category||'')+select('manager_id','Responsable / Administrador',options('employees'),f?.manager_id||'')+input('phone','Teléfono / Contacto directo','text',f?.phone||'')+input('size_capacity','Extensión / Capacidad','text',f?.size_capacity||'')+select('status','Estado operativo',[['active','Operativa / Activa'],['maintenance','En mantenimiento / Adecuación'],['inactive','Inactiva / Fuera de servicio']],f?.status||'active')+input('address','Dirección / Ubicación física','text',f?.address||'')+`</div>`+dims(f?.department_id||'',f?.project_id||'')+area('notes','Observaciones generales, condiciones o datos catastrales',f?.notes||''),help:'Modifique los datos de la ficha general. Utilice el botón «📎 Adjuntos» para subir o gestionar títulos de propiedad, planos, contratos o fotos.'}},
+ farm:()=>({title:'Nueva '+unitLabel(false,true)+' · Ficha general',fields:`<div class="form-grid"><input type="hidden" name="auto_departments" value="1">`+input('name','Nombre de '+unitLabel(false,true),'text','','required')+input('code','Código interno / Referencia','text','','placeholder="ej. UO-01, SUC-10"')+input('category','Tipo / Categoría','text','','placeholder="ej. Agrícola, Sucursal, Inmueble, Almacén"')+select('manager_id','Responsable / Administrador',options('employees',true,true))+input('phone','Teléfono / Contacto directo','text','')+input('size_capacity','Extensión / Capacidad','text','','placeholder="ej. 150 tareas, 350 m², 40 puestos"')+select('status','Estado operativo',[['active','Operativa / Activa'],['maintenance','En mantenimiento / Adecuación'],['inactive','Inactiva / Fuera de servicio']],'active')+input('address','Dirección / Ubicación física','text','','placeholder="Calle, sector, paraje o coordenadas"')+`</div>`+area('notes','Observaciones generales, condiciones o datos catastrales',''),help:'Complete la ficha integral de la unidad operativa. Se crearán automáticamente los departamentos estándar dentro de esta unidad. Puede asociar un responsable y cargar documentos o planos en adjuntos.'}),
+ edit_farm:id=>{const f=S.farms?.find(x=>x.id===id);return {title:'Ficha de '+unitLabel(false,true)+' · '+(f?.name||'#'+id),initial:{id},fields:`<div class="form-grid">`+input('name','Nombre de '+unitLabel(false,true),'text',f?.name||'','required')+input('code','Código interno / Referencia','text',f?.code||'')+input('category','Tipo / Categoría','text',f?.category||'')+select('manager_id','Responsable / Administrador',options('employees'),f?.manager_id||'')+input('phone','Teléfono / Contacto directo','text',f?.phone||'')+input('size_capacity','Extensión / Capacidad','text',f?.size_capacity||'')+select('status','Estado operativo',[['active','Operativa / Activa'],['maintenance','En mantenimiento / Adecuación'],['inactive','Inactiva / Fuera de servicio']],f?.status||'active')+input('address','Dirección / Ubicación física','text',f?.address||'')+`</div>`+area('notes','Observaciones generales, condiciones o datos catastrales',f?.notes||''),help:'Modifique los datos de la ficha general. Utilice el botón «📎 Adjuntos» para subir o gestionar títulos de propiedad, planos, contratos o fotos.'}},
  farm_sale:()=>({title:'Venta / ingreso de producción',fields:agFarm()+input('product','Producto / concepto','text','','required')+agQty()+input('unit','Unidad (kg, quintal, unidad, servicio…)','text','unidad','required')+input('price','Precio por unidad (RD$)','number','','required min="0.01" step="0.01"')+input('customer','Cliente o comprador','text','','required')+input('seller','Vendedor / responsable','text',me.user.name,'required')+agDate('sale_date','Fecha de venta e ingreso')+input('received','Dinero recibido en esta venta (RD$)','number','0','required min="0" step="0.01"'),help:'El total se calcula con cantidad × precio. Registre aquí cada venta o ingreso una sola vez; los ingresos se resumen por '+unitLabel(false,true)+'. Esta versión registra el ingreso inicial; los cobros posteriores no se gestionan en este formulario.'}),
   edit_farm_sale:id=>{const s=S.farm_sales?.find(x=>x.id===id);return {title:'Editar venta / ingreso · #'+id,initial:{id},fields:select('farm_id',unitLabel(),options('farms',false),s?.farm_id||'','required')+input('product','Producto / concepto','text',s?.product||'','required')+input('quantity','Cantidad','number',s?.quantity||1,'required min="0.001" step="any"')+input('unit','Unidad (kg, quintal, unidad, servicio…)','text',s?.unit||'unidad','required')+input('price','Precio por unidad (RD$)','number',(s?.price||0)/100,'required min="0.01" step="0.01"')+input('customer','Cliente o comprador','text',s?.customer||'','required')+input('seller','Vendedor / responsable','text',s?.seller||'','required')+agDate('sale_date','Fecha de venta e ingreso',s?.sale_date||S.today)+input('received','Dinero recibido en esta venta (RD$)','number',(s?.received||0)/100,'required min="0" step="0.01"'),help:'Actualice los datos de la venta o ingreso. Si se registró movimiento en caja/banco, el importe se ajustará automáticamente.'}},
   farm_contract:(initialEmpId=null)=>{
@@ -5688,7 +5714,7 @@ const agForms={
  edit_expense:id=>{const e=S.expenses.find(x=>x.id===id);return {title:'Editar factura de gasto',initial:{id},fields:input('description','Concepto','text',e.description,'required')+agDate('expense_date','Fecha',e.expense_date)+input('amount','Importe (RD$)','number',e.amount/100,'required min="0.01" step="0.01"')+input('receipt','Número o referencia de factura','text',e.receipt)+input('reason','Motivo de corrección','text','','required'),help:'Se conserva el historial, los adjuntos y los pagos. El importe no puede quedar por debajo de lo pagado. Use Adjuntos para agregar una foto o documento corregido.'}},
   edit_employee:id=>{
     const e=S.employees.find(x=>x.id===id);
-    const unassignedDept = (S.departments||[]).find(d => (d.name||'').trim().toLowerCase() === 'sin departamento asignado' || (d.name||'').trim().toLowerCase() === 'sin departamento');
+    const unassignedDept = (S.departments||[]).find(d => (e?.farm_id ? Number(d.farm_id) === Number(e.farm_id) : !d.farm_id) && ((d.name||'').trim().toLowerCase().includes('sin departamento')));
     const targetDeptId = e?.department_id || unassignedDept?.id || '';
     return {
       title:'Editar ficha de personal · '+(e?.name||'#'+id),
@@ -5697,12 +5723,12 @@ const agForms={
              input('position','Puesto / función','text',e?.position||'','required')+
              select('employment_type','Tipo de vinculación laboral',[['fixed','🏢 Empleado Fijo (Nómina regular / Planta / Recurrente)'],['temporary','🚜 Empleado Temporero (Jornalero / Contratado por labor / Finca / Obra)']],e?.employment_type||'fixed')+
              select('farm_id',unitLabel(false,true)+' / Sucursal asignada (opcional)',options('farms',true),e?.farm_id||'')+
-             select('department_id','Departamento',options('departments'),targetDeptId)+
-             select('project_id','Proyecto',options('projects'),e?.project_id||'')+
+             select('department_id','Departamento',options('departments',!S.membership?.departments?.length,false,e?.farm_id||''),targetDeptId)+
+             select('project_id','Proyecto',options('projects',!S.membership?.projects?.length),e?.project_id||'')+
              select('basis','Base de remuneración',[['monthly','Mensual'],['weekly','Semanal'],['daily','Diaria'],['hourly','Por hora']],e?.basis||'monthly')+
              input('rate','Tarifa vigente (RD$)','number',(e?.rate||0)/100,'required min="0" step="0.01"')+
              area('conditions','Condiciones, horario y observaciones',e?.conditions||''),
-      help:'Modifique los datos vigentes del colaborador y su '+unitLabel(false,true).toLowerCase()+' o sucursal asignada. Todo colaborador pertenece a un departamento de la empresa. Los registros y nóminas históricas anteriores se conservan intactos. Use Adjuntos para subir copia de cédula, pasaporte u otra identificación.'
+      help:'Modifique los datos vigentes del colaborador y su '+unitLabel(false,true).toLowerCase()+' o sucursal asignada. Todo colaborador pertenece a un departamento de la finca o empresa. Los registros y nóminas históricas anteriores se conservan intactos. Use Adjuntos para subir copia de cédula, pasaporte u otra identificación.'
     };
   },
   terminate_employee:id=>{
@@ -7918,8 +7944,10 @@ function agricultureView(){
        </div>
      </td>
      <td>
-       <div>${esc(lookup('departments', f.department_id))}</div>
-       <div class="muted">${esc(lookup('projects', f.project_id))}</div>
+       <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px">
+         ${(S.departments || []).filter(d => d.farm_id === f.id).map(d => `<span class="badge" style="font-size:11px;background:rgba(24,91,77,0.08);color:#185b4d;border:1px solid rgba(24,91,77,0.2)" title="Departamento de esta finca">${esc(d.name)}</span>`).join('') || '<span class="muted" style="font-size:11px">Sin departamentos</span>'}
+       </div>
+       ${canAdmin() ? `<button class="small" type="button" data-open="department" data-farm-id="${f.id}" title="Crear departamento en esta finca">＋ Depto</button>` : ''}
      </td>
      <td>
        <div style="font-weight:600;font-size:13px">${fJobs.length} labor(es)</div>
@@ -8061,7 +8089,7 @@ function agricultureView(){
       panel(
         unitLabel(true) + ` (${farms.length})`,
         (farms.length
-          ? table(['Nombre / Código', 'Responsable / Contacto', 'Ubicación / Capacidad', 'Departamento / Proyecto', 'Labores y Personal Encargado', 'Estado / Observaciones', 'Acciones'], unitsRows)
+          ? table(['Nombre / Código', 'Responsable / Contacto', 'Ubicación / Capacidad', 'Departamentos de la Finca', 'Labores y Personal Encargado', 'Estado / Observaciones', 'Acciones'], unitsRows)
           : '<div class="empty">No hay fincas registradas aún. Haga clic en «+ Nueva Finca» para registrar la primera.</div>'),
         canAdmin() ? openButton('+ Nueva ' + unitLabel(false, true), 'farm') : ''
       ) +
