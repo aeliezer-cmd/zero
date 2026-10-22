@@ -124,6 +124,12 @@ def ensure_monarca_farms(c):
                             VALUES(?, ?, ?, ?, 'active', '')
                         """, (cid, name, code, cat))
                     except Exception: pass
+        try:
+            if hasattr(c, 'commit'):
+                c.commit()
+            elif hasattr(c, 'connection') and hasattr(c.connection, 'commit'):
+                c.connection.commit()
+        except Exception: pass
     except Exception as e:
         print(f"ensure_monarca_farms notice: {e}")
 
