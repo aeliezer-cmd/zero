@@ -249,6 +249,56 @@ class AgricultureTests(unittest.TestCase):
         res = self.save('delete_farm', id=f2)
         self.assertTrue(res.get('ok'))
 
+    def test_daily_labor_toggle_step_and_week(self):
+        emp_id = self.save('employee', name='Carlos Jornalero', position='Jornalero', basis='daily', rate='1200', employment_type='temporary', farm_id=self.f)['id']
+        # 1. Toggle day 1 to active
+        r1 = self.save('toggle_daily_labor', employee_id=emp_id, work_date=self.day, active=True)
+        self.assertTrue(r1['ok'])
+        self.assertTrue(r1['active'])
+        job = self.c.execute("SELECT * FROM farm_jobs WHERE employee_id=? AND work_date=?", (emp_id, self.day)).fetchone()
+        self.assertIsNotNone(job)
+        self.assertEqual(job['amount'], 120000)
+        self.assertEqual(job['status'], 'approved')
+
+        # 2. Toggle same day to inactive
+        r2 = self.save('toggle_daily_labor', employee_id=emp_id, work_date=self.day, active=False)
+        self.assertTrue(r2['ok'])
+        self.assertFalse(r2['active'])
+        job2 = self.c.execute("SELECT * FROM farm_jobs WHERE employee_id=? AND work_date=?", (emp_id, self.day)).fetchone()
+        self.assertIsNone(job2)
+
+        # 3. Step daily labor (+1 then +1)
+        r_step1 = self.save('step_daily_labor', employee_id=emp_id, start_date=self.day, end_date=self.end, delta=1)
+        self.assertTrue(r_step1['ok'])
+        self.assertEqual(r_step1['active_count'], 1)
+
+        r_step2 = self.save('step_daily_labor', employee_id=emp_id, start_date=self.day, end_date=self.end, delta=1)
+        self.assertTrue(r_step2['ok'])
+        self.assertEqual(r_step2['active_count'], 2)
+
+        # Step daily labor (-1)
+        r_step_down = self.save('step_daily_labor', employee_id=emp_id, start_date=self.day, end_date=self.end, delta=-1)
+        self.assertTrue(r_step_down['ok'])
+        self.assertEqual(r_step_down['active_count'], 1)
+
+        # 4. Set week labor days
+        d1 = self.day
+        d2 = (dt.date.fromisoformat(self.day) + dt.timedelta(days=1)).isoformat()
+        d3 = (dt.date.fromisoformat(self.day) + dt.timedelta(days=2)).isoformat()
+        self.save('set_week_labor_days', employee_id=emp_id, start_date=self.day, end_date=self.end, active_dates=[d1, d2, d3])
+        count = self.c.execute("SELECT COUNT(*) FROM farm_jobs WHERE employee_id=? AND work_date BETWEEN ? AND ?", (emp_id, self.day, self.end)).fetchone()[0]
+        self.assertEqual(count, 3)
+
+        # 5. Liquidate in weekly payroll
+        p = self.save('weekly_payroll', farm_id=self.f, start_date=self.day, end_date=self.end)['id']
+        payroll_amount = self.c.execute("SELECT amount FROM farm_payrolls WHERE id=?", (p,)).fetchone()[0]
+        self.assertEqual(payroll_amount, 360000)
+
+        # 6. Cannot toggle or remove liquidated job
+        with self.assertRaises(ValueError) as ctx:
+            self.save('toggle_daily_labor', employee_id=emp_id, work_date=d1, active=False)
+        self.assertIn('ya fue liquidada', str(ctx.exception))
+
 if __name__=='__main__': unittest.main()
 
 

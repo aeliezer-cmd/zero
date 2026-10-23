@@ -7,6 +7,8 @@ const bankCurrencies=[['DOP','DOP · Peso dominicano'],['USD','USD · Dólar est
 
 let currentPayrollTab = 'fixed';
 let currentPayrollCadence = 'all';
+let currentLaborWeekRefDate = '';
+let currentLaborFarmFilter = 'all';
 
 function accountMoney(value,currency='DOP'){return currency+' '+new Intl.NumberFormat('es-DO',{minimumFractionDigits:2,maximumFractionDigits:2}).format((value||0)/100)}
 function accountOptions(currency=null){
@@ -396,7 +398,7 @@ function payrollView(){
       canReview() ? openButton('+ Generar nómina de labores aprobadas', 'weekly_payroll') : ''
     );
 
-    tabContent = planningCards + noticeTemp + planningPanel + queuePanel + settlementPanel;
+    tabContent = planningCards + noticeTemp + renderWeeklyLaborBoard() + planningPanel + queuePanel + settlementPanel;
   }
 
   // -------------------------------------------------------------
@@ -521,6 +523,253 @@ function payrollPanel(){
  return panel('Condiciones y tarifas de nómina',`<p class="definition">Cierres: semanal los viernes, quincenal los días 15 y 30 y mensual el 30. El cierre se conserva para pagos completos o parciales. Febrero cierra su último día; el trabajo del 31 pasa al siguiente período.</p>`+table(['Persona','Estado','Tarifa vigente','Frecuencia',''],S.employees.map(e=>{const s=S.employee_pay_settings?.find(s=>s.employee_id===e.id);const isTerm=e.status==='terminated';return `<tr><td><strong>${esc(e.name)}</strong>${isTerm?' <small class="muted">(De baja)</small>':''}</td><td><span class="badge ${isTerm?'red':'green'}">${isTerm?'🔴 De baja':'🟢 Activo'}</span></td><td>${s?money(s.rate)+' / '+payBasis[s.basis]:'Pendiente de configurar'}</td><td>${s?payCadence[s.cadence]:'—'}</td><td>${canReview()?action('Configurar tarifa','employee_pay',e.id):''}</td></tr>`})))+
  panel('Horas adicionales, bonos y deducciones por inasistencia',table(['Persona / fecha','Concepto','Cantidad / tarifa','Importe','Estado','Acciones'],(S.payroll_adjustments||[]).map(a=>`<tr><td>${esc(lookup('employees',a.employee_id))}<br>${displayDate(a.work_date)}</td><td>${esc(a.description)}<br>${a.kind==='extra'?'<span class="badge blue">Horas extra (+)</span>':a.kind==='agreed'?'<span class="badge green">Acuerdo / Bono (+)</span>':a.kind==='deduction'?'<span class="badge red">Deducción / Descuento (-)</span>':'Avance de contrato'}</td><td>${esc(a.quantity)} ${a.kind==='contract'?'%':a.kind==='deduction'?'día(s)/h':'h'} · ${money(a.rate)}</td><td><strong style="color:${a.kind==='deduction'?'#b85c18':'var(--brand-accent,#185b4d)'}">${a.kind==='deduction'?'- ':''}${money(a.amount)}</strong></td><td>${a.payroll_id?'En nómina #'+a.payroll_id:'Liberado · pendiente de nómina'}</td><td>${!a.payroll_id&&canReview()?action('🗑️ Borrar','delete_payroll_adjustment',a.id):''}</td></tr>`)),canReview()?(openButton('+ Horas / bono','payroll_adjustment')+' '+`<button class="small" data-action="payroll_deduction" style="border-color:#e08436;color:#b85c18">- Descontar días</button>`):'')+
  panel('Contratos por función y avance',table(['Persona / función','Monto contratado','Avance','Liberado / por liberar',''],(S.work_contracts||[]).map(c=>`<tr><td>${esc(lookup('employees',c.employee_id))}<br>${esc(c.description)}</td><td>${money(c.total)}</td><td>${c.progress/100}%</td><td>${money(c.released)} / ${money(c.total-c.released)}</td><td>${canReview()?action('Actualizar y liberar avance','contract_release',c.id):''}</td></tr>`)),canReview()?openButton('+ Contrato fijo','work_contract'):'');
+}
+
+function getWeeklyLaborCycle(refDateStr = S.today) {
+  const parts = (refDateStr || S.today).split('-').map(Number);
+  const ref = new Date(parts[0], parts[1] - 1, parts[2], 12, 0, 0);
+  const dayOfWeek = ref.getDay();
+  const diffToFriday = (dayOfWeek <= 5) ? (5 - dayOfWeek) : (5 + 7 - dayOfWeek);
+  const endFriday = new Date(ref);
+  endFriday.setDate(ref.getDate() + diffToFriday);
+  const startSaturday = new Date(endFriday);
+  startSaturday.setDate(endFriday.getDate() - 6);
+
+  const startStr = startSaturday.toISOString().slice(0, 10);
+  const endStr = endFriday.toISOString().slice(0, 10);
+
+  const dayNames = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+  const dayFullNames = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+
+  const days = [];
+  const curr = new Date(startSaturday);
+  for (let i = 0; i < 7; i++) {
+    const iso = curr.toISOString().slice(0, 10);
+    const dow = curr.getDay();
+    days.push({
+      date: iso,
+      dayName: dayNames[dow],
+      dayFullName: dayFullNames[dow],
+      dayNum: curr.getDate(),
+      monthNum: curr.getMonth() + 1,
+      isToday: iso === S.today,
+      isFuture: iso > S.today
+    });
+    curr.setDate(curr.getDate() + 1);
+  }
+
+  const prevDate = new Date(ref);
+  prevDate.setDate(ref.getDate() - 7);
+  const nextDate = new Date(ref);
+  nextDate.setDate(ref.getDate() + 7);
+
+  return {
+    start: startStr,
+    end: endStr,
+    days: days,
+    prevRef: prevDate.toISOString().slice(0, 10),
+    nextRef: nextDate.toISOString().slice(0, 10)
+  };
+}
+
+function renderWeeklyLaborBoard() {
+  const cycle = getWeeklyLaborCycle(currentLaborWeekRefDate || S.today);
+  const contracts = S.farm_contracts || [];
+  const allJobs = S.farm_jobs || [];
+  const farms = S.farms || [];
+
+  const tempEmployeesMap = new Map();
+  (S.employees || []).forEach(e => {
+    if ((e.status || 'active') === 'terminated') return;
+    const isTemp = e.employment_type === 'temporary';
+    const isDaily = e.basis === 'daily';
+    const hasDailyContract = contracts.some(c => c.employee_id === e.id && (c.basis === 'day' || c.kind === 'temporary'));
+    if (isTemp || isDaily || hasDailyContract) {
+      tempEmployeesMap.set(e.id, e);
+    }
+  });
+
+  contracts.forEach(c => {
+    if (c.status === 'active' && !tempEmployeesMap.has(c.employee_id)) {
+      const emp = (S.employees || []).find(e => e.id === c.employee_id);
+      if (emp && (emp.status || 'active') !== 'terminated') {
+        tempEmployeesMap.set(emp.id, emp);
+      }
+    }
+  });
+
+  let tempEmployees = Array.from(tempEmployeesMap.values());
+
+  if (currentLaborFarmFilter !== 'all') {
+    const fIdNum = Number(currentLaborFarmFilter);
+    tempEmployees = tempEmployees.filter(e => {
+      const co = contracts.find(c => c.employee_id === e.id && c.status === 'active');
+      return (co && co.farm_id === fIdNum) || e.farm_id === fIdNum;
+    });
+  }
+
+  let totalWeekDays = 0;
+  let totalWeekAmount = 0;
+
+  const workerRows = tempEmployees.map(emp => {
+    const co = contracts.find(c => c.employee_id === emp.id && c.status === 'active') || contracts.find(c => c.employee_id === emp.id);
+    const farmId = co?.farm_id || emp.farm_id || (farms[0]?.id) || '';
+    const farmName = farmId ? agName('farms', farmId) : 'Sin finca específica';
+    const dailyRate = co?.rate || emp.rate || 100000;
+
+    const empJobs = allJobs.filter(j => (j.employee_id === emp.id || (co && j.contract_id === co.id)) && j.work_date >= cycle.start && j.work_date <= cycle.end && j.status !== 'canceled');
+    const activeDates = new Set(empJobs.map(j => j.work_date));
+    const liquidatedDates = new Set(empJobs.filter(j => (S.farm_payroll_lines || []).some(l => l.job_id === j.id)).map(j => j.work_date));
+
+    const activeCount = activeDates.size;
+    const workerAmount = empJobs.reduce((sum, j) => sum + (j.earned_amount || j.amount || dailyRate), 0);
+
+    totalWeekDays += activeCount;
+    totalWeekAmount += workerAmount;
+
+    const pillsHtml = cycle.days.map(d => {
+      const isLiq = liquidatedDates.has(d.date);
+      const isAct = activeDates.has(d.date);
+      if (isLiq) {
+        return `<button type="button" class="day-pill pill-liquidated" disabled title="Jornada liquidada en nómina cerrada"><span class="dp-name">${d.dayName} ${d.dayNum}</span><span class="dp-status">🔒 Liquidado</span></button>`;
+      } else if (isAct) {
+        return `<button type="button" class="day-pill pill-active" data-action="toggle_daily_labor" data-emp-id="${emp.id}" data-date="${d.date}" data-farm-id="${farmId}" title="Click para marcar inactivo este día (${displayDate(d.date)})"><span class="dp-name">${d.dayName} ${d.dayNum}${d.isToday ? ' •' : ''}</span><span class="dp-status">✓ Activo</span></button>`;
+      } else {
+        return `<button type="button" class="day-pill pill-inactive" data-action="toggle_daily_labor" data-emp-id="${emp.id}" data-date="${d.date}" data-farm-id="${farmId}" title="Click para marcar activo este día (${displayDate(d.date)})"><span class="dp-name">${d.dayName} ${d.dayNum}${d.isToday ? ' •' : ''}</span><span class="dp-status">— Inactivo</span></button>`;
+      }
+    }).join('');
+
+    return `
+      <tr>
+        <td style="min-width:180px">
+          <strong>${esc(emp.name)}</strong>
+          <div class="muted" style="font-size:12px">🚜 ${esc(farmName)}</div>
+          <div style="font-size:11.5px;color:var(--brand-accent,#185b4d);font-weight:600;margin-top:2px">${money(dailyRate)} / día</div>
+        </td>
+        <td style="min-width:150px;text-align:center">
+          <div class="days-stepper" style="display:flex;align-items:center;justify-content:center;gap:8px">
+            <button type="button" class="stepper-btn" data-action="step_daily_labor" data-emp-id="${emp.id}" data-delta="-1" data-start="${cycle.start}" data-end="${cycle.end}" data-farm-id="${farmId}" ${activeCount === 0 || activeCount === liquidatedDates.size ? 'disabled' : ''} title="Restar 1 día activo a esta semana">➖</button>
+            <div style="text-align:center;min-width:85px">
+              <strong style="font-size:16px;color:var(--brand-accent,#185b4d);display:block">${activeCount} / 7 d</strong>
+              <span style="font-size:11.5px;font-weight:600;color:var(--text)">${money(workerAmount)}</span>
+            </div>
+            <button type="button" class="stepper-btn primary" data-action="step_daily_labor" data-emp-id="${emp.id}" data-delta="1" data-start="${cycle.start}" data-end="${cycle.end}" data-farm-id="${farmId}" ${activeCount === 7 ? 'disabled' : ''} title="Sumar 1 día activo a esta semana">➕</button>
+          </div>
+        </td>
+        <td>
+          <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center">
+            ${pillsHtml}
+          </div>
+        </td>
+        <td style="min-width:150px">
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <div style="display:flex;gap:4px">
+              <button type="button" class="preset-btn" data-action="set_week_labor_days" data-emp-id="${emp.id}" data-start="${cycle.start}" data-end="${cycle.end}" data-farm-id="${farmId}" data-preset="lun_vie" title="Activar de Lunes a Viernes (5 días)">Lun-Vie</button>
+              <button type="button" class="preset-btn" data-action="set_week_labor_days" data-emp-id="${emp.id}" data-start="${cycle.start}" data-end="${cycle.end}" data-farm-id="${farmId}" data-preset="lun_sab" title="Activar de Lunes a Sábado (6 días)">Lun-Sáb</button>
+              <button type="button" class="preset-btn" data-action="set_week_labor_days" data-emp-id="${emp.id}" data-start="${cycle.start}" data-end="${cycle.end}" data-farm-id="${farmId}" data-preset="clear" style="color:#b85c18" title="Desactivar todos los días no liquidados">Vaciar</button>
+            </div>
+            <div style="display:flex;gap:4px;margin-top:2px">
+              <button class="small" type="button" data-action="view_employee_account" data-id="${emp.id}" style="font-size:11px;padding:2px 8px" title="Ver cuenta corriente del empleado">💳 Cuenta</button>
+            </div>
+          </div>
+        </td>
+      </tr>
+    `;
+  });
+
+  const farmFilterPills = farms.length > 1 ? `
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:10px 0">
+      <span class="muted" style="font-size:12px">Filtrar por finca:</span>
+      <button type="button" class="small ${currentLaborFarmFilter === 'all' ? 'primary' : ''}" data-action="filter_labor_farm" data-farm-id="all">Todas (${tempEmployeesMap.size})</button>
+      ${farms.map(f => `<button type="button" class="small ${String(currentLaborFarmFilter) === String(f.id) ? 'primary' : ''}" data-action="filter_labor_farm" data-farm-id="${f.id}">🚜 ${esc(f.name)}</button>`).join('')}
+    </div>
+  ` : '';
+
+  const headerHtml = `
+    <div class="weekly-labor-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:14px;background:var(--card);padding:14px 18px;border-radius:10px;border:1px solid var(--border);box-shadow:0 1px 3px rgba(0,0,0,0.03)">
+      <div style="display:flex;align-items:center;gap:12px">
+        <span style="font-size:26px">📅</span>
+        <div>
+          <h3 style="margin:0;font-size:16px;font-weight:700">Control Semanal de Jornales: Días Activos e Inactivos</h3>
+          <p class="muted" style="margin:2px 0 0;font-size:12px">Suma, resta y marca los días trabajados por el personal temporero. Los días activos se computan automáticamente para la nómina.</p>
+        </div>
+      </div>
+      
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <button type="button" class="small" data-action="nav_labor_week" data-ref="${cycle.prevRef}" title="Semana anterior">◀ Anterior</button>
+        <div style="background:var(--surface,#f1f5f9);padding:6px 12px;border-radius:6px;font-size:13px;font-weight:700;border:1px solid var(--border)">
+          Semana: ${displayDate(cycle.start)} — ${displayDate(cycle.end)}
+        </div>
+        <button type="button" class="small" data-action="nav_labor_week" data-ref="${cycle.nextRef}" title="Semana siguiente">Siguiente ▶</button>
+        ${cycle.start <= S.today && S.today <= cycle.end ? '' : `<button type="button" class="small primary" data-action="nav_labor_week" data-ref="${S.today}">Esta semana</button>`}
+      </div>
+    </div>
+  `;
+
+  const summaryKpis = `
+    <div class="cards" style="margin-bottom:14px;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr))">
+      <article class="card">
+        <div class="card-title">Personal temporero en lista <span>👥</span></div>
+        <div class="card-value">${tempEmployees.length}</div>
+        <div class="card-note">Trabajadores por día en esta vista</div>
+      </article>
+      <article class="card highlight">
+        <div class="card-title">Jornales activos de la semana <span>✓</span></div>
+        <div class="card-value" style="color:var(--brand-accent,#185b4d)">${totalWeekDays} d</div>
+        <div class="card-note">Días laborados marcados como activos</div>
+      </article>
+      <article class="card">
+        <div class="card-title">Monto bruto de la semana <span>💵</span></div>
+        <div class="card-value">${money(totalWeekAmount)}</div>
+        <div class="card-note">Cálculo según tarifa pactada</div>
+      </article>
+      <article class="card" style="display:flex;flex-direction:column;justify-content:center;align-items:flex-start">
+        <button class="primary" type="button" data-action="liquidate_labor_week" data-end="${cycle.end}" ${totalWeekAmount === 0 ? 'disabled' : ''} style="width:100%;text-align:center;font-weight:600">
+          📋 Liquidar esta semana en nómina →
+        </button>
+        <div class="card-note" style="margin-top:6px">Genera nómina semanal con cierre al ${displayDate(cycle.end)}</div>
+      </article>
+    </div>
+  `;
+
+  const tableContent = workerRows.length ? `
+    <div style="overflow-x:auto">
+      <table class="data-table" style="width:100%">
+        <thead>
+          <tr>
+            <th>Colaborador / Finca / Tarifa</th>
+            <th style="text-align:center">Sumar / Restar Días</th>
+            <th>Días de la Semana (Activos / Inactivos)</th>
+            <th>Atajos y Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${workerRows.join('')}
+        </tbody>
+      </table>
+    </div>
+  ` : `
+    <div class="empty" style="padding:28px 16px;text-align:center">
+      <div style="font-size:32px;margin-bottom:8px">🚜</div>
+      <strong style="font-size:15px">No hay colaboradores temporeros registrados aún.</strong>
+      <p class="muted" style="margin:4px 0 14px">Agregue colaboradores con tipo «Temporero» o tarifa «Por día» para gestionar sus jornadas activas por semana.</p>
+      <button class="primary small" type="button" data-action="add_daily_temporero">＋ Registrar colaborador temporero</button>
+    </div>
+  `;
+
+  const bottomActions = `
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-top:12px">
+      <button class="small" type="button" data-action="add_daily_temporero">＋ Registrar nuevo temporero</button>
+      <div class="muted" style="font-size:12px">
+        💡 <strong>Tip:</strong> Pulse directamente sobre cualquier día para activarlo o desactivarlo, o use <strong>[ ➕ ]</strong> y <strong>[ ➖ ]</strong> para sumar y restar jornadas rápidamente.
+      </div>
+    </div>
+  `;
+
+  return panel(
+    'Control Semanal de Jornales: Días Activos e Inactivos (Personal Temporero)',
+    headerHtml + farmFilterPills + summaryKpis + tableContent + bottomActions
+  );
 }
 
 function treasuryView(){

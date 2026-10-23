@@ -121,7 +121,7 @@ def state(core,c,uid,cid,m):
     return dict(farms=farms,farm_contracts=contracts,farm_jobs=jobs,farm_payrolls=payrolls,farm_payroll_lines=lines,farm_sales=sales)
 
 def mutate(core,c,uid,cid,action,d):
-    level=3 if action in ('farm','edit_farm','delete_farm') else 2 if action in ('farm_contract','edit_farm_contract','delete_farm_contract','contract_status','farm_job','edit_farm_job','delete_farm_job','approve_job','job_status','weekly_payroll','pay_payroll','assign_queue_job','report_queue_job','approve_queue_job','add_farm_labor') else 1
+    level=3 if action in ('farm','edit_farm','delete_farm') else 2 if action in ('farm_contract','edit_farm_contract','delete_farm_contract','contract_status','farm_job','edit_farm_job','delete_farm_job','approve_job','job_status','weekly_payroll','pay_payroll','assign_queue_job','report_queue_job','approve_queue_job','add_farm_labor','toggle_daily_labor','step_daily_labor','set_week_labor_days') else 1
     m=core.membership(c,uid,cid,level,action=='farm_sale')
     def insert(table,row):
         row=dict(company_id=cid,**row)
@@ -447,6 +447,139 @@ def mutate(core,c,uid,cid,action,d):
         c.execute("DELETE FROM farm_payrolls WHERE id=? AND company_id=?",(item['id'],cid))
         core.audit(c,uid,cid,'descartar nómina agrícola','farm_payrolls',item['id'],item)
         return {'ok':True,'id':item['id']}
+    if action=='toggle_daily_labor':
+        emp_id=int(d.get('employee_id'))
+        emp=core.ref(c,'employees',emp_id,cid)
+        core.assert_scope(m,emp)
+        work_date=core.date(d.get('work_date')).isoformat()
+        if work_date>(core.today()+dt.timedelta(days=45)).isoformat():
+            raise ValueError('La fecha está fuera del rango permitido.')
+        active_req=d.get('active')
+        if active_req in ('true','1',1,True): active_flag=True
+        elif active_req in ('false','0',0,False): active_flag=False
+        else: active_flag=None
+        f_id=d.get('farm_id') or emp.get('farm_id')
+        if not f_id:
+            first_farm=core.one(c,'SELECT id FROM farms WHERE company_id=? AND status="active" ORDER BY id LIMIT 1',(cid,))
+            if first_farm: f_id=first_farm['id']
+            else:
+                first_farm=core.one(c,'SELECT id FROM farms WHERE company_id=? ORDER BY id LIMIT 1',(cid,))
+                if first_farm: f_id=first_farm['id']
+                else: f_id=c.execute("INSERT INTO farms(company_id,name,status) VALUES(?,'Unidad Operativa Principal','active')",(cid,)).lastrowid
+        f=farm(core,c,cid,m,f_id)
+        if d.get('rate'): rate_val=core.amount(d.get('rate'),True)
+        elif emp.get('rate'): rate_val=int(emp['rate'])
+        else: rate_val=100000
+        if rate_val<=0: rate_val=100000
+        co=core.one(c,"SELECT * FROM farm_contracts WHERE employee_id=? AND status='active' AND company_id=? ORDER BY id DESC LIMIT 1",(emp['id'],cid))
+        if not co:
+            co_id=c.execute("INSERT INTO farm_contracts(company_id,farm_id,employee_id,kind,basis,rate,description,start_date,end_date,status,created_by) VALUES(?,?,?,'temporary','day',?,'Personal por día / Jornalero',?,'2099-12-31','active',?)",(cid,f['id'],emp['id'],rate_val,work_date,uid)).lastrowid
+            co=core.ref(c,'farm_contracts',co_id,cid)
+        else:
+            if co.get('rate'): rate_val=co['rate']
+        job=core.one(c,"SELECT j.* FROM farm_jobs j JOIN farm_contracts c2 ON c2.id=j.contract_id WHERE j.company_id=? AND (j.employee_id=? OR c2.employee_id=?) AND j.work_date=?",(cid,emp['id'],emp['id'],work_date))
+        if job:
+            in_payroll=c.execute("SELECT COUNT(*) FROM farm_payroll_lines WHERE job_id=?",(job['id'],)).fetchone()[0]
+            if in_payroll:
+                raise ValueError(f'La jornada del {work_date} de {emp["name"]} ya fue liquidada en una nómina cerrada y no puede modificarse.')
+            should_deactivate=(active_flag is False) or (active_flag is None)
+            if should_deactivate:
+                c.execute("DELETE FROM farm_jobs WHERE id=? AND company_id=?",(job['id'],cid))
+                c.execute("DELETE FROM employee_account_entries WHERE company_id=? AND reference=?",(cid,f"farm_job:{job['id']}"))
+                core.audit(c,uid,cid,'desactivar día laborable','farm_jobs',job['id'],job)
+                return {'ok':True,'active':False,'work_date':work_date,'employee_id':emp['id']}
+            else:
+                if job['status']!='approved':
+                    c.execute("UPDATE farm_jobs SET status='approved' WHERE id=?",(job['id'],))
+                return {'ok':True,'active':True,'work_date':work_date,'employee_id':emp['id'],'job_id':job['id']}
+        else:
+            should_activate=(active_flag is True) or (active_flag is None)
+            if should_activate:
+                job_record=dict(
+                    contract_id=co['id'],
+                    work_date=work_date,
+                    quantity='1',
+                    amount=rate_val,
+                    description=core.text(d.get('description') or f'Jornada laboral ({work_date})','Descripción',3000),
+                    status='approved',
+                    created_by=uid,
+                    employee_id=emp['id'],
+                    farm_id=f['id'],
+                    progress=100,
+                    earned_amount=rate_val,
+                    completion_status='completed',
+                    duration=1.0,
+                    duration_unit='days',
+                    rate=rate_val,
+                    assigned_date=work_date,
+                    due_date=work_date
+                )
+                ident=insert('farm_jobs',job_record)
+                core.audit(c,uid,cid,'activar día laborable','farm_jobs',ident['id'],job_record)
+                return {'ok':True,'active':True,'work_date':work_date,'employee_id':emp['id'],'job_id':ident['id']}
+            else:
+                return {'ok':True,'active':False,'work_date':work_date,'employee_id':emp['id']}
+
+    if action=='step_daily_labor':
+        emp_id=int(d.get('employee_id'))
+        emp=core.ref(c,'employees',emp_id,cid)
+        core.assert_scope(m,emp)
+        start_d=core.date(d.get('start_date'))
+        end_d=core.date(d.get('end_date'))
+        if start_d>end_d: start_d,end_d=end_d,start_d
+        delta=int(d.get('delta',1))
+        curr=start_d
+        all_dates=[]
+        while curr<=end_d:
+            all_dates.append(curr.isoformat())
+            curr+=dt.timedelta(days=1)
+        jobs=core.rows(c,"SELECT j.* FROM farm_jobs j JOIN farm_contracts c2 ON c2.id=j.contract_id WHERE j.company_id=? AND (j.employee_id=? OR c2.employee_id=?) AND j.work_date BETWEEN ? AND ?",(cid,emp['id'],emp['id'],start_d.isoformat(),end_d.isoformat()))
+        active_dates={j['work_date'] for j in jobs}
+        if delta>0:
+            available=[dt_str for dt_str in all_dates if dt_str not in active_dates]
+            if not available:
+                raise ValueError('Todos los días de esta semana ya están marcados como activos para este colaborador.')
+            target_date=available[0]
+            mutate(core,c,uid,cid,'toggle_daily_labor',dict(employee_id=emp['id'],work_date=target_date,active=True,farm_id=d.get('farm_id'),rate=d.get('rate')))
+            return dict(ok=True,delta=1,modified_date=target_date,active_count=len(active_dates)+1)
+        elif delta<0:
+            liquidated_dates=set()
+            for j in jobs:
+                if c.execute("SELECT COUNT(*) FROM farm_payroll_lines WHERE job_id=?",(j['id'],)).fetchone()[0]:
+                    liquidated_dates.add(j['work_date'])
+            available_to_remove=[dt_str for dt_str in reversed(all_dates) if dt_str in active_dates and dt_str not in liquidated_dates]
+            if not available_to_remove:
+                if not active_dates:
+                    raise ValueError('No hay días activos para restar en esta semana.')
+                else:
+                    raise ValueError('Los días activos de esta semana ya fueron liquidados en nómina y no pueden restarse.')
+            target_date=available_to_remove[0]
+            mutate(core,c,uid,cid,'toggle_daily_labor',dict(employee_id=emp['id'],work_date=target_date,active=False,farm_id=d.get('farm_id')))
+            return dict(ok=True,delta=-1,modified_date=target_date,active_count=len(active_dates)-1)
+        return dict(ok=True,delta=0)
+
+    if action=='set_week_labor_days':
+        emp_id=int(d.get('employee_id'))
+        emp=core.ref(c,'employees',emp_id,cid)
+        core.assert_scope(m,emp)
+        start_d=core.date(d.get('start_date'))
+        end_d=core.date(d.get('end_date'))
+        if start_d>end_d: start_d,end_d=end_d,start_d
+        active_dates_req=set(d.get('active_dates') or [])
+        curr=start_d
+        while curr<=end_d:
+            iso_d=curr.isoformat()
+            should_be_active=iso_d in active_dates_req
+            if should_be_active:
+                mutate(core,c,uid,cid,'toggle_daily_labor',dict(employee_id=emp['id'],work_date=iso_d,active=True,farm_id=d.get('farm_id'),rate=d.get('rate')))
+            else:
+                try:
+                    mutate(core,c,uid,cid,'toggle_daily_labor',dict(employee_id=emp['id'],work_date=iso_d,active=False,farm_id=d.get('farm_id')))
+                except ValueError:
+                    pass
+            curr+=dt.timedelta(days=1)
+        return dict(ok=True)
+
     table={'contract_status':'farm_contracts','approve_job':'farm_jobs','job_status':'farm_jobs','pay_payroll':'farm_payrolls'}[action]
     item=core.ref(c,table,d.get('id'),cid)
     if action=='contract_status':
@@ -474,5 +607,5 @@ def mutate(core,c,uid,cid,action,d):
     c.execute('UPDATE '+table+' SET '+','.join(k+'=?' for k in update)+' WHERE id=?',(*update.values(),item['id']))
     core.audit(c,uid,cid,action,table,item['id'],dict(before=item,after=update));return {'id':item['id']}
 
-ACTIONS={'farm','edit_farm','delete_farm','farm_sale','edit_farm_sale','delete_farm_sale','farm_contract','edit_farm_contract','delete_farm_contract','farm_job','edit_farm_job','delete_farm_job','weekly_payroll','discard_farm_payroll','delete_farm_payroll','contract_status','approve_job','job_status','pay_payroll','approve_all_farm_jobs','assign_queue_job','report_queue_job','approve_queue_job','add_farm_labor'}
+ACTIONS={'farm','edit_farm','delete_farm','farm_sale','edit_farm_sale','delete_farm_sale','farm_contract','edit_farm_contract','delete_farm_contract','farm_job','edit_farm_job','delete_farm_job','weekly_payroll','discard_farm_payroll','delete_farm_payroll','contract_status','approve_job','job_status','pay_payroll','approve_all_farm_jobs','assign_queue_job','report_queue_job','approve_queue_job','add_farm_labor','toggle_daily_labor','step_daily_labor','set_week_labor_days'}
 

@@ -3301,6 +3301,124 @@ tr.selected-row td {
   }
 }
 
+/* Control Semanal de Jornales: Días Activos e Inactivos (Temporeros) */
+.day-pill {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  min-width: 64px;
+  border: 1px solid var(--border);
+  background: var(--surface, #f8fafc);
+  color: var(--text-muted, #64748b);
+  user-select: none;
+  line-height: 1.2;
+}
+.day-pill .dp-name {
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.9;
+}
+.day-pill .dp-status {
+  font-size: 10px;
+  font-weight: 700;
+  margin-top: 2px;
+}
+.day-pill.pill-active {
+  background: #185b4d !important;
+  color: #ffffff !important;
+  border-color: #12453a !important;
+  box-shadow: 0 1px 3px rgba(24, 91, 77, 0.25);
+}
+.day-pill.pill-active:hover {
+  background: #12453a !important;
+  transform: translateY(-1px);
+}
+.day-pill.pill-inactive {
+  background: var(--card, #ffffff);
+  color: var(--text-muted, #64748b);
+  border: 1px dashed var(--border, #cbd5e1);
+}
+.day-pill.pill-inactive:hover {
+  border-color: #185b4d;
+  color: #185b4d;
+  background: var(--surface, #f8fafc);
+  transform: translateY(-1px);
+}
+.day-pill.pill-liquidated {
+  background: #e0eef9 !important;
+  color: #1e5a8a !important;
+  border-color: #badcf5 !important;
+  cursor: not-allowed;
+  opacity: 0.85;
+}
+[data-theme=dark] .day-pill.pill-active {
+  background: #059669 !important;
+  color: #ffffff !important;
+  border-color: #047857 !important;
+}
+[data-theme=dark] .day-pill.pill-liquidated {
+  background: #1e3a8a !important;
+  color: #bfdbfe !important;
+  border-color: #2563eb !important;
+}
+.stepper-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  font-size: 13px;
+  font-weight: bold;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--card, #ffffff);
+  color: var(--text);
+  transition: all 0.15s ease;
+}
+.stepper-btn:hover:not(:disabled) {
+  border-color: #185b4d;
+  color: #185b4d;
+  transform: scale(1.05);
+}
+.stepper-btn.primary {
+  background: #185b4d;
+  color: #ffffff;
+  border-color: #185b4d;
+}
+.stepper-btn.primary:hover:not(:disabled) {
+  background: #12453a;
+  color: #ffffff;
+}
+.stepper-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.preset-btn {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--surface, #f1f5f9);
+  border: 1px solid var(--border);
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+  font-weight: 500;
+  transition: all 0.15s ease;
+}
+.preset-btn:hover {
+  border-color: #185b4d;
+  color: #185b4d;
+  background: var(--card, #ffffff);
+}
+
+
 
 
 
