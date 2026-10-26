@@ -169,12 +169,11 @@ def mutate(core,c,uid,cid,action,d):
         
         try:
             import transfer
-            from pathlib import Path
-            backup_dir=Path('data/backups')
-            backup_dir.mkdir(parents=True,exist_ok=True)
-            archive=transfer.export_company(core,c,uid,target_cid)
-            b_file=backup_dir / f"safety-pre-reset-{target_cid}-{core.today().isoformat()}.zero.json"
-            b_file.write_text(json.dumps(archive,ensure_ascii=False,indent=2),encoding='utf-8')
+            backup_dir = core.DB.parent / 'backups'
+            backup_dir.mkdir(parents=True, exist_ok=True)
+            archive = transfer.export_company(core, c, uid, target_cid)
+            b_file = backup_dir / f"safety-pre-reset-{target_cid}-{core.today().isoformat()}.zero.json"
+            b_file.write_text(json.dumps(archive, ensure_ascii=False, indent=2), encoding='utf-8')
         except Exception:
             pass
 

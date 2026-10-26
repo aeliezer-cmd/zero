@@ -3,6 +3,7 @@ import json
 import base64
 import tempfile
 import sqlite3
+import shutil
 from pathlib import Path
 import app
 
@@ -38,7 +39,6 @@ class TestDatabasePersistence(unittest.TestCase):
             self.assertEqual(len(employees), 0)
 
     def test_database_backup_and_restore(self):
-        # Create a backup
         with tempfile.NamedTemporaryFile(suffix='.sqlite3', delete=False) as backup_tmp:
             backup_path = Path(backup_tmp.name)
         try:
@@ -49,6 +49,33 @@ class TestDatabasePersistence(unittest.TestCase):
         finally:
             if backup_path.exists():
                 backup_path.unlink()
+
+    def test_auto_backup_mechanism(self):
+        app.auto_backup()
+        backup_dir = app.DB.parent / 'backups'
+        today_backup = backup_dir / f"auto_backup_{app.today().isoformat()}.sqlite3"
+        self.assertTrue(today_backup.exists())
+        self.assertGreater(today_backup.stat().st_size, 0)
+
+    def test_fresh_zero_sqlite3_copies_template(self):
+        temp_dir = Path(tempfile.mkdtemp())
+        try:
+            fresh_db = temp_dir / 'zero.sqlite3'
+            self.assertFalse(fresh_db.exists())
+            old_db = app.DB
+            app.DB = fresh_db
+            try:
+                app.initialize(seed=False)
+                self.assertTrue(fresh_db.exists())
+                with app.connect() as c:
+                    monarca = app.one(c, "SELECT id, name FROM companies WHERE name LIKE '%Monarca%'")
+                    self.assertIsNotNone(monarca)
+                    farms = app.rows(c, "SELECT * FROM farms WHERE company_id=?", (monarca['id'],))
+                    self.assertGreaterEqual(len(farms), 7)
+            finally:
+                app.DB = old_db
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
 
 if __name__ == '__main__':
     unittest.main()

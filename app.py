@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import agriculture, commerce, fiscal, payroll, treasury, ecf, dmca, mailer, gdrive, real_estate
 import sys, transfer, report_export, attachments, base64, webbrowser
-import argparse, calendar, datetime as dt, hashlib, hmac, json, os, secrets, sqlite3, threading, time
+import argparse, calendar, datetime as dt, hashlib, hmac, json, os, secrets, sqlite3, threading, time, shutil, signal
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
@@ -26,6 +26,21 @@ def connect():
     c.execute('PRAGMA foreign_keys=ON')
     c.execute('PRAGMA busy_timeout=20000')
     return c
+
+def graceful_shutdown(signum, frame):
+    print(f"\n[Zero] Apagando servidor de forma segura (señal {signum}). Vaciando WAL a disco...", flush=True)
+    try:
+        with connect() as c:
+            c.execute('PRAGMA wal_checkpoint(TRUNCATE)')
+    except Exception as e:
+        print(f"[Zero] Error en wal_checkpoint durante apagado: {e}", flush=True)
+    sys.exit(0)
+
+try:
+    signal.signal(signal.SIGTERM, graceful_shutdown)
+    signal.signal(signal.SIGINT, graceful_shutdown)
+except (ValueError, AttributeError):
+    pass
 
 def password_hash(password, salt=None):
     salt = salt or secrets.token_hex(16)
@@ -212,12 +227,44 @@ CREATE INDEX IF NOT EXISTS audit_company ON audit(company_id,id);
 
 SCHEMA += agriculture.SCHEMA + commerce.SCHEMA + treasury.SCHEMA + payroll.SCHEMA + ecf.SCHEMA + dmca.SCHEMA + gdrive.SCHEMA + real_estate.SCHEMA
 
+def auto_backup():
+    try:
+        if not DB.exists(): return
+        backup_dir = DB.parent / 'backups'
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        today_stamp = today().isoformat()
+        today_backup = backup_dir / f"auto_backup_{today_stamp}.sqlite3"
+        if not today_backup.exists():
+            with connect() as src, sqlite3.connect(today_backup) as dst:
+                src.backup(dst)
+            try: os.chmod(today_backup, 0o600)
+            except Exception: pass
+            all_auto = sorted(backup_dir.glob("auto_backup_*.sqlite3"))
+            if len(all_auto) > 14:
+                for old in all_auto[:-14]:
+                    try: old.unlink()
+                    except Exception: pass
+    except Exception as e:
+        print(f"auto_backup notice: {e}")
+
 def initialize(seed=True):
     new_directory=not DB.parent.exists()
     DB.parent.mkdir(parents=True, exist_ok=True)
-    if new_directory or DB.parent==ROOT/'data': os.chmod(DB.parent,0o700)
+    if new_directory or DB.parent==ROOT/'data':
+        try: os.chmod(DB.parent,0o700)
+        except Exception: pass
+    if not DB.exists() and DB.name == 'zero.sqlite3':
+        template_db = ROOT / 'data_template' / 'zero.sqlite3'
+        if template_db.exists():
+            try:
+                shutil.copy2(template_db, DB)
+                os.chmod(DB, 0o600)
+            except Exception as e:
+                print(f"initialize template copy notice: {e}")
     with connect() as c:
         c.execute('PRAGMA journal_mode=WAL')
+        c.execute('PRAGMA synchronous=NORMAL')
+        c.execute('PRAGMA wal_autocheckpoint=100')
         dept_sql = c.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='departments'").fetchone()
         if dept_sql and "farm_id" not in dept_sql[0]:
             c.execute("PRAGMA foreign_keys=OFF")
@@ -376,7 +423,9 @@ def initialize(seed=True):
         creds = ROOT / 'data' / 'ACCESOS.txt'
         creds.write_text('ZERO — Accesos iniciales\n\nDemostración (dos empresas ficticias):\nUsuario: demo\nContraseña: '+demo_password+'\n\nEmpresas reales:\nUsuario: monarca (o admin)\nContraseña: '+real_password+'\n\nCambie las contraseñas desde Configuración. Este archivo contiene secretos: no compartir.\n', encoding='utf-8')
         os.chmod(creds,0o600)
-    os.chmod(DB,0o600)
+    try: os.chmod(DB,0o600)
+    except Exception: pass
+    auto_backup()
 
 def occurrence(sub, index):
     start = date(sub['start_date'])
