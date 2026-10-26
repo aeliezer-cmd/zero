@@ -197,9 +197,10 @@ CREATE TABLE IF NOT EXISTS payments(id INTEGER PRIMARY KEY, company_id INTEGER N
 CREATE TABLE IF NOT EXISTS employees(id INTEGER PRIMARY KEY, company_id INTEGER NOT NULL REFERENCES companies(id), name TEXT NOT NULL, position TEXT NOT NULL, department_id INTEGER REFERENCES departments(id), project_id INTEGER REFERENCES projects(id), basis TEXT NOT NULL CHECK(basis IN ('monthly','weekly','daily','hourly')), rate INTEGER NOT NULL CHECK(rate>=0), conditions TEXT NOT NULL DEFAULT '', employment_type TEXT NOT NULL DEFAULT 'fixed', status TEXT NOT NULL DEFAULT 'active', termination_date TEXT, termination_reason TEXT, termination_notes TEXT NOT NULL DEFAULT '', farm_id INTEGER);
 CREATE TABLE IF NOT EXISTS worklogs(id INTEGER PRIMARY KEY, company_id INTEGER NOT NULL REFERENCES companies(id), employee_id INTEGER NOT NULL REFERENCES employees(id), department_id INTEGER REFERENCES departments(id), project_id INTEGER REFERENCES projects(id), work_date TEXT NOT NULL, minutes INTEGER NOT NULL CHECK(minutes>0), activity TEXT NOT NULL, method TEXT NOT NULL, notes TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'proposed' CHECK(status IN ('proposed','approved')), created_by INTEGER NOT NULL REFERENCES users(id));
 CREATE TABLE IF NOT EXISTS tasks(id INTEGER PRIMARY KEY, company_id INTEGER NOT NULL REFERENCES companies(id), title TEXT NOT NULL, responsible_id INTEGER REFERENCES employees(id), department_id INTEGER REFERENCES departments(id), project_id INTEGER REFERENCES projects(id), due_date TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','progress','done')), support TEXT NOT NULL DEFAULT '', duration REAL NOT NULL DEFAULT 1.0, duration_unit TEXT NOT NULL DEFAULT 'hours' CHECK(duration_unit IN ('hours','days','weeks','months')), rate INTEGER NOT NULL DEFAULT 0, farm_id INTEGER REFERENCES farms(id), completed_at TEXT);
-CREATE TABLE IF NOT EXISTS expenses(id INTEGER PRIMARY KEY, company_id INTEGER NOT NULL REFERENCES companies(id), description TEXT NOT NULL, department_id INTEGER REFERENCES departments(id), project_id INTEGER REFERENCES projects(id), expense_date TEXT NOT NULL, amount INTEGER NOT NULL CHECK(amount>0), status TEXT NOT NULL DEFAULT 'proposed' CHECK(status IN ('proposed','approved')), receipt TEXT NOT NULL DEFAULT '', created_by INTEGER NOT NULL REFERENCES users(id));
+CREATE TABLE IF NOT EXISTS suppliers(id INTEGER PRIMARY KEY, company_id INTEGER NOT NULL REFERENCES companies(id), name TEXT NOT NULL, contact TEXT NOT NULL DEFAULT '', phone TEXT NOT NULL DEFAULT '', email TEXT NOT NULL DEFAULT '', rnc TEXT NOT NULL DEFAULT '', address TEXT NOT NULL DEFAULT '', category TEXT NOT NULL DEFAULT '', notes TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS expenses(id INTEGER PRIMARY KEY, company_id INTEGER NOT NULL REFERENCES companies(id), description TEXT NOT NULL, department_id INTEGER REFERENCES departments(id), project_id INTEGER REFERENCES projects(id), expense_date TEXT NOT NULL, amount INTEGER NOT NULL CHECK(amount>0), status TEXT NOT NULL DEFAULT 'proposed' CHECK(status IN ('proposed','approved')), receipt TEXT NOT NULL DEFAULT '', supplier_id INTEGER REFERENCES suppliers(id), created_by INTEGER NOT NULL REFERENCES users(id));
 CREATE TABLE IF NOT EXISTS expense_payments(id INTEGER PRIMARY KEY, company_id INTEGER NOT NULL REFERENCES companies(id), expense_id INTEGER NOT NULL REFERENCES expenses(id), amount INTEGER NOT NULL CHECK(amount>0), paid_date TEXT NOT NULL, reference TEXT NOT NULL, request_key TEXT UNIQUE NOT NULL, created_at TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS attachments(id INTEGER PRIMARY KEY, company_id INTEGER NOT NULL REFERENCES companies(id), entity TEXT NOT NULL CHECK(entity IN ('expenses','expense_payments','charges','payments','payrolls','payroll_payments','farm_payrolls','employees','farms')), entity_id INTEGER NOT NULL, filename TEXT NOT NULL, mime TEXT NOT NULL, size INTEGER NOT NULL CHECK(size>0), sha256 TEXT NOT NULL, content_base64 TEXT NOT NULL, uploaded_by INTEGER NOT NULL REFERENCES users(id), created_at TEXT NOT NULL, UNIQUE(company_id,entity,entity_id,sha256));
+CREATE TABLE IF NOT EXISTS attachments(id INTEGER PRIMARY KEY, company_id INTEGER NOT NULL REFERENCES companies(id), entity TEXT NOT NULL CHECK(entity IN ('expenses','expense_payments','charges','payments','payrolls','payroll_payments','farm_payrolls','employees','farms','suppliers')), entity_id INTEGER NOT NULL, filename TEXT NOT NULL, mime TEXT NOT NULL, size INTEGER NOT NULL CHECK(size>0), sha256 TEXT NOT NULL, content_base64 TEXT NOT NULL, uploaded_by INTEGER NOT NULL REFERENCES users(id), created_at TEXT NOT NULL, UNIQUE(company_id,entity,entity_id,sha256));
 CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY, user_id INTEGER REFERENCES users(id), company_id INTEGER REFERENCES companies(id), action TEXT NOT NULL, entity TEXT NOT NULL, entity_id INTEGER, details TEXT NOT NULL, created_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS imports(id INTEGER PRIMARY KEY, fingerprint TEXT UNIQUE NOT NULL, company_id INTEGER NOT NULL REFERENCES companies(id), created_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS member_hierarchy(user_id INTEGER NOT NULL, company_id INTEGER NOT NULL, rank INTEGER NOT NULL CHECK(rank BETWEEN 1 AND 99), PRIMARY KEY(user_id,company_id), FOREIGN KEY(user_id,company_id) REFERENCES memberships(user_id,company_id));
@@ -269,20 +270,54 @@ def initialize(seed=True):
             c.execute("DROP TABLE employees")
             c.execute("ALTER TABLE employees_new RENAME TO employees")
             c.execute("PRAGMA foreign_keys=ON")
-        # Ensure user 'monarca' and 'admin' always have admin access to Grupo Monarca and all real companies
+        c.execute("""CREATE TABLE IF NOT EXISTS suppliers(
+            id INTEGER PRIMARY KEY,
+            company_id INTEGER NOT NULL REFERENCES companies(id),
+            name TEXT NOT NULL,
+            contact TEXT NOT NULL DEFAULT '',
+            phone TEXT NOT NULL DEFAULT '',
+            email TEXT NOT NULL DEFAULT '',
+            rnc TEXT NOT NULL DEFAULT '',
+            address TEXT NOT NULL DEFAULT '',
+            category TEXT NOT NULL DEFAULT '',
+            notes TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )""")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_suppliers_company ON suppliers(company_id, name)")
+        exp_cols = {row[1] for row in c.execute("PRAGMA table_info(expenses)").fetchall()}
+        if 'supplier_id' not in exp_cols:
+            try: c.execute("ALTER TABLE expenses ADD COLUMN supplier_id INTEGER REFERENCES suppliers(id)")
+            except Exception: pass
+        # Enforce single company per account (una sola empresa por cuenta)
         try:
             monarca_u = one(c, "SELECT id FROM users WHERE username='monarca'")
             admin_u = one(c, "SELECT id FROM users WHERE username='admin'")
-            real_cos = rows(c, "SELECT id FROM companies WHERE (deleted_at IS NULL OR deleted_at='')")
-            for u in (monarca_u, admin_u):
-                if not u: continue
-                for co in real_cos:
-                    c.execute("""
-                        INSERT INTO memberships(user_id, company_id, role, role_name, collections)
-                        VALUES(?, ?, 'admin', 'Administrador', 1)
-                        ON CONFLICT(user_id, company_id) DO UPDATE SET role='admin', role_name='Administrador', collections=1
-                    """, (u['id'], co['id']))
-        except Exception: pass
+            demo_u = one(c, "SELECT id FROM users WHERE username='demo'")
+            monarca_co = one(c, "SELECT id FROM companies WHERE name LIKE '%Monarca%' AND (deleted_at IS NULL OR deleted_at='') LIMIT 1")
+            admin_co = one(c, "SELECT id FROM companies WHERE id=3 AND (deleted_at IS NULL OR deleted_at='') LIMIT 1") or one(c, "SELECT id FROM companies WHERE demo=0 AND (deleted_at IS NULL OR deleted_at='') AND id!=? LIMIT 1", (monarca_co['id'] if monarca_co else 0,))
+
+            if monarca_u and monarca_co:
+                c.execute("""
+                    INSERT INTO memberships(user_id, company_id, role, role_name, collections)
+                    VALUES(?, ?, 'admin', 'Administrador', 1)
+                    ON CONFLICT(user_id, company_id) DO UPDATE SET role='admin', role_name='Administrador', collections=1
+                """, (monarca_u['id'], monarca_co['id']))
+                # Restrict monarca strictly to Grupo Monarca GM SRL
+                c.execute("DELETE FROM memberships WHERE user_id=? AND company_id!=?", (monarca_u['id'], monarca_co['id']))
+
+            if admin_u and admin_co:
+                c.execute("""
+                    INSERT INTO memberships(user_id, company_id, role, role_name, collections)
+                    VALUES(?, ?, 'admin', 'Administrador', 1)
+                    ON CONFLICT(user_id, company_id) DO UPDATE SET role='admin', role_name='Administrador', collections=1
+                """, (admin_u['id'], admin_co['id']))
+                # Restrict admin strictly to their single company (Calidad de Vida)
+                c.execute("DELETE FROM memberships WHERE user_id=? AND company_id!=?", (admin_u['id'], admin_co['id']))
+
+            if demo_u:
+                c.execute("DELETE FROM memberships WHERE user_id=? AND company_id!=1", (demo_u['id'],))
+        except Exception as e:
+            print(f"enforce_single_company notice: {e}")
         try:
             ensure_unassigned_departments(c)
         except Exception as e:
@@ -303,12 +338,27 @@ def initialize(seed=True):
         c.execute('INSERT INTO users VALUES(1,?,?,?,1)', ('demo', 'Administrador de demostración', password_hash(demo_password)))
         c.execute('INSERT INTO users VALUES(2,?,?,?,1)', ('admin', 'Administrador Calidad de Vida', password_hash(real_password)))
         c.execute('INSERT INTO users VALUES(3,?,?,?,1)', ('monarca', 'Administrador Monarca', password_hash(real_password)))
-        c.executemany('INSERT INTO companies(name,demo,group_name) VALUES(?,?,?)', [('Calidad de Vida · DEMO',1,'Grupo de demostración'),('Servicios del Caribe · DEMO',1,'Grupo de demostración'),('Calidad de Vida',0,'')])
-        c.executemany('INSERT INTO memberships(user_id,company_id,role,role_name,collections) VALUES(?,?,?,?,?)',[(1,1,'admin','Administrador',1),(1,2,'admin','Administrador',1),(2,3,'admin','Administrador',1),(3,3,'admin','Administrador',1)])
-        for cid in (1,2,3):
+        c.executemany('INSERT INTO companies(id,name,demo,group_name) VALUES(?,?,?,?)', [
+            (1, 'Calidad de Vida · DEMO', 1, 'Grupo de demostración'),
+            (2, 'Servicios del Caribe · DEMO', 1, 'Grupo de demostración'),
+            (3, 'Calidad de Vida', 0, ''),
+            (4, 'Grupo Monarca GM SRL', 0, 'Monarca')
+        ])
+        c.executemany('INSERT INTO memberships(user_id,company_id,role,role_name,collections) VALUES(?,?,?,?,?)', [
+            (1, 1, 'admin', 'Administrador', 1),
+            (2, 3, 'admin', 'Administrador', 1),
+            (3, 4, 'admin', 'Administrador', 1)
+        ])
+        for cid in (1, 2, 3, 4):
             for name in ('Sin departamento asignado','Administración','Construcción','Cocina','Atención a visitantes','Jardinería'):
-                c.execute('INSERT INTO departments(company_id,name) VALUES(?,?)',(cid,name))
-            c.execute('INSERT INTO projects(company_id,name) VALUES(?,?)',(cid,'Urbanización' if cid != 2 else 'Servicios generales'))
+                c.execute('INSERT INTO departments(company_id,name) VALUES(?,?)', (cid, name))
+            c.execute('INSERT INTO projects(company_id,name) VALUES(?,?)', (cid, 'Operaciones Monarca' if cid == 4 else ('Servicios generales' if cid == 2 else 'Urbanización')))
+        c.execute("INSERT OR IGNORE INTO company_profiles(company_id,unit_singular,unit_plural,business_vertical) VALUES(4, 'Finca', 'Fincas', 'agriculture')")
+        for name, code, cat in DEFAULT_FARMS:
+            c.execute('INSERT INTO farms(company_id, name, code, category, status, notes) VALUES(4, ?, ?, ?, "active", "")', (name, code, cat))
+        try:
+            ensure_farm_departments(c, 4)
+        except Exception: pass
         if seed:
             for cid in (1,2):
                 customer = c.execute('INSERT INTO customers(company_id,name,contact) VALUES(?,?,?)',(cid,'Cliente de ejemplo '+str(cid),'Datos ficticios')).lastrowid
@@ -320,15 +370,6 @@ def initialize(seed=True):
                 c.execute('INSERT INTO expenses(company_id,description,department_id,expense_date,amount,status,created_by) VALUES(?,?,?,?,?,?,?)',(cid,'Materiales de ejemplo',dep,today().isoformat(),850000,'approved',1))
                 c.execute('INSERT INTO worklogs(company_id,employee_id,department_id,work_date,minutes,activity,method,status,created_by) VALUES(?,?,?,?,?,?,?,?,?)',(cid,eid,dep,today().isoformat(),420,'Inspección de ejemplo','Recorrido supervisado','approved',1))
             for cid in (1,2): generate(c,1,cid,today())
-            if not one(c, "SELECT 1 FROM companies WHERE name LIKE '%Monarca%'"):
-                cid_monarca = c.execute('INSERT INTO companies(name,demo,group_name) VALUES(?,?,?)', ('Grupo Monarca GM SRL', 0, 'Monarca')).lastrowid
-                c.execute('INSERT INTO memberships(user_id,company_id,role,role_name,collections) VALUES(?,?,?,?,?)', (3, cid_monarca, 'admin', 'Administrador', 1))
-                c.execute("INSERT INTO company_profiles(company_id,unit_singular,unit_plural,business_vertical) VALUES(?, 'Finca', 'Fincas', 'agriculture')", (cid_monarca,))
-                for name in ('Sin departamento asignado','Administración','Construcción','Cocina','Atención a visitantes','Jardinería'):
-                    c.execute('INSERT INTO departments(company_id,name) VALUES(?,?)', (cid_monarca, name))
-                c.execute('INSERT INTO projects(company_id,name) VALUES(?,?)', (cid_monarca, 'Operaciones Monarca'))
-                for name, code, cat in DEFAULT_FARMS:
-                    c.execute('INSERT INTO farms(company_id, name, code, category, status, notes) VALUES(?, ?, ?, ?, "active", "")', (cid_monarca, name, code, cat))
             try:
                 ensure_monarca_farms(c)
             except Exception: pass
@@ -429,6 +470,16 @@ def state(c,uid,cid):
         x['balance']=x['amount']-x['paid']
     allowed_expenses={x['id'] for x in result['expenses']}
     result['expense_payments']=[x for x in rows(c,'SELECT * FROM expense_payments WHERE company_id=? ORDER BY id DESC',(cid,)) if x['expense_id'] in allowed_expenses]
+    result['suppliers'] = rows(c, 'SELECT * FROM suppliers WHERE company_id=? ORDER BY name COLLATE NOCASE', (cid,))
+    supp_stats = {r['supplier_id']: r for r in rows(c, '''
+        SELECT supplier_id, COUNT(*) AS expenses_count, SUM(amount) AS total_amount
+        FROM expenses WHERE company_id=? AND supplier_id IS NOT NULL
+        GROUP BY supplier_id
+    ''', (cid,))}
+    for sup in result['suppliers']:
+        st = supp_stats.get(sup['id'], {'expenses_count': 0, 'total_amount': 0})
+        sup['expenses_count'] = st['expenses_count']
+        sup['total_amount'] = st['total_amount']
     if m['collections'] or m['role']=='admin':
         for table in ('customers','products','subscriptions','payments'):
             result[table]=rows(c,'SELECT * FROM '+table+' WHERE company_id=? ORDER BY id DESC',(cid,))
@@ -547,6 +598,44 @@ def mutate(c,uid,cid,action,d):
     if action=='gdrive_upload': return gdrive.upload_backup(sys.modules[__name__],c,uid,cid,d)
     if action in agriculture.ACTIONS: return agriculture.mutate(sys.modules[__name__],c,uid,cid,action,d)
     if action in real_estate.ACTIONS: return real_estate.mutate(sys.modules[__name__],c,uid,cid,action,d)
+    if action=='supplier':
+        m=membership(c,uid,cid,1)
+        name=text(d.get('name'),'Nombre del proveedor',200)
+        contact=str(d.get('contact','')).strip()[:200]
+        phone=str(d.get('phone','')).strip()[:100]
+        email=str(d.get('email','')).strip()[:200]
+        rnc=str(d.get('rnc','')).strip()[:100]
+        address=str(d.get('address','')).strip()[:500]
+        category=str(d.get('category','')).strip()[:100]
+        notes=str(d.get('notes','')).strip()[:2000]
+        rec=dict(company_id=cid,name=name,contact=contact,phone=phone,email=email,rnc=rnc,address=address,category=category,notes=notes)
+        ident=c.execute("INSERT INTO suppliers("+','.join(rec)+") VALUES("+','.join('?' for _ in rec)+")",tuple(rec.values())).lastrowid
+        audit(c,uid,cid,'crear proveedor','suppliers',ident,rec)
+        return {'ok':True,'id':ident,'name':name}
+    if action=='edit_supplier':
+        m=membership(c,uid,cid,2)
+        item=ref(c,'suppliers',d.get('id'),cid)
+        name=text(d.get('name'),'Nombre del proveedor',200)
+        contact=str(d.get('contact','')).strip()[:200]
+        phone=str(d.get('phone','')).strip()[:100]
+        email=str(d.get('email','')).strip()[:200]
+        rnc=str(d.get('rnc','')).strip()[:100]
+        address=str(d.get('address','')).strip()[:500]
+        category=str(d.get('category','')).strip()[:100]
+        notes=str(d.get('notes','')).strip()[:2000]
+        update=dict(name=name,contact=contact,phone=phone,email=email,rnc=rnc,address=address,category=category,notes=notes)
+        c.execute("UPDATE suppliers SET "+','.join(k+'=?' for k in update)+" WHERE id=?",(*update.values(),item['id']))
+        audit(c,uid,cid,'editar proveedor','suppliers',item['id'],dict(before=item,after=update))
+        return {'ok':True,'id':item['id'],'name':name}
+    if action=='delete_supplier':
+        m=membership(c,uid,cid,2)
+        item=ref(c,'suppliers',d.get('id'),cid)
+        uses=c.execute("SELECT COUNT(*) FROM expenses WHERE supplier_id=? AND company_id=?",(item['id'],cid)).fetchone()[0]
+        if uses>0: raise ValueError(f'No se puede eliminar «{item["name"]}» porque tiene {uses} gasto(s) vinculado(s). Reasigne o elimine los gastos asociados primero.')
+        c.execute("DELETE FROM attachments WHERE company_id=? AND entity='suppliers' AND entity_id=?",(cid,item['id']))
+        c.execute("DELETE FROM suppliers WHERE id=? AND company_id=?",(item['id'],cid))
+        audit(c,uid,cid,'borrar proveedor','suppliers',item['id'],item)
+        return {'ok':True,'id':item['id']}
     if action=='edit_expense':
         m=membership(c,uid,cid,2)
         item=ref(c,'expenses',d.get('id'),cid);assert_scope(m,item)
@@ -556,7 +645,9 @@ def mutate(c,uid,cid,action,d):
         first=one(c,'SELECT MIN(paid_date) day FROM expense_payments WHERE expense_id=?',(item['id'],))['day']
         if day>today().isoformat() or (first and day>first): raise ValueError('La fecha no puede ser futura ni posterior al primer pago.')
         reason=text(d.get('reason'),'Motivo de corrección',1000)
-        update=dict(description=text(d.get('description'),'Concepto',1000),amount=value,expense_date=day,receipt=str(d.get('receipt',''))[:2000])
+        supplier_id=int(d['supplier_id']) if d.get('supplier_id') else None
+        if supplier_id: ref(c,'suppliers',supplier_id,cid)
+        update=dict(description=text(d.get('description'),'Concepto',1000),amount=value,expense_date=day,receipt=str(d.get('receipt',''))[:2000],supplier_id=supplier_id)
         c.execute('UPDATE expenses SET '+','.join(k+'=?' for k in update)+' WHERE id=?',(*update.values(),item['id']))
         audit(c,uid,cid,'editar gasto','expenses',item['id'],dict(before=item,after=update,reason=reason))
         return {'id':item['id']}
@@ -1018,7 +1109,9 @@ def mutate(c,uid,cid,action,d):
         if farm_id: ref(c,'farms',farm_id,cid)
         table='tasks';record=dict(dimensions(c,cid,m,d),title=text(d.get('title'),'Tarea',1000),responsible_id=responsible,due_date=date(d.get('due_date')).isoformat(),support=str(d.get('support',''))[:3000],duration=duration_val,duration_unit=duration_unit,rate=rate_val,farm_id=farm_id,completed_at=None)
     elif action=='expense':
-        table='expenses';record=dict(dimensions(c,cid,m,d),description=text(d.get('description'),'Concepto',1000),expense_date=date(d.get('expense_date')).isoformat(),amount=amount(d.get('amount')),receipt=str(d.get('receipt',''))[:2000],created_by=uid)
+        supplier_id=int(d['supplier_id']) if d.get('supplier_id') else None
+        if supplier_id: ref(c,'suppliers',supplier_id,cid)
+        table='expenses';record=dict(dimensions(c,cid,m,d),description=text(d.get('description'),'Concepto',1000),expense_date=date(d.get('expense_date')).isoformat(),amount=amount(d.get('amount')),receipt=str(d.get('receipt',''))[:2000],supplier_id=supplier_id,created_by=uid)
         if date(record['expense_date'])>today(): raise ValueError('No se permiten gastos futuros.')
     elif action in ('approve_expense','approve_worklog','task_status','cancel_subscription'):
         table={'approve_expense':'expenses','approve_worklog':'worklogs','task_status':'tasks','cancel_subscription':'subscriptions'}[action]
@@ -1315,6 +1408,9 @@ class Handler(BaseHTTPRequestHandler):
                     try: c.execute('DELETE FROM user_sessions WHERE user_id=? AND token!=?',(s['uid'],token))
                     except Exception: pass
                 elif path=='/api/company':
+                    user_cos = c.execute("SELECT COUNT(*) FROM memberships WHERE user_id=?", (s['uid'],)).fetchone()[0]
+                    if user_cos >= 1:
+                        raise Denied('Cada cuenta gestiona una sola empresa. Su cuenta ya tiene una empresa activa.')
                     name=text(d.get('name'),'Nombre de empresa')
                     if len(name)>200: raise ValueError('El nombre de la empresa no puede superar 200 caracteres.')
                     current=int(d.get('company_id',0)); membership(c,s['uid'],current,3)

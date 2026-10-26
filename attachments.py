@@ -4,15 +4,15 @@ import hashlib
 import io
 import zipfile
 
-TARGETS={'expenses','expense_payments','charges','payments','payrolls','payroll_payments','farm_payrolls','employees','farms'}
+TARGETS={'expenses','expense_payments','charges','payments','payrolls','payroll_payments','farm_payrolls','employees','farms','suppliers'}
 MAX_FILE=5*1024*1024
 MAX_COMPANY=25*1024*1024
 
 def migrate(c):
     sql = c.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='attachments'").fetchone()
-    if sql and ('payrolls' not in sql[0] or 'employees' not in sql[0] or 'farms' not in sql[0]):
+    if sql and ('payrolls' not in sql[0] or 'employees' not in sql[0] or 'farms' not in sql[0] or 'suppliers' not in sql[0]):
         c.execute("PRAGMA foreign_keys=OFF")
-        c.execute("CREATE TABLE attachments_new(id INTEGER PRIMARY KEY, company_id INTEGER NOT NULL REFERENCES companies(id), entity TEXT NOT NULL CHECK(entity IN ('expenses','expense_payments','charges','payments','payrolls','payroll_payments','farm_payrolls','employees','farms')), entity_id INTEGER NOT NULL, filename TEXT NOT NULL, mime TEXT NOT NULL, size INTEGER NOT NULL CHECK(size>0), sha256 TEXT NOT NULL, content_base64 TEXT NOT NULL, uploaded_by INTEGER NOT NULL REFERENCES users(id), created_at TEXT NOT NULL, UNIQUE(company_id,entity,entity_id,sha256))")
+        c.execute("CREATE TABLE attachments_new(id INTEGER PRIMARY KEY, company_id INTEGER NOT NULL REFERENCES companies(id), entity TEXT NOT NULL CHECK(entity IN ('expenses','expense_payments','charges','payments','payrolls','payroll_payments','farm_payrolls','employees','farms','suppliers')), entity_id INTEGER NOT NULL, filename TEXT NOT NULL, mime TEXT NOT NULL, size INTEGER NOT NULL CHECK(size>0), sha256 TEXT NOT NULL, content_base64 TEXT NOT NULL, uploaded_by INTEGER NOT NULL REFERENCES users(id), created_at TEXT NOT NULL, UNIQUE(company_id,entity,entity_id,sha256))")
         c.execute("INSERT INTO attachments_new SELECT * FROM attachments")
         c.execute("DROP TABLE attachments")
         c.execute("ALTER TABLE attachments_new RENAME TO attachments")

@@ -8,8 +8,8 @@ import re
 import secrets
 import sqlite3
 
-TABLES=('departments','projects','customers','products','subscriptions','charges','payments','employees','worklogs','tasks','expenses','expense_payments','attachments')+agriculture.TABLES+commerce.TABLES+('cash_accounts',)+payroll.TABLES+('audit','cash_movements')+ecf.TABLES+real_estate.TABLES
-REFS={'attachments':{'uploaded_by':'users'},'subscriptions':{'customer_id':'customers','product_id':'products'},'charges':{'subscription_id':'subscriptions'},'payments':{'charge_id':'charges'},'employees':{'department_id':'departments','project_id':'projects'},'worklogs':{'employee_id':'employees','department_id':'departments','project_id':'projects','created_by':'users'},'tasks':{'responsible_id':'employees','department_id':'departments','project_id':'projects'},'expenses':{'department_id':'departments','project_id':'projects','created_by':'users'},'expense_payments':{'expense_id':'expenses'},'audit':{'user_id':'users'}}
+TABLES=('departments','projects','customers','suppliers','products','subscriptions','charges','payments','employees','worklogs','tasks','expenses','expense_payments','attachments')+agriculture.TABLES+commerce.TABLES+('cash_accounts',)+payroll.TABLES+('audit','cash_movements')+ecf.TABLES+real_estate.TABLES
+REFS={'attachments':{'uploaded_by':'users'},'subscriptions':{'customer_id':'customers','product_id':'products'},'charges':{'subscription_id':'subscriptions'},'payments':{'charge_id':'charges'},'employees':{'department_id':'departments','project_id':'projects'},'worklogs':{'employee_id':'employees','department_id':'departments','project_id':'projects','created_by':'users'},'tasks':{'responsible_id':'employees','department_id':'departments','project_id':'projects'},'expenses':{'department_id':'departments','project_id':'projects','created_by':'users','supplier_id':'suppliers'},'expense_payments':{'expense_id':'expenses'},'audit':{'user_id':'users'}}
 
 REFS.update({'secuencias_ncf':{'created_by':'users'},'sales_invoices':{'charge_id':'charges','created_by':'users','secuencia_ncf_id':'secuencias_ncf'},'farms':{'manager_id':'employees'},'farm_sales':{'farm_id':'farms','created_by':'users'},'farm_contracts':{'farm_id':'farms','employee_id':'employees','created_by':'users'},'farm_jobs':{'contract_id':'farm_contracts','created_by':'users'},'farm_payrolls':{'farm_id':'farms','created_by':'users'},'farm_payroll_lines':{'payroll_id':'farm_payrolls','job_id':'farm_jobs'}})
 REFS.update({'payrolls':{'created_by':'users'},'payroll_lines':{'payroll_id':'payrolls','employee_id':'employees'}})
@@ -79,6 +79,9 @@ def validate(core,c,bundle):
             row.setdefault('assigned_date',None)
             row.setdefault('due_date',None)
     if isinstance(data,dict):
+        data.setdefault('suppliers',[])
+        for row in data.get('expenses',[]):
+            row.setdefault('supplier_id',None)
         for table in real_estate.TABLES: data.setdefault(table,[])
         for row in data.get('company_profiles',[]):
             row.setdefault('business_vertical','general')

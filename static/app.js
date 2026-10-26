@@ -243,7 +243,7 @@ function render(){
 
   const adminNav = [
     ['settings:server', '⚙️', 'Servidor e Intranet'],
-    ['settings:companies', '🏢', 'Empresas del Grupo'],
+    ['settings:companies', '🏢', 'Ficha y Perfil de la Empresa'],
     ...(canAdmin() ? [
       ['settings:departments', '🏛️', 'Departamentos y Áreas'],
       ['settings:users', '👥', 'Usuarios y Permisos'],
@@ -427,10 +427,16 @@ function render(){
       <header class="topbar">
         <div class="topbar-left">
           <div class="mobile-brand brand-clickable" role="button" tabindex="0" title="Ir al inicio" data-view="dashboard" aria-label="Ir al inicio de Zero"><span class="brand-mark"></span>zero</div>
-          <select id="company-select" aria-label="Empresa activa">
-            ${me.companies.map(c=>`<option value="${c.id}" ${c.id==cid?'selected':''}>${esc(c.name)}</option>`).join('')}
-            ${canAdmin()?'<option value="__add_company__">＋ Agregar empresa…</option>':''}
-          </select>
+          ${(me.companies.length <= 1) ? `
+            <div class="company-badge-pill" title="Empresa: ${esc(company().name)}">
+              <span class="company-badge-icon">🏢</span>
+              <span class="company-badge-name">${esc(company().name)}</span>
+            </div>
+          ` : `
+            <select id="company-select" aria-label="Empresa activa">
+              ${me.companies.map(c=>`<option value="${c.id}" ${c.id==cid?'selected':''}>${esc(c.name)}</option>`).join('')}
+            </select>
+          `}
           <button type="button" id="btn-topbar-real-estate" class="small ${view==='real_estate'?'primary':'secondary'} topbar-re-btn" title="Abrir módulo circunstancial de Bienes Raíces (Inmuebles y Rentas)">
             <span style="font-size:13px">🏢</span> <span class="hide-mobile">Bienes Raíces ${rePropsCount>0?`(${rePropsCount})`:''}</span>
           </button>
@@ -624,7 +630,168 @@ function dashboardPayrollSection(){
 }
 function alertList(){if(!canCollect())return '<div class="empty">Su rol no tiene permiso de cobros.</div>';const alerts=(S.charges||[]).filter(c=>c.alert);return alerts.length?alerts.map(c=>`<div class="alert-row"><span class="dot"></span><div><strong>${esc(c.customer)}</strong><br><span class="muted">${esc(c.alert)} · ${displayDate(c.due_date)}</span></div><span class="amount">${money(c.balance)}</span></div>`).join(''):'<div class="empty">Sin cobros vencidos o próximos en esta empresa.</div>'}
 function collectionsView(){const tabs=[['invoices','Facturas'],['charges','Cuentas por cobrar'],['subscriptions','Servicios contratados'],['customers','Clientes'],['products','Catálogo'],['payments','Recibos y pagos'],['fiscal','Facturación fiscal']];let body='';if(tab==='invoices')body=invoicesView();if(tab==='fiscal')body=fiscalView();if(tab==='charges')body=panel('Cargos y saldos',table(['Cliente / servicio','Período','Vencimiento','Importe','Pagado','Saldo','Estado',''],S.charges.map(c=>`<tr><td><strong>${esc(c.customer)}</strong><div class="muted">${esc(c.product)} · Cargo #${c.id}</div></td><td>${displayDate(c.period_date)}</td><td>${displayDate(c.due_date)}${c.alert?`<div class="muted">${esc(c.alert)}</div>`:''}</td><td>${money(c.amount)}</td><td>${money(c.paid)}</td><td><strong>${money(c.balance)}</strong></td><td>${badge(c.status)}</td><td>${c.balance&&canPay()?action('Registrar pago','payment',c.id):''} ${invoiceLink(c.id)} ${filesButton('charges',c.id)}</td></tr>`)),`<button class="small" data-action="generate">Generar períodos hasta hoy</button>`)+panel('Alertas internas · empresa activa',alertList());if(tab==='customers')body=panel('Clientes',table(['Nombre','Contacto','Acciones'],S.customers.map(c=>`<tr><td><strong>${esc(c.name)}</strong></td><td>${esc(c.contact)}</td><td>${action('Editar','edit_customer',c.id)} ${action('Borrar','delete_customer',c.id)}</td></tr>`)),openButton('+ Cliente','customer'));if(tab==='products')body=catalogView();if(tab==='subscriptions')body=panel('Servicios contratados',table(['Cliente / servicio','Frecuencia','Inicio / fin del servicio','Vencimiento','Importe','Estado','Acciones'],S.subscriptions.map(s=>`<tr><td><strong>${esc(lookup('customers',s.customer_id))}</strong><div class="muted">${esc(lookup('products',s.product_id))}</div></td><td>${s.frequency==='once'?'Cargo único':`Cada ${s.interval} ${s.frequency==='days'?'día(s)':'mes(es)'}`}</td><td>${displayDate(s.start_date)}<br><span class="muted">${displayDate(s.end_date)}</span></td><td>${s.due_days} días después de cada período</td><td>${money(s.amount)}</td><td>${badge(s.canceled_at?'Cancelado':s.end_date&&s.end_date<S.today?'Finalizado':'Activo')}</td><td>${canReview()?action('Editar','edit_subscription',s.id):''} ${!s.canceled_at&&canReview()?action('Cancelar','cancel_subscription',s.id):''} ${canAdmin()?action('🗑️ Eliminar','delete_subscription',s.id):''}</td></tr>`)),openButton('+ Contratar servicio','subscription'));if(tab==='payments')body=panel('Pagos recibidos',table(['Fecha','Cargo','Cliente','Importe','Referencia','Comprobantes','Acciones'],S.payments.map(p=>`<tr><td>${displayDate(p.paid_date)}</td><td>#${p.charge_id}</td><td>${esc(S.charges.find(c=>c.id===p.charge_id)?.customer)}</td><td>${money(p.amount)}</td><td>${esc(p.reference)}</td><td>${documentLink('receipt',p.id,'Recibo / PDF')} ${filesButton('payments',p.id)}</td><td>${canAdmin()?action('🗑️ Anular pago','delete_payment',p.id):''}</td></tr>`)));return heading('Facturación y cobros','Emita facturas, consulte saldos y registre pagos.',`<button class="primary" data-tab="products">+ Nueva factura</button>`)+`<div class="tabs">${tabs.map(([id,name])=>`<button data-tab="${id}" class="${tab===id?'active':''}">${name}</button>`).join('')}</div><div class="notice">Los cargos se generan al contratar y con “Generar períodos hasta hoy”. No hay cobros bancarios automáticos ni mensajes externos. Alertas compartidas según permiso: próximos 5 días, 24 horas, día de vencimiento y vencidos.</div>`+body}
-function expensesView(){return heading('Gastos y pagos','Registre, revise y pague sin perder el historial.',openButton('+ Registrar gasto','expense'))+panel('Registro de gastos',table(['Concepto','Fecha','Departamento / proyecto','Importe','Estado','Saldo',''],S.expenses.map(e=>`<tr><td><strong>${esc(e.description)}</strong><div class="muted">${esc(e.receipt||'Sin referencia de comprobante')}</div></td><td>${displayDate(e.expense_date)}</td><td>${esc(lookup('departments',e.department_id))}<div class="muted">${esc(lookup('projects',e.project_id))}</div></td><td>${money(e.amount)}</td><td>${badge(e.status)}${e.balance===0?' '+badge('paid'):''}</td><td>${money(e.balance)}</td><td>${canReview()?(e.status==='proposed'?action('Aprobar','approve_expense',e.id):e.balance&&canPay()?action('Registrar pago','expense_payment',e.id):''):''} ${canReview()?action('Editar factura','edit_expense',e.id):''} ${e.balance===e.amount&&canAdmin()?action('🗑️ Borrar','delete_expense',e.id):''} ${filesButton('expenses',e.id)}</td></tr>`)))+panel('Pagos de gastos',table(['Fecha','Gasto','Importe','Referencia','Comprobantes','Acciones'],(S.expense_payments||[]).map(p=>`<tr><td>${displayDate(p.paid_date)}</td><td>${esc(S.expenses.find(e=>e.id===p.expense_id)?.description||('#'+p.expense_id))}</td><td>${money(p.amount)}</td><td>${esc(p.reference)}</td><td>${filesButton('expense_payments',p.id)}</td><td>${canAdmin()?action('🗑️ Anular pago','delete_expense_payment',p.id):''}</td></tr>`)))+`<div class="notice">Comprobantes: use Adjuntos para subir fotos o documentos a cada gasto o pago. Los pagos están condicionados al saldo disponible en las cuentas de tesorería y son manejados por los niveles jerárquicos 1 y 2.</div>`}
+let expensesTab = 'expenses';
+let supplierSearch = '';
+let supplierCategoryFilter = '';
+
+function suppliersView(){
+  const suppliers = S.suppliers || [];
+  const q = (supplierSearch || '').toLowerCase().trim();
+  const catFilter = (supplierCategoryFilter || '').trim();
+
+  const filtered = suppliers.filter(s => {
+    if(catFilter && s.category !== catFilter) return false;
+    if(!q) return true;
+    const text = `${s.name} ${s.rnc} ${s.contact} ${s.phone} ${s.email} ${s.category} ${s.address} ${s.notes}`.toLowerCase();
+    return text.includes(q);
+  });
+
+  const totalSpent = suppliers.reduce((acc, s) => acc + (s.total_amount || 0), 0);
+  const categories = Array.from(new Set(suppliers.map(s => s.category).filter(Boolean))).sort();
+
+  const kpis = `
+    <div class="metrics-grid" style="margin-bottom:18px">
+      <div class="card">
+        <div class="card-title">Proveedores Registrados</div>
+        <div class="card-value">${suppliers.length}</div>
+        <div class="card-subtitle">Directorio de suplidores comerciales</div>
+      </div>
+      <div class="card">
+        <div class="card-title">Total Facturado Acumulado</div>
+        <div class="card-value">${money(totalSpent)}</div>
+        <div class="card-subtitle">Suma de facturas de gastos vinculadas</div>
+      </div>
+      <div class="card">
+        <div class="card-title">Rubros y Categorías</div>
+        <div class="card-value">${categories.length}</div>
+        <div class="card-subtitle">${categories.slice(0, 2).join(', ') || 'Sin clasificar'}</div>
+      </div>
+    </div>
+  `;
+
+  const filtersBar = `
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px;background:var(--card,#fff);padding:12px;border:1px solid var(--border,#e2e8f0);border-radius:8px">
+      <div style="flex:1;min-width:220px">
+        <input type="search" id="supplier-search-input" placeholder="🔍 Buscar proveedor por nombre, RNC, contacto o teléfono..." value="${esc(supplierSearch)}" style="width:100%;margin:0">
+      </div>
+      ${categories.length ? `
+        <div>
+          <select id="supplier-cat-filter" style="margin:0">
+            <option value="">Todos los rubros (${categories.length})</option>
+            ${categories.map(c => `<option value="${esc(c)}" ${catFilter===c?'selected':''}>${esc(c)}</option>`).join('')}
+          </select>
+        </div>
+      ` : ''}
+      <div>
+        ${openButton('＋ Nuevo Proveedor', 'supplier')}
+      </div>
+    </div>
+  `;
+
+  const rows = filtered.map(s => {
+    const rncBadge = s.rnc ? `<span class="badge blue" style="font-size:11px;font-family:monospace">RNC: ${esc(s.rnc)}</span>` : '';
+    const catBadge = s.category ? `<span class="badge" style="font-size:11px;background:var(--surface,#f1f5f9)">${esc(s.category)}</span>` : '<span class="muted" style="font-size:11px">General</span>';
+    const contactInfo = [
+      s.contact ? `<strong>👤 ${esc(s.contact)}</strong>` : '',
+      s.phone ? `<span>📞 ${esc(s.phone)}</span>` : ''
+    ].filter(Boolean).join('<br>') || '<span class="muted">—</span>';
+
+    const addressEmail = [
+      s.email ? `<a href="mailto:${esc(s.email)}" style="font-size:12px;text-decoration:none">✉️ ${esc(s.email)}</a>` : '',
+      s.address ? `<span class="muted" style="font-size:12px">📍 ${esc(s.address)}</span>` : ''
+    ].filter(Boolean).join('<br>') || '<span class="muted">—</span>';
+
+    const countExp = s.expenses_count || 0;
+    const spentMoney = s.total_amount ? money(s.total_amount) : money(0);
+    const expInfo = countExp > 0
+      ? `<div><strong>${spentMoney}</strong><br><span class="muted" style="font-size:11px">${countExp} factura(s)</span></div>`
+      : `<span class="muted" style="font-size:12px">Sin facturas</span>`;
+
+    const editBtn = action('✏️ Editar', 'edit_supplier', s.id);
+    const delBtn = countExp === 0 && canAdmin() ? action('🗑️ Borrar', 'delete_supplier', s.id) : (countExp > 0 ? `<span title="Tiene ${countExp} gasto(s) vinculado(s)" style="opacity:0.4;cursor:not-allowed">🔒</span>` : '');
+    const newExpBtn = `<button class="small secondary" data-supplier-new-expense="${s.id}" data-supplier-name="${esc(s.name)}" title="Registrar gasto de este proveedor">＋ Gasto</button>`;
+
+    return `<tr class="supplier-row" data-search="${esc(`${s.name} ${s.rnc} ${s.contact} ${s.phone} ${s.email} ${s.category} ${s.address}`)}">
+      <td>
+        <div style="display:flex;align-items:center;gap:6px">
+          <strong>${esc(s.name)}</strong>
+        </div>
+        <div style="margin-top:3px">${rncBadge}</div>
+        ${s.notes ? `<div class="muted" style="font-size:11px;margin-top:2px">📝 ${esc(s.notes)}</div>` : ''}
+      </td>
+      <td>${contactInfo}</td>
+      <td>${addressEmail}</td>
+      <td>${catBadge}</td>
+      <td>${expInfo}</td>
+      <td>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          ${editBtn}
+          ${newExpBtn}
+          ${filesButton('suppliers', s.id)}
+          ${delBtn}
+        </div>
+      </td>
+    </tr>`;
+  });
+
+  return kpis + filtersBar + panel('Directorio de Suplidores y Proveedores Registrados', table(['Proveedor / RNC', 'Contacto', 'Correo / Ubicación', 'Rubro', 'Facturado', 'Acciones'], rows, 'No hay proveedores registrados que coincidan con la búsqueda. Haga clic en «＋ Nuevo Proveedor» para registrar el primero.'));
+}
+
+function expensesView(){
+  const navTabs = `
+    <div class="settings-nav-tabs" style="margin-bottom:18px">
+      <button type="button" class="settings-tab-btn ${expensesTab==='expenses'?'active':''}" data-expenses-tab="expenses">
+        <span>▤</span> Registro de gastos
+      </button>
+      <button type="button" class="settings-tab-btn ${expensesTab==='payments'?'active':''}" data-expenses-tab="payments">
+        <span>💳</span> Pagos de gastos
+      </button>
+      <button type="button" class="settings-tab-btn ${expensesTab==='suppliers'?'active':''}" data-expenses-tab="suppliers">
+        <span>🏢</span> Directorio de proveedores (${(S.suppliers||[]).length})
+      </button>
+    </div>
+  `;
+
+  if(expensesTab === 'suppliers'){
+    return heading('Directorio de Proveedores', 'Gestione el catálogo de suplidores comerciales, identificación fiscal (RNC), contactos y acumulados.', openButton('＋ Nuevo proveedor', 'supplier'))
+      + navTabs
+      + suppliersView()
+      + `<div class="notice">Directorio de proveedores: los suplidores registrados están disponibles en el formulario de gastos para asociar comprobantes y totalizar consumos. Puede adjuntar contratos, certificaciones de RNC y listas de precios en «📎 Adjuntos».</div>`;
+  }
+
+  if(expensesTab === 'payments'){
+    return heading('Pagos de gastos', 'Historial de pagos emitidos a facturas con comprobante y descargo de tesorería.')
+      + navTabs
+      + panel('Pagos de gastos', table(['Fecha','Gasto','Importe','Referencia','Comprobantes','Acciones'],(S.expense_payments||[]).map(p=>`<tr><td>${displayDate(p.paid_date)}</td><td>${esc(S.expenses.find(e=>e.id===p.expense_id)?.description||('#'+p.expense_id))}</td><td>${money(p.amount)}</td><td>${esc(p.reference)}</td><td>${filesButton('expense_payments',p.id)}</td><td>${canAdmin()?action('🗑️ Anular pago','delete_expense_payment',p.id):''}</td></tr>`)))
+      + `<div class="notice">Comprobantes: use Adjuntos para subir fotos o documentos a cada pago. Los pagos están condicionados al saldo disponible en las cuentas de tesorería y son manejados por los niveles jerárquicos 1 y 2.</div>`;
+  }
+
+  return heading('Gastos y comprobantes', 'Registre, revise y pague facturas de proveedores sin perder el historial.', openButton('+ Registrar gasto', 'expense'))
+    + navTabs
+    + panel('Registro de gastos', table(['Concepto / Proveedor','Fecha','Departamento / proyecto','Importe','Estado','Saldo',''], S.expenses.map(e=>{
+        const suppName = e.supplier_id ? lookup('suppliers', e.supplier_id) : '';
+        const suppTag = (e.supplier_id && suppName !== 'Sin asignar') ? `<div class="badge-sub" style="font-size:12px;color:var(--accent,#0f766e);margin-top:2px">🏢 <strong>${esc(suppName)}</strong></div>` : '';
+        return `<tr>
+          <td>
+            <strong>${esc(e.description)}</strong>
+            ${suppTag}
+            <div class="muted">${esc(e.receipt||'Sin referencia de comprobante')}</div>
+          </td>
+          <td>${displayDate(e.expense_date)}</td>
+          <td>${esc(lookup('departments',e.department_id))}<div class="muted">${esc(lookup('projects',e.project_id))}</div></td>
+          <td>${money(e.amount)}</td>
+          <td>${badge(e.status)}${e.balance===0?' '+badge('paid'):''}</td>
+          <td>${money(e.balance)}</td>
+          <td>
+            ${canReview()?(e.status==='proposed'?action('Aprobar','approve_expense',e.id):e.balance&&canPay()?action('Registrar pago','expense_payment',e.id):''):''}
+            ${canReview()?action('Editar factura','edit_expense',e.id):''}
+            ${e.balance===e.amount&&canAdmin()?action('🗑️ Borrar','delete_expense',e.id):''}
+            ${filesButton('expenses',e.id)}
+          </td>
+        </tr>`;
+      })))
+    + `<div class="notice">Comprobantes: use Adjuntos para subir fotos o documentos a cada gasto o pago. Los pagos están condicionados al saldo disponible en las cuentas de tesorería y son manejados por los niveles jerárquicos 1 y 2.</div>`;
+}
 let teamFilter = 'active', teamFarmFilter = '', teamDeptFilter = '', queueFilter = 'all', deptSearch = '', deptFilter = 'all', deptOrgTab = 'departments';
 let teamSelectedEmployees = new Set();
 
@@ -1845,7 +2012,7 @@ function copyFallback(text){
 function settingsNavTabs(){
   const tabs = [
     ['server', '⚙️', 'Servidor e Intranet'],
-    ['companies', '🏢', 'Empresas del Grupo'],
+    ['companies', '🏢', 'Ficha y Perfil de la Empresa'],
     ...(canAdmin() ? [
       ['departments', '🏛️', 'Departamentos y Áreas'],
       ['users', '👥', 'Usuarios y Permisos'],
@@ -2708,7 +2875,7 @@ function settingsView(){
   if(settingsTab === 'server'){
     content = serverConditionsPanel() + serverInstructionsAndClientGuidePanel();
   } else if(settingsTab === 'companies'){
-    content = companiesDirectoryPanel() + (canAdmin() ? companyProfilePanel() + companyMaintenancePanel() : '');
+    content = (canAdmin() ? companyProfilePanel() : '') + (me.companies.length > 1 ? companiesDirectoryPanel() : '') + (canAdmin() ? companyMaintenancePanel() : '');
   } else if(settingsTab === 'departments'){
     content = departmentsManagementPanel();
   } else if(settingsTab === 'fiscal'){
@@ -3191,7 +3358,7 @@ function bind(){
   });
   document.querySelectorAll('[data-cal-add-task]').forEach(b=>b.onclick=()=>openForm('task',null,{date:b.dataset.calAddTask}));
   document.querySelectorAll('[data-cal-add-worklog]').forEach(b=>b.onclick=()=>openForm('worklog',null,{date:b.dataset.calAddWorklog}));
-  $('#company-select').onchange=async e=>{if(e.target.value==='__add_company__'){e.target.value=String(cid);openForm('company');return}setActiveCompany(e.target.value);reportFilters.department='';reportFilters.project='';reportFilters.person='';teamDeptFilter='';teamFarmFilter='';document.querySelectorAll('button,select').forEach(el=>el.disabled=true);try{await refresh()}catch(err){toast(err.message)}};
+  if($('#company-select')) $('#company-select').onchange=async e=>{setActiveCompany(e.target.value);reportFilters.department='';reportFilters.project='';reportFilters.person='';teamDeptFilter='';teamFarmFilter='';document.querySelectorAll('button,select').forEach(el=>el.disabled=true);try{await refresh()}catch(err){toast(err.message)}};
   $('#logout').onclick=async()=>{await api('logout',{});me=null;login()};
   const btnHelp = $('#btn-help-modal');
   if(btnHelp) btnHelp.onclick = () => openHelpModal();
@@ -4861,7 +5028,7 @@ function openHelpModal(){
   renderHelpModal();
 }
 async function save(actionName,data){const result=await api('action',{company_id:Number(cid),action:actionName,...data});await refresh();return result}
-async function handleAction(b){const a=b.dataset.action,id=Number(b.dataset.id);if(a==='toggle_daily_labor'){b.disabled=true;try{const res=await save('toggle_daily_labor',{employee_id:Number(b.dataset.empId),work_date:b.dataset.date,farm_id:b.dataset.farmId?Number(b.dataset.farmId):null});toast(res.active?`✓ Jornada del ${displayDate(res.work_date)} marcada como ACTIVA.`:`Jornada del ${displayDate(res.work_date)} desactivada.`);}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='step_daily_labor'){b.disabled=true;try{const delta=Number(b.dataset.delta||1);const res=await save('step_daily_labor',{employee_id:Number(b.dataset.empId),start_date:b.dataset.start,end_date:b.dataset.end,delta:delta,farm_id:b.dataset.farmId?Number(b.dataset.farmId):null});toast(delta>0?`+ 1 día sumado (${displayDate(res.modified_date)} activo).`:`- 1 día restado (${displayDate(res.modified_date)} inactivo).`);}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='set_week_labor_days'){b.disabled=true;try{const preset=b.dataset.preset;const start=b.dataset.start;const end=b.dataset.end;let activeDates=[];if(preset==='lun_vie'||preset==='lun_sab'){const parts=start.split('-').map(Number);const curr=new Date(parts[0],parts[1]-1,parts[2],12,0,0);const endParts=end.split('-').map(Number);const endDt=new Date(endParts[0],endParts[1]-1,endParts[2],12,0,0);while(curr<=endDt){const dow=curr.getDay();const iso=curr.toISOString().slice(0,10);if(preset==='lun_vie'&&dow>=1&&dow<=5)activeDates.push(iso);else if(preset==='lun_sab'&&dow>=1&&dow<=6)activeDates.push(iso);curr.setDate(curr.getDate()+1);}}await save('set_week_labor_days',{employee_id:Number(b.dataset.empId),start_date:start,end_date:end,active_dates:activeDates,farm_id:b.dataset.farmId?Number(b.dataset.farmId):null});toast(preset==='clear'?'Todos los días no liquidados se desactivaron.':`Jornales configurados (${activeDates.length} días activos).`);}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='nav_labor_week'){currentLaborWeekRefDate=b.dataset.ref;render();return;}if(a==='filter_labor_farm'){currentLaborFarmFilter=b.dataset.farmId;render();return;}if(a==='liquidate_labor_week'){openForm('weekly_payroll',null,{end_date:b.dataset.end});return;}if(a==='add_daily_temporero'){openForm('employee',null,{employment_type:'temporary',basis:'daily'});return;}if(a==='view_employee_account'){showEmployeeAccountModal(id);return}if(a==='assign_queue_job'){showAssignQueueJobModal(id||null);return}if(a==='add_labor_to_farm'){showAddLaborToFarmModal(id||null);return}if(a==='add_employee_to_farm'){openForm('employee',null,{farm_id:id});return}if(a==='report_queue_job'){showReportQueueJobModal(id);return}if(a==='approve_queue_job'){b.disabled=true;try{const res=await save('approve_queue_job',{id});toast(`Trabajo aprobado. Se acreditaron ${money(res.job?.earned_amount||0)} a la cuenta del colaborador.`);}catch(err){toast(err.message);b.disabled=false;}return;}if(payrollKinds.includes(a)){payrollDialog(a,id);return}if(a==='payroll_single'){payrollDialog('payroll',{employee_id:id,cadence:b.dataset.cadence});return}if(a==='payroll_deduction'){payrollDialog('payroll_adjustment',{employee_id:id||'',kind:'deduction'});return}if(a==='assign_custom_days'){openForm('farm_job',id);return}if(a==='reset-branding'){await save('branding',{accent_color:'#185b4d',surface_color:'#f4f6f3',card_color:'#ffffff',text_color:'#172f2d',font_scale:'100'});return}if(a==='files'){await openFiles(b.dataset.entity,id);return}if(a==='approve_all_worklogs'){b.disabled=true;try{const work_date=b.dataset.date||null;const res=await save('approve_all_worklogs',{work_date});toast(`${res.approved_count||'Todas las'} hora(s) aprobada(s) correctamente.`);}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='approve_all_farm_jobs'){b.disabled=true;try{const work_date=b.dataset.date||null;const res=await save('approve_all_farm_jobs',{work_date});toast(`${res.approved_count||'Todas las'} labore(s) aprobada(s) correctamente.`);}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='create_default_cash_account'){b.disabled=true;try{await save('create_default_cash_account',{});toast('Caja General (DOP) creada y lista para operar.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='export'){b.disabled=true;try{const archive=await api('export?company_id='+cid);const link=document.createElement('a');link.href='/api/export?company_id='+cid;link.download=company().name.replace(/[^a-zA-Z0-9_-]/g,'_')+'-'+S.today+'.zero.json';document.body.appendChild(link);link.click();link.remove();toast('Archivo de empresa preparado para descargar.')}catch(err){toast(err.message)}finally{b.disabled=false}return;}if(a==='extend_contract'){const co=S.farm_contracts?.find(c=>c.id===id);if(co){const d=new Date(co.end_date+'T12:00:00');d.setDate(d.getDate()+7);const newEnd=d.toISOString().slice(0,10);b.disabled=true;try{await save('edit_farm_contract',{id:co.id,farm_id:co.farm_id,employee_id:co.employee_id,kind:co.kind,basis:co.basis,rate:co.rate/100,description:co.description,start_date:co.start_date,end_date:newEnd,status:'active'});toast(`Continuidad extendida hasta el ${displayDate(newEnd)}.`);}catch(err){toast(err.message);b.disabled=false;}return;}}if(a==='approve_job_direct'){b.disabled=true;try{await save('job_status',{id,status:'approved'});toast('Labor / horas aprobadas para nómina.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='discard_payroll'){if(!confirm('¿Desea descartar esta nómina pendiente? Los reportes y deducciones asociados quedarán liberados.'))return;b.disabled=true;try{await save('discard_payroll',{id});toast('Nómina descartada.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='discard_farm_payroll'){if(!confirm('¿Desea descartar esta nómina de labores? Los trabajos volverán a quedar pendientes en la cola.'))return;b.disabled=true;try{await save('discard_farm_payroll',{id});toast('Nómina descartada.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='archive_cash_account'){const acc=S.cash_accounts?.find(c=>c.id===id);const isArch=Boolean(acc?.archived);if(!confirm(`¿Desea ${isArch?'reactivar':'archivar'} la cuenta «${acc?.name||'seleccionada'}»?`))return;b.disabled=true;try{await save('archive_cash_account',{id,archived:isArch?0:1});toast(`Cuenta ${isArch?'reactivada':'archivada'}.`);}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='seed_demo_real_estate'){b.disabled=true;const orig=b.innerHTML;b.innerHTML='⏳ Cargando demo...';try{const res=await save('seed_demo_real_estate',{force:true});setActiveView('real_estate');reTab='properties';render();toast(res?.message||'✓ Portafolio de prueba de Bienes Raíces cargado con éxito.');}catch(err){toast(err.message);b.disabled=false;b.innerHTML=orig;}return;}if(a==='generate_condo_month_fees'){openForm('generate_condo_fees',null,{condo_id:id});return}if(a==='pay_condo_charge'){openForm('pay_condo_charge',id);return}if(a==='pay_condo_expense'){openForm('pay_condo_expense',id);return}if(a==='view_condo_receipt'){showCondoReceiptModal(id);return}if(a==='view_sale_installments'){showSaleInstallmentsModal(id||Number(b.dataset.saleId));return}if(a==='view_sale_payment_receipt'){showSalePaymentReceiptModal(id||Number(b.dataset.paymentId));return}if(a==='record_sale_payment'){openForm('record_re_sale_payment',null,{sale_id:Number(b.dataset.saleId||id)});return}if(a==='pay_sale_installment'){openForm('record_re_sale_payment',null,{sale_id:Number(b.dataset.saleId),installment_id:Number(b.dataset.installmentId)});return}if(a==='recalculate_sale_late_fees'){const saleId=Number(b.dataset.saleId||id);b.disabled=true;try{const res=await save('recalculate_re_sale_late_fees',{sale_id:saleId});toast(res.message||'Moras recalculadas según días de atraso.');showSaleInstallmentsModal(saleId);}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='generate_sale_installments'){const saleId=Number(b.dataset.saleId||id);b.disabled=true;try{const res=await save('generate_re_sale_installments',{sale_id:saleId});toast(res.message||'Cuotas de financiamiento generadas con éxito.');showSaleInstallmentsModal(saleId);}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='open_condo_charge'){const propId=Number(b.dataset.propertyId);const condoId=Number(b.dataset.condoId);openForm('re_condo_charge',null,{property_id:propId,condo_id:condoId});return}if(a==='charge_lease_rent'){b.disabled=true;try{const res=await save('generate_re_lease_charge',{lease_id:id});toast(res.message||'Cuenta por cobrar generada para el inquilino.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='terminate_re_lease'){if(!confirm('¿Desea rescindir / finalizar este contrato de alquiler? La propiedad quedará disponible nuevamente para alquiler o venta.'))return;b.disabled=true;try{await save('terminate_re_lease',{id});toast('Contrato finalizado y propiedad liberada como disponible.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='resolve_re_maintenance'){b.disabled=true;try{await save('resolve_re_maintenance',{id});toast('Incidencia marcada como resuelta.');}catch(err){toast(err.message);b.disabled=false;}return;}if(['payment','expense_payment','edit_member','edit_expense','edit_employee','terminate_employee','view_termination','contract_status','pay_payroll','edit_department','edit_project','edit_task','edit_farm','edit_farm_contract','edit_farm_job','edit_company','edit_product','edit_customer','edit_worklog','edit_subscription','edit_farm_sale','edit_ncf_sequence','edit_re_property','edit_re_condo','edit_re_condo_charge','edit_re_condo_expense','edit_re_buyer','edit_re_lease','edit_re_sale','edit_re_visit','edit_re_maintenance'].includes(a)){openForm(a,id);return}if(a==='reactivate_employee'){const emp=S.employees?.find(e=>e.id===id);if(!confirm(`¿Desea reactivar a «${emp?.name||'este colaborador'}» como personal activo? Volverá a estar disponible para asignaciones y nómina.`))return;b.disabled=true;try{await save('reactivate_employee',{id});toast('Colaborador reactivado con éxito.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='delete_employee'){const emp=S.employees?.find(e=>e.id===id);if(!confirm(`¿Está seguro de que desea eliminar la ficha de «${emp?.name||'este colaborador'}»? Solo es posible si no posee historial contable ni tareas asociadas.`))return;b.disabled=true;try{await save('delete_employee',{id});toast('Ficha de personal eliminada.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='cancel_subscription'){openForm('cancel_subscription',id);return}if(a.startsWith('delete_')){if(!confirm('¿Está seguro de que desea eliminar este registro permanentemente?'))return}b.disabled=true;try{if(a==='refresh')await refresh();else{const result=await save(a,{id});toast(a==='generate'?`${result.generated} cargo(s) nuevo(s). Los existentes se conservaron.`:'Operación guardada.')}}catch(err){toast(err.message);b.disabled=false}}
+async function handleAction(b){const a=b.dataset.action,id=Number(b.dataset.id);if(a==='toggle_daily_labor'){b.disabled=true;try{const res=await save('toggle_daily_labor',{employee_id:Number(b.dataset.empId),work_date:b.dataset.date,farm_id:b.dataset.farmId?Number(b.dataset.farmId):null});toast(res.active?`✓ Jornada del ${displayDate(res.work_date)} marcada como ACTIVA.`:`Jornada del ${displayDate(res.work_date)} desactivada.`);}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='step_daily_labor'){b.disabled=true;try{const delta=Number(b.dataset.delta||1);const res=await save('step_daily_labor',{employee_id:Number(b.dataset.empId),start_date:b.dataset.start,end_date:b.dataset.end,delta:delta,farm_id:b.dataset.farmId?Number(b.dataset.farmId):null});toast(delta>0?`+ 1 día sumado (${displayDate(res.modified_date)} activo).`:`- 1 día restado (${displayDate(res.modified_date)} inactivo).`);}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='set_week_labor_days'){b.disabled=true;try{const preset=b.dataset.preset;const start=b.dataset.start;const end=b.dataset.end;let activeDates=[];if(preset==='lun_vie'||preset==='lun_sab'){const parts=start.split('-').map(Number);const curr=new Date(parts[0],parts[1]-1,parts[2],12,0,0);const endParts=end.split('-').map(Number);const endDt=new Date(endParts[0],endParts[1]-1,endParts[2],12,0,0);while(curr<=endDt){const dow=curr.getDay();const iso=curr.toISOString().slice(0,10);if(preset==='lun_vie'&&dow>=1&&dow<=5)activeDates.push(iso);else if(preset==='lun_sab'&&dow>=1&&dow<=6)activeDates.push(iso);curr.setDate(curr.getDate()+1);}}await save('set_week_labor_days',{employee_id:Number(b.dataset.empId),start_date:start,end_date:end,active_dates:activeDates,farm_id:b.dataset.farmId?Number(b.dataset.farmId):null});toast(preset==='clear'?'Todos los días no liquidados se desactivaron.':`Jornales configurados (${activeDates.length} días activos).`);}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='nav_labor_week'){currentLaborWeekRefDate=b.dataset.ref;render();return;}if(a==='filter_labor_farm'){currentLaborFarmFilter=b.dataset.farmId;render();return;}if(a==='liquidate_labor_week'){openForm('weekly_payroll',null,{end_date:b.dataset.end});return;}if(a==='add_daily_temporero'){openForm('employee',null,{employment_type:'temporary',basis:'daily'});return;}if(a==='view_employee_account'){showEmployeeAccountModal(id);return}if(a==='assign_queue_job'){showAssignQueueJobModal(id||null);return}if(a==='add_labor_to_farm'){showAddLaborToFarmModal(id||null);return}if(a==='add_employee_to_farm'){openForm('employee',null,{farm_id:id});return}if(a==='report_queue_job'){showReportQueueJobModal(id);return}if(a==='approve_queue_job'){b.disabled=true;try{const res=await save('approve_queue_job',{id});toast(`Trabajo aprobado. Se acreditaron ${money(res.job?.earned_amount||0)} a la cuenta del colaborador.`);}catch(err){toast(err.message);b.disabled=false;}return;}if(payrollKinds.includes(a)){payrollDialog(a,id);return}if(a==='payroll_single'){payrollDialog('payroll',{employee_id:id,cadence:b.dataset.cadence});return}if(a==='payroll_deduction'){payrollDialog('payroll_adjustment',{employee_id:id||'',kind:'deduction'});return}if(a==='assign_custom_days'){openForm('farm_job',id);return}if(a==='reset-branding'){await save('branding',{accent_color:'#185b4d',surface_color:'#f4f6f3',card_color:'#ffffff',text_color:'#172f2d',font_scale:'100'});return}if(a==='files'){await openFiles(b.dataset.entity,id);return}if(a==='approve_all_worklogs'){b.disabled=true;try{const work_date=b.dataset.date||null;const res=await save('approve_all_worklogs',{work_date});toast(`${res.approved_count||'Todas las'} hora(s) aprobada(s) correctamente.`);}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='approve_all_farm_jobs'){b.disabled=true;try{const work_date=b.dataset.date||null;const res=await save('approve_all_farm_jobs',{work_date});toast(`${res.approved_count||'Todas las'} labore(s) aprobada(s) correctamente.`);}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='create_default_cash_account'){b.disabled=true;try{await save('create_default_cash_account',{});toast('Caja General (DOP) creada y lista para operar.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='export'){b.disabled=true;try{const archive=await api('export?company_id='+cid);const link=document.createElement('a');link.href='/api/export?company_id='+cid;link.download=company().name.replace(/[^a-zA-Z0-9_-]/g,'_')+'-'+S.today+'.zero.json';document.body.appendChild(link);link.click();link.remove();toast('Archivo de empresa preparado para descargar.')}catch(err){toast(err.message)}finally{b.disabled=false}return;}if(a==='extend_contract'){const co=S.farm_contracts?.find(c=>c.id===id);if(co){const d=new Date(co.end_date+'T12:00:00');d.setDate(d.getDate()+7);const newEnd=d.toISOString().slice(0,10);b.disabled=true;try{await save('edit_farm_contract',{id:co.id,farm_id:co.farm_id,employee_id:co.employee_id,kind:co.kind,basis:co.basis,rate:co.rate/100,description:co.description,start_date:co.start_date,end_date:newEnd,status:'active'});toast(`Continuidad extendida hasta el ${displayDate(newEnd)}.`);}catch(err){toast(err.message);b.disabled=false;}return;}}if(a==='approve_job_direct'){b.disabled=true;try{await save('job_status',{id,status:'approved'});toast('Labor / horas aprobadas para nómina.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='discard_payroll'){if(!confirm('¿Desea descartar esta nómina pendiente? Los reportes y deducciones asociados quedarán liberados.'))return;b.disabled=true;try{await save('discard_payroll',{id});toast('Nómina descartada.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='discard_farm_payroll'){if(!confirm('¿Desea descartar esta nómina de labores? Los trabajos volverán a quedar pendientes en la cola.'))return;b.disabled=true;try{await save('discard_farm_payroll',{id});toast('Nómina descartada.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='archive_cash_account'){const acc=S.cash_accounts?.find(c=>c.id===id);const isArch=Boolean(acc?.archived);if(!confirm(`¿Desea ${isArch?'reactivar':'archivar'} la cuenta «${acc?.name||'seleccionada'}»?`))return;b.disabled=true;try{await save('archive_cash_account',{id,archived:isArch?0:1});toast(`Cuenta ${isArch?'reactivada':'archivada'}.`);}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='seed_demo_real_estate'){b.disabled=true;const orig=b.innerHTML;b.innerHTML='⏳ Cargando demo...';try{const res=await save('seed_demo_real_estate',{force:true});setActiveView('real_estate');reTab='properties';render();toast(res?.message||'✓ Portafolio de prueba de Bienes Raíces cargado con éxito.');}catch(err){toast(err.message);b.disabled=false;b.innerHTML=orig;}return;}if(a==='generate_condo_month_fees'){openForm('generate_condo_fees',null,{condo_id:id});return}if(a==='pay_condo_charge'){openForm('pay_condo_charge',id);return}if(a==='pay_condo_expense'){openForm('pay_condo_expense',id);return}if(a==='view_condo_receipt'){showCondoReceiptModal(id);return}if(a==='view_sale_installments'){showSaleInstallmentsModal(id||Number(b.dataset.saleId));return}if(a==='view_sale_payment_receipt'){showSalePaymentReceiptModal(id||Number(b.dataset.paymentId));return}if(a==='record_sale_payment'){openForm('record_re_sale_payment',null,{sale_id:Number(b.dataset.saleId||id)});return}if(a==='pay_sale_installment'){openForm('record_re_sale_payment',null,{sale_id:Number(b.dataset.saleId),installment_id:Number(b.dataset.installmentId)});return}if(a==='recalculate_sale_late_fees'){const saleId=Number(b.dataset.saleId||id);b.disabled=true;try{const res=await save('recalculate_re_sale_late_fees',{sale_id:saleId});toast(res.message||'Moras recalculadas según días de atraso.');showSaleInstallmentsModal(saleId);}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='generate_sale_installments'){const saleId=Number(b.dataset.saleId||id);b.disabled=true;try{const res=await save('generate_re_sale_installments',{sale_id:saleId});toast(res.message||'Cuotas de financiamiento generadas con éxito.');showSaleInstallmentsModal(saleId);}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='open_condo_charge'){const propId=Number(b.dataset.propertyId);const condoId=Number(b.dataset.condoId);openForm('re_condo_charge',null,{property_id:propId,condo_id:condoId});return}if(a==='charge_lease_rent'){b.disabled=true;try{const res=await save('generate_re_lease_charge',{lease_id:id});toast(res.message||'Cuenta por cobrar generada para el inquilino.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='terminate_re_lease'){if(!confirm('¿Desea rescindir / finalizar este contrato de alquiler? La propiedad quedará disponible nuevamente para alquiler o venta.'))return;b.disabled=true;try{await save('terminate_re_lease',{id});toast('Contrato finalizado y propiedad liberada como disponible.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='resolve_re_maintenance'){b.disabled=true;try{await save('resolve_re_maintenance',{id});toast('Incidencia marcada como resuelta.');}catch(err){toast(err.message);b.disabled=false;}return;}if(['payment','expense_payment','edit_member','edit_expense','edit_supplier','edit_employee','terminate_employee','view_termination','contract_status','pay_payroll','edit_department','edit_project','edit_task','edit_farm','edit_farm_contract','edit_farm_job','edit_company','edit_product','edit_customer','edit_worklog','edit_subscription','edit_farm_sale','edit_ncf_sequence','edit_re_property','edit_re_condo','edit_re_condo_charge','edit_re_condo_expense','edit_re_buyer','edit_re_lease','edit_re_sale','edit_re_visit','edit_re_maintenance'].includes(a)){openForm(a,id);return}if(a==='reactivate_employee'){const emp=S.employees?.find(e=>e.id===id);if(!confirm(`¿Desea reactivar a «${emp?.name||'este colaborador'}» como personal activo? Volverá a estar disponible para asignaciones y nómina.`))return;b.disabled=true;try{await save('reactivate_employee',{id});toast('Colaborador reactivado con éxito.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='delete_employee'){const emp=S.employees?.find(e=>e.id===id);if(!confirm(`¿Está seguro de que desea eliminar la ficha de «${emp?.name||'este colaborador'}»? Solo es posible si no posee historial contable ni tareas asociadas.`))return;b.disabled=true;try{await save('delete_employee',{id});toast('Ficha de personal eliminada.');}catch(err){toast(err.message);b.disabled=false;}return;}if(a==='cancel_subscription'){openForm('cancel_subscription',id);return}if(a.startsWith('delete_')){if(!confirm('¿Está seguro de que desea eliminar este registro permanentemente?'))return}b.disabled=true;try{if(a==='refresh')await refresh();else{const result=await save(a,{id});toast(a==='generate'?`${result.generated} cargo(s) nuevo(s). Los existentes se conservaron.`:'Operación guardada.')}}catch(err){toast(err.message);b.disabled=false}}
 function showCondoReceiptModal(chargeId){
   const ch=(S.re_condo_charges||[]).find(x=>x.id===chargeId);
   if(!ch)return;
@@ -5121,7 +5288,7 @@ if(kind==='subscription'){if(!S.customers.length||!S.products.length){toast('Pri
 if(kind==='edit_subscription'){const s=S.subscriptions?.find(x=>x.id===id);title='Editar servicio contratado · #'+id;initial={id};fields=select('customer_id','Cliente',options('customers',false),s?.customer_id||'','required')+select('product_id','Producto / servicio',options('products',false),s?.product_id||'','required')+input('amount','Importe por cargo (RD$)','number',(s?.amount||0)/100,'required min="0.01" step="0.01"')+select('frequency','Frecuencia',[['months','Cada N meses'],['days','Cada N días'],['once','Cargo único']],s?.frequency||'months')+input('interval','Cada cuántos días / meses','number',s?.interval||1,'required min="1" max="365"')+input('start_date','Inicio del servicio','date',s?.start_date||S.today,'required')+input('end_date','Fin del servicio (opcional)','date',s?.end_date||'')+input('due_days','Días hasta vencer cada cargo','number',s?.due_days||5,'required min="0" max="365"');help='Modifique las condiciones de contratación del servicio.';submit='Guardar cambios';}
 if(kind==='edit_ncf_sequence'){const r=S.secuencias_ncf?.find(x=>x.id===id);title='Editar secuencia NCF · '+(r?.tipo_ncf||'');initial={id};fields=input('numero_final','Número final autorizado','number',r?.numero_final||'','required min="'+(r?.contador_actual||1)+'" max="99999999"')+(r?.tipo_ncf==='B01'?input('fecha_vencimiento','Vencimiento de la secuencia','date',r?.fecha_vencimiento||''):'');help='Actualice el número final autorizado por la DGII o su fecha de vencimiento.';submit='Guardar cambios';}
 if(kind==='dmca_notice'){title='Notificación de infracción de derechos de autor (DMCA Safe Harbor)';fields=input('claimant_name','Nombre completo del titular / reclamante','text','','required maxlength="200"')+input('claimant_email','Correo de contacto','email','','required maxlength="200"')+area('copyrighted_work','Identificación de la obra protegida','')+area('infringing_content','Ubicación o detalle del contenido infractor en esta empresa','')+input('signature','Firma digital (nombre completo)','text','','required maxlength="200"')+`<div class="wide" style="font-size:12px;color:var(--muted,#64748b);margin-top:6px"><label style="display:block;margin-bottom:6px"><input type="checkbox" name="good_faith" value="1" required> Declaro de buena fe que el uso del material no está autorizado.</label><label style="display:block"><input type="checkbox" name="accuracy" value="1" required> Declaro bajo pena de perjurio que la información es veraz y soy el titular o agente autorizado.</label></div>`;help='Conforme a 17 U.S.C. § 512(c)(3). Inicia el procedimiento de retirada expedita y notificación al usuario.';submit='Enviar notificación DMCA'}
-if(kind==='expense'){title='Registrar gasto';fields=input('description','Concepto','text','','required')+input('amount','Importe (RD$)','number','','required min="0.01" step="0.01"')+dims()+input('expense_date','Fecha','date',S.today,'required max="'+S.today+'"')+input('receipt','Número, ruta o enlace de comprobante');help='Se guarda como propuesto. Un revisor o administrador debe aprobarlo antes del pago.'}
+if(kind==='expense'){title='Registrar gasto';fields=input('description','Concepto','text','','required')+select('supplier_id','Proveedor (opcional)',options('suppliers',true),extraData?.supplier_id||'')+input('amount','Importe (RD$)','number','','required min="0.01" step="0.01"')+dims()+input('expense_date','Fecha','date',S.today,'required max="'+S.today+'"')+input('receipt','Número, ruta o enlace de comprobante');help='Se guarda como propuesto. Un revisor o administrador debe aprobarlo antes del pago.'}
 if(kind==='employee'){
   const empFarmId = extraData?.farm_id || '';
   const empType = extraData?.employment_type || 'fixed';
@@ -5551,6 +5718,36 @@ let theme='light';try{theme=localStorage.getItem('zero-theme')==='dark'?'dark':'
 function applyTheme(){document.documentElement.dataset.theme=theme;applyBranding();document.querySelectorAll('[data-theme-toggle]').forEach(b=>{b.innerHTML=theme==='dark'?'<span class="theme-icon">☀</span><span class="theme-text"> Tema claro</span>':'<span class="theme-icon">☾</span><span class="theme-text"> Tema oscuro</span>';b.setAttribute('aria-label','Cambiar a tema '+(theme==='dark'?'claro':'oscuro'));b.setAttribute('aria-pressed',String(theme==='dark'))})}
 function themeButton(){return `<button type="button" class="small theme-toggle" data-theme-toggle aria-pressed="${theme==='dark'}" aria-label="Cambiar a tema ${theme==='dark'?'claro':'oscuro'}"><span class="theme-icon">${theme==='dark'?'☀':'☾'}</span><span class="theme-text"> ${theme==='dark'?'Tema claro':'Tema oscuro'}</span></button>`}
 document.addEventListener('click',e=>{if(e.target.closest('[data-theme-toggle]')){theme=theme==='dark'?'light':'dark';try{localStorage.setItem('zero-theme',theme)}catch{}applyTheme()}});
+document.addEventListener('click',e=>{
+  const tabBtn = e.target.closest('[data-expenses-tab]');
+  if(tabBtn){
+    expensesTab = tabBtn.dataset.expensesTab;
+    render();
+    return;
+  }
+  const expBtn = e.target.closest('[data-supplier-new-expense]');
+  if(expBtn){
+    const sId = Number(expBtn.dataset.supplierNewExpense);
+    openForm('expense', null, {supplier_id: sId});
+    return;
+  }
+});
+document.addEventListener('input',e=>{
+  if(e.target.id === 'supplier-search-input'){
+    supplierSearch = e.target.value;
+    const q = supplierSearch.toLowerCase().trim();
+    document.querySelectorAll('.supplier-row').forEach(row => {
+      const text = (row.dataset.search || '').toLowerCase();
+      row.style.display = text.includes(q) ? '' : 'none';
+    });
+  }
+});
+document.addEventListener('change',e=>{
+  if(e.target.id === 'supplier-cat-filter'){
+    supplierCategoryFilter = e.target.value;
+    render();
+  }
+});
 document.addEventListener('click',e=>{const b=e.target.closest('[data-theme-preset]');if(!b)return;const [,font,accent,surface,card,text]=b.dataset.themePreset.split('|');applyBranding({accent_color:accent,surface_color:surface,card_color:card,text_color:text,font_scale:font});if($('#branding-form')){['accent_color','surface_color','card_color','text_color'].forEach((k,i)=>$('#branding-form [name='+k+']').value=[accent,surface,card,text][i]);$('#branding-form [name=font_scale]').value=font}});
 document.addEventListener('input',e=>{if(!e.target.closest('#branding-form'))return;const f=new FormData(document.querySelector('#branding-form'));applyBranding({accent_color:f.get('accent_color'),surface_color:f.get('surface_color'),card_color:f.get('card_color'),text_color:f.get('text_color'),font_scale:f.get('font_scale')})});
 applyTheme();
@@ -5559,7 +5756,7 @@ function filesButton(entity,id){return `<button class="small" data-action="files
 async function openFiles(entity,id){
  const selectedCompany=Number(cid);let result;
  try{result=await api('attachments?'+new URLSearchParams({company_id:selectedCompany,entity,entity_id:id}))}catch(err){toast(err.message);return}
- const labels={expenses:'Gasto',expense_payments:'Pago de gasto',charges:'Cargo por cobrar',payments:'Pago recibido',payrolls:'Nómina',payroll_payments:'Pago de nómina',farm_payrolls:'Nómina por '+unitLabel(false,true),employees:'Personal / Identificación',farms:unitLabel()+' / Documentos y planos',re_properties:'Inmueble / Título y fotos',re_leases:'Contrato de alquiler'};
+ const labels={expenses:'Gasto',expense_payments:'Pago de gasto',charges:'Cargo por cobrar',payments:'Pago recibido',payrolls:'Nómina',payroll_payments:'Pago de nómina',farm_payrolls:'Nómina por '+unitLabel(false,true),employees:'Personal / Identificación',farms:unitLabel()+' / Documentos y planos',suppliers:'Proveedor / Documentos y contratos',re_properties:'Inmueble / Título y fotos',re_leases:'Contrato de alquiler'};
  $('#modal-content').innerHTML=`<div class="modal-header"><h2>Comprobantes y adjuntos · ${labels[entity]||entity} #${id}</h2><button id="close-files" type="button" aria-label="Cerrar">×</button></div><p class="form-help">Fotos JPG, PNG, WebP o HEIC; documentos PDF o Word DOCX. Máximo 5 MB por archivo y 25 MB por empresa. Subir una factura no aprueba ni registra un pago.</p><div class="file-list">${result.files.length?result.files.map(f=>`<article class="file-card">${['image/jpeg','image/png','image/webp'].includes(f.mime)?`<img class="invoice-preview" src="/api/attachment?id=${f.id}&preview=1" alt="Vista previa de ${esc(f.filename)}">`:''}<div><strong>${esc(f.filename)}</strong><p class="muted">${(f.size/1024).toFixed(1)} KB · ${esc(new Date(f.created_at).toLocaleString('es-DO'))}</p><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px"><a href="/api/attachment?id=${f.id}" download>Descargar / abrir</a>${canReview()||canAdmin()?`<button type="button" class="small" data-file-edit="${f.id}" data-filename="${esc(f.filename)}">✏ Cambiar nombre</button><button type="button" class="small" data-file-delete="${f.id}">🗑 Eliminar</button>`:''}</div></div></article>`).join(''):'<div class="empty">Todavía no hay comprobantes adjuntos.</div>'}</div><form id="upload-files"><label for="invoice-files">Agregar fotos o documentos</label><input id="invoice-files" type="file" accept=".jpg,.jpeg,.png,.webp,.heic,.heif,.pdf,.docx" multiple required><div class="error" id="upload-error" role="alert"></div><div id="upload-progress" class="form-help" aria-live="polite"></div><div class="form-actions"><button class="primary" type="submit">Subir archivos</button></div></form>`;
  if(!$('#modal').open)$('#modal').showModal();$('#close-files').onclick=()=>$('#modal').close();
  document.querySelectorAll('[data-file-edit]').forEach(b=>b.onclick=async()=>{
@@ -5705,7 +5902,9 @@ const agForms={
     help:'Gestionado por nivel jerárquico 1 y 2. El pago requiere saldo disponible en la cuenta de salida elegida y descuenta automáticamente el monto en tesorería.'
   };
  },
- edit_expense:id=>{const e=S.expenses.find(x=>x.id===id);return {title:'Editar factura de gasto',initial:{id},fields:input('description','Concepto','text',e.description,'required')+agDate('expense_date','Fecha',e.expense_date)+input('amount','Importe (RD$)','number',e.amount/100,'required min="0.01" step="0.01"')+input('receipt','Número o referencia de factura','text',e.receipt)+input('reason','Motivo de corrección','text','','required'),help:'Se conserva el historial, los adjuntos y los pagos. El importe no puede quedar por debajo de lo pagado. Use Adjuntos para agregar una foto o documento corregido.'}},
+ edit_expense:id=>{const e=S.expenses.find(x=>x.id===id);return {title:'Editar factura de gasto',initial:{id},fields:input('description','Concepto','text',e.description,'required')+select('supplier_id','Proveedor (opcional)',options('suppliers',true),e.supplier_id||'')+agDate('expense_date','Fecha',e.expense_date)+input('amount','Importe (RD$)','number',e.amount/100,'required min="0.01" step="0.01"')+input('receipt','Número o referencia de factura','text',e.receipt)+input('reason','Motivo de corrección','text','','required'),help:'Se conserva el historial, los adjuntos y los pagos. El importe no puede quedar por debajo de lo pagado. Use Adjuntos para agregar una foto o documento corregido.'}},
+ supplier:()=>({title:'Nuevo Proveedor · Ficha de Directorio',fields:`<div class="form-grid">`+input('name','Nombre del proveedor o razón social','text','','required')+input('rnc','RNC / Cédula / Identificación tributaria','text','','placeholder="ej. 1-01-00000-0"')+input('contact','Persona de contacto','text','','placeholder="ej. Lic. Pérez"')+input('phone','Teléfono / WhatsApp','text','','placeholder="ej. (809) 555-1234"')+input('email','Correo electrónico','email','','placeholder="ventas@proveedor.com"')+input('category','Categoría o rubro','text','','placeholder="ej. Insumos Agrícolas, Ferretería, Combustible, Repuestos, Servicios"')+input('address','Dirección física / Localidad','text','','placeholder="Calle, sector o ciudad"')+`</div>`+area('notes','Notas adicionales, condiciones de crédito o acuerdos comerciales',''),help:'Guarde proveedores para asociar sus facturas de gastos y llevar el total acumulado.'}),
+ edit_supplier:id=>{const s=S.suppliers?.find(x=>x.id===id);return {title:'Editar proveedor · '+(s?.name||'#'+id),initial:{id},fields:`<div class="form-grid">`+input('name','Nombre del proveedor o razón social','text',s?.name||'','required')+input('rnc','RNC / Cédula / Identificación tributaria','text',s?.rnc||'')+input('contact','Persona de contacto','text',s?.contact||'')+input('phone','Teléfono / WhatsApp','text',s?.phone||'')+input('email','Correo electrónico','email',s?.email||'')+input('category','Categoría o rubro','text',s?.category||'')+input('address','Dirección física / Localidad','text',s?.address||'')+`</div>`+area('notes','Notas adicionales, condiciones de crédito o acuerdos comerciales',s?.notes||''),help:'Modifique los datos del proveedor. Los gastos ya registrados conservarán la vinculación.'}},
   edit_employee:id=>{
     const e=S.employees.find(x=>x.id===id);
     const unassignedDept = (S.departments||[]).find(d => (e?.farm_id ? Number(d.farm_id) === Number(e.farm_id) : !d.farm_id) && ((d.name||'').trim().toLowerCase().includes('sin departamento')));
