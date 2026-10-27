@@ -1270,6 +1270,20 @@ class Handler(BaseHTTPRequestHandler):
                     self.send_response(200);self.send_header('Content-Type','text/html; charset=utf-8');self.send_header('Cache-Control','no-store');self.send_header('X-Content-Type-Options','nosniff');self.send_header('Content-Length',str(len(html_resp.encode())));self.end_headers();self.wfile.write(html_resp.encode());return
                 except Exception as err:
                     return self.respond(400,{'error':str(err)})
+            if path in ('/export/monarca.zip', '/export/Zero_Respaldo_Monarca.zip'):
+                zip_path = ROOT / 'data' / 'Zero_Respaldo_Monarca.zip'
+                if not zip_path.exists():
+                    zip_path = Path('/tmp/Zero_Respaldo_Monarca.zip')
+                if zip_path.exists():
+                    body = zip_path.read_bytes()
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'application/zip')
+                    self.send_header('Content-Disposition', 'attachment; filename="Zero_Respaldo_Monarca.zip"')
+                    self.send_header('Cache-Control', 'no-store')
+                    self.send_header('Content-Length', str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
             if not path.startswith('/api/'):
                 names={'/':'index.html','/app.js':'app.js','/payroll-ui.js':'payroll-ui.js','/reports.js':'reports.js','/style.css':'style.css','/documents.css':'documents.css'}
                 if path not in names: return self.respond(404,{'error':'No encontrado.'})
